@@ -308,6 +308,7 @@ export async function createProduct(productData) {
         company_id: productData.company_id,
         quantity: parseInt(productData.quantity) || 0,
         min_stock: parseInt(productData.minStock) || 10,
+        cost_price: parseFloat(productData.costPrice) || 0,
         sale_price: parseFloat(productData.salePrice),
         price_includes_vat: productData.priceIncludesVat !== false,
         discount: parseFloat(productData.discount) || 0,
@@ -326,18 +327,23 @@ export async function createProduct(productData) {
 
 export async function updateProduct(productId, updates) {
   try {
-    const updateData = {
-      ...updates,
-      quantity: updates.quantity ? parseInt(updates.quantity) : undefined,
-      min_stock: updates.minStock ? parseInt(updates.minStock) : undefined,
-      sale_price: updates.salePrice ? parseFloat(updates.salePrice) : undefined,
-      discount: updates.discount !== undefined ? parseFloat(updates.discount) : undefined,
-      promotion: updates.promotion !== undefined ? updates.promotion : undefined,
-      price_includes_vat: updates.priceIncludesVat !== undefined ? updates.priceIncludesVat : undefined
-    };
-
-    // Remove undefined values
-    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+    // Build the update payload from scratch with only real column names - a
+    // previous version spread the raw `updates` object first (camelCase keys
+    // like minStock/salePrice/costPrice/priceIncludesVat) and then added the
+    // correctly-named snake_case overrides, but the leftover camelCase keys
+    // stayed in the object too (spread + explicit key only overrides matching
+    // names). Supabase/PostgREST rejects UPDATE payloads referencing unknown
+    // columns, so any edit that touched those fields failed outright.
+    const updateData = {};
+    if (updates.quantity !== undefined) updateData.quantity = parseInt(updates.quantity);
+    if (updates.minStock !== undefined) updateData.min_stock = parseInt(updates.minStock);
+    if (updates.costPrice !== undefined) updateData.cost_price = parseFloat(updates.costPrice);
+    if (updates.salePrice !== undefined) updateData.sale_price = parseFloat(updates.salePrice);
+    if (updates.discount !== undefined) updateData.discount = parseFloat(updates.discount);
+    if (updates.promotion !== undefined) updateData.promotion = updates.promotion;
+    if (updates.priceIncludesVat !== undefined) updateData.price_includes_vat = updates.priceIncludesVat;
+    if (updates.category !== undefined) updateData.category = updates.category;
+    if (updates.name !== undefined) updateData.name = updates.name;
 
     const { data, error } = await supabase
       .from('products')

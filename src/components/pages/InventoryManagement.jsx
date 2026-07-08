@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus, Trash2, Loader } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, createProduct, updateProduct, deleteProduct, fetchProductsByCompany } from '../../lib/supabaseHelpers.js';
+import { fetchData, createProduct, updateProduct, deleteProduct, fetchProductsByCompany, getBillingConfig } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import { formatUSD } from '../../lib/format.js';
 
@@ -19,6 +19,7 @@ export default function InventoryManagement() {
     category: '',
     quantity: 0,
     minStock: 10,
+    costPrice: 0,
     salePrice: 0,
     priceIncludesVat: true,
     discount: 0,
@@ -29,14 +30,14 @@ export default function InventoryManagement() {
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const data = await fetchProductsByCompany(currentUser.company_id);
+        const [data, billingConfig] = await Promise.all([
+          fetchProductsByCompany(currentUser.company_id),
+          getBillingConfig(currentUser.company_id)
+        ]);
         setProducts(data || []);
-
-        // Load tax rate configured by store manager
-        const savedTaxRate = localStorage.getItem(`store_tax_${currentUser?.company_id}`);
-        if (savedTaxRate) {
-          setTaxRate(parseFloat(savedTaxRate));
-        }
+        // Tax rate must match billing_configs - it's the same rate actually
+        // submitted to the SRI (api/sri/submit-invoice.js) and used by the POS.
+        setTaxRate(billingConfig.taxRate || 12);
       } catch (error) {
         console.error('Error:', error);
         showToast('error', 'Error al cargar inventario');
@@ -56,6 +57,7 @@ export default function InventoryManagement() {
   const openEdit = (product) => {
     setEditingProduct(product);
     setEditForm({
+      costPrice: product.cost_price || 0,
       salePrice: product.sale_price,
       priceIncludesVat: product.price_includes_vat !== false,
       discount: product.discount || 0,
@@ -94,6 +96,7 @@ export default function InventoryManagement() {
         company_id: currentUser.company_id,
         quantity: parseInt(newProduct.quantity) || 0,
         minStock: parseInt(newProduct.minStock) || 10,
+        costPrice: parseFloat(newProduct.costPrice) || 0,
         salePrice: parseFloat(newProduct.salePrice),
         priceIncludesVat: newProduct.priceIncludesVat,
         discount: parseFloat(newProduct.discount) || 0,
@@ -113,6 +116,7 @@ export default function InventoryManagement() {
         category: '',
         quantity: 0,
         minStock: 10,
+        costPrice: 0,
         salePrice: 0,
         priceIncludesVat: true,
         discount: 0,
@@ -121,7 +125,7 @@ export default function InventoryManagement() {
       setShowAddModal(false);
     } catch (error) {
       console.error('Error creating product:', error);
-      showToast('error', 'Error al crear producto');
+      showToast('error', error.message || 'Error al crear producto');
     }
   };
 
@@ -130,6 +134,7 @@ export default function InventoryManagement() {
 
     try {
       await updateProduct(editingProduct.id, {
+        costPrice: parseFloat(editForm.costPrice) || 0,
         salePrice: parseFloat(editForm.salePrice),
         priceIncludesVat: editForm.priceIncludesVat,
         discount: parseFloat(editForm.discount),
@@ -146,7 +151,7 @@ export default function InventoryManagement() {
       setEditingProduct(null);
     } catch (error) {
       console.error('Error updating product:', error);
-      showToast('error', 'Error al actualizar producto');
+      showToast('error', error.message || 'Error al actualizar producto');
     }
   };
 
@@ -361,6 +366,19 @@ export default function InventoryManagement() {
               <div className="space-y-3">
                 <h3 className="font-bold text-zinc-300">Precio</h3>
 
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Precio de Costo ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editForm.costPrice}
+                    onChange={(e) => setEditForm({...editForm, costPrice: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                  />
+                  <p className="text-xs text-zinc-500 mt-1">Lo que te cuesta a ti adquirir el producto (para calcular margen)</p>
+                </div>
+
                 {/* Price Includes VAT Toggle */}
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-2">
@@ -574,6 +592,19 @@ export default function InventoryManagement() {
               {/* Pricing */}
               <div className="space-y-3">
                 <h3 className="font-bold text-zinc-300">Precio</h3>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Precio de Costo ($)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newProduct.costPrice}
+                    onChange={(e) => setNewProduct({...newProduct, costPrice: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                  />
+                  <p className="text-xs text-zinc-500 mt-1">Lo que te cuesta a ti adquirir el producto (para calcular margen)</p>
+                </div>
 
                 {/* Price Includes VAT Toggle */}
                 <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
