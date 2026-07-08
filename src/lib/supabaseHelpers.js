@@ -381,3 +381,162 @@ export async function fetchProductsByCompany(companyId) {
     throw new Error(`Error fetching products: ${error.message}`);
   }
 }
+
+// Invoices & Billing
+export async function createInvoice(invoiceData) {
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .insert([{
+        company_id: invoiceData.company_id,
+        user_id: invoiceData.user_id,
+        invoice_number: invoiceData.invoice_number,
+        sequential: invoiceData.sequential,
+        establishment: invoiceData.establishment,
+        point_of_sale: invoiceData.point_of_sale,
+        issue_date: new Date().toISOString(),
+        subtotal_amount: parseFloat(invoiceData.subtotal_amount),
+        discount_amount: parseFloat(invoiceData.discount_amount) || 0,
+        taxable_amount: parseFloat(invoiceData.taxable_amount),
+        tax_amount: parseFloat(invoiceData.tax_amount),
+        total_amount: parseFloat(invoiceData.total_amount),
+        tax_rate: parseFloat(invoiceData.tax_rate) || 12,
+        payment_method: invoiceData.payment_method,
+        customer_id: invoiceData.customer_id || null,
+        customer_name: invoiceData.customer_name || '',
+        customer_email: invoiceData.customer_email || '',
+        customer_phone: invoiceData.customer_phone || '',
+        status: 'pending',
+        sri_status: 'pending',
+        transaction_id: invoiceData.transaction_id,
+        reference: invoiceData.reference || '',
+        notes: invoiceData.notes || ''
+      }])
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (error) {
+    throw new Error(`Error creating invoice: ${error.message}`);
+  }
+}
+
+export async function createInvoiceDetail(detailData) {
+  try {
+    const { data, error } = await supabase
+      .from('invoice_details')
+      .insert([{
+        invoice_id: detailData.invoice_id,
+        product_id: detailData.product_id,
+        product_code: detailData.product_code,
+        product_name: detailData.product_name,
+        quantity: parseInt(detailData.quantity),
+        unit_price: parseFloat(detailData.unit_price),
+        discount_percent: parseFloat(detailData.discount_percent) || 0,
+        discount_amount: parseFloat(detailData.discount_amount) || 0,
+        subtotal: parseFloat(detailData.subtotal),
+        tax_rate: parseFloat(detailData.tax_rate) || 12,
+        tax_amount: parseFloat(detailData.tax_amount),
+        total: parseFloat(detailData.total)
+      }])
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (error) {
+    throw new Error(`Error creating invoice detail: ${error.message}`);
+  }
+}
+
+export async function fetchInvoicesByCompany(companyId) {
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('issue_date', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  } catch (error) {
+    throw new Error(`Error fetching invoices: ${error.message}`);
+  }
+}
+
+export async function fetchInvoiceDetails(invoiceId) {
+  try {
+    const { data, error } = await supabase
+      .from('invoice_details')
+      .select('*')
+      .eq('invoice_id', invoiceId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  } catch (error) {
+    throw new Error(`Error fetching invoice details: ${error.message}`);
+  }
+}
+
+export async function updateInvoiceStatus(invoiceId, status, sriStatus = null) {
+  try {
+    const updateData = { status };
+    if (sriStatus) updateData.sri_status = sriStatus;
+
+    const { data, error } = await supabase
+      .from('invoices')
+      .update(updateData)
+      .eq('id', invoiceId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (error) {
+    throw new Error(`Error updating invoice status: ${error.message}`);
+  }
+}
+
+export async function getNextInvoiceSequential(companyId) {
+  try {
+    // Get the last sequential number for this company
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('sequential')
+      .eq('company_id', companyId)
+      .order('sequential', { ascending: false })
+      .limit(1);
+
+    if (error && error.code !== 'PGRST116') throw new Error(error.message);
+
+    const lastSequential = data && data.length > 0 ? data[0].sequential : 0;
+    return lastSequential + 1;
+  } catch (error) {
+    throw new Error(`Error getting next sequential: ${error.message}`);
+  }
+}
+
+export async function saveBillingConfig(companyId, config) {
+  try {
+    // This would be stored in a billing_config table
+    // For now, we'll use localStorage as a temporary solution
+    localStorage.setItem(
+      `billing_config_${companyId}`,
+      JSON.stringify(config)
+    );
+    return config;
+  } catch (error) {
+    throw new Error(`Error saving billing config: ${error.message}`);
+  }
+}
+
+export async function getBillingConfig(companyId) {
+  try {
+    const config = localStorage.getItem(`billing_config_${companyId}`);
+    return config ? JSON.parse(config) : null;
+  } catch (error) {
+    throw new Error(`Error getting billing config: ${error.message}`);
+  }
+}
