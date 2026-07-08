@@ -147,9 +147,6 @@ export default function POSInterface() {
 
   const completeSale = async () => {
     try {
-      // Load billing config to get invoice settings
-      const billingConfig = await getBillingConfig(currentUser.company_id);
-
       // Get next sequential number
       const sequential = await getNextInvoiceSequential(currentUser.company_id);
 
@@ -161,7 +158,7 @@ export default function POSInterface() {
       const totalAmount = total;
 
       // Generate invoice number
-      const invoiceNumber = generateInvoiceNumber(billingConfig, sequential);
+      const invoiceNumber = `INV-${String(sequential).padStart(8, '0')}`;
 
       // Determine customer data based on invoice type
       const customerName = invoiceType === 'final'
@@ -173,23 +170,14 @@ export default function POSInterface() {
         company_id: currentUser.company_id,
         user_id: currentUser.id,
         invoice_number: invoiceNumber,
-        sequential: sequential,
-        establishment: billingConfig.establishment,
-        point_of_sale: billingConfig.pointOfSale,
+        invoice_type: invoiceType === 'final' ? 'consumidor_final' : 'factura',
         subtotal_amount: subtotalAmount,
         discount_amount: discountAmount,
-        taxable_amount: taxableAmount,
         tax_amount: taxAmount,
         total_amount: totalAmount,
-        tax_rate: billingConfig.taxRate || taxRate,
         payment_method: paymentMethod,
         customer_id: null,
-        customer_name: customerName,
-        customer_email: invoiceType === 'factura' ? invoiceData.email : '',
-        customer_phone: invoiceType === 'factura' ? invoiceData.phone : '',
-        transaction_id: `TX-${Date.now()}`,
-        reference: invoiceType === 'factura' ? invoiceData.ruc : '',
-        notes: ''
+        notes: invoiceType === 'factura' ? `RUC: ${invoiceData.ruc}` : ''
       });
 
       // Create invoice details for each cart item
@@ -460,61 +448,44 @@ export default function POSInterface() {
                 </div>
               </div>
 
-              {/* Customer Info */}
-              <div className="border-t border-zinc-800 pt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="font-bold text-zinc-100">Datos del Cliente (Opcional)</h4>
-                  <button
-                    onClick={() => setShowCustomerForm(!showCustomerForm)}
-                    className="text-xs font-bold text-blue-400 hover:text-blue-300"
-                  >
-                    {showCustomerForm ? 'Ocultar' : 'Agregar'}
-                  </button>
+              {/* Customer Info - Show based on invoice type */}
+              {invoiceType === 'final' ? (
+                <div className="border-t border-zinc-800 pt-6">
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+                    <h4 className="font-bold text-blue-300 mb-2">Tipo de Venta</h4>
+                    <p className="text-sm text-blue-200">👤 Consumidor Final</p>
+                  </div>
                 </div>
-
-                {showCustomerForm && (
-                  <div className="space-y-3">
+              ) : invoiceType === 'factura' ? (
+                <div className="border-t border-zinc-800 pt-6">
+                  <h4 className="font-bold text-zinc-100 mb-4">Datos de la Factura</h4>
+                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 space-y-3">
                     <div>
-                      <label className="block text-xs font-bold text-zinc-400 mb-1">Nombre</label>
-                      <input
-                        type="text"
-                        value={customerData.name}
-                        onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
-                        placeholder="Nombre del cliente"
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
-                      />
+                      <div className="text-xs font-bold text-zinc-400">RUC</div>
+                      <div className="text-sm text-emerald-300 font-mono">{invoiceData.ruc}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-zinc-400">Razón Social</div>
+                      <div className="text-sm text-emerald-300">{invoiceData.razonSocial}</div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-bold text-zinc-400 mb-1">
-                          <Mail size={14} className="inline mr-1" />
-                          Email
-                        </label>
-                        <input
-                          type="email"
-                          value={customerData.email}
-                          onChange={(e) => setCustomerData({...customerData, email: e.target.value})}
-                          placeholder="email@example.com"
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
-                        />
+                        <div className="text-xs font-bold text-zinc-400">Email</div>
+                        <div className="text-xs text-emerald-200">{invoiceData.email || '-'}</div>
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-zinc-400 mb-1">
-                          <Phone size={14} className="inline mr-1" />
-                          Teléfono
-                        </label>
-                        <input
-                          type="tel"
-                          value={customerData.phone}
-                          onChange={(e) => setCustomerData({...customerData, phone: e.target.value})}
-                          placeholder="+1234567890"
-                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
-                        />
+                        <div className="text-xs font-bold text-zinc-400">Teléfono</div>
+                        <div className="text-xs text-emerald-200">{invoiceData.phone || '-'}</div>
                       </div>
                     </div>
+                    <div>
+                      <div className="text-xs font-bold text-zinc-400">Dirección</div>
+                      <div className="text-xs text-emerald-200">{invoiceData.address || '-'}</div>
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : null}
+
 
               {/* Transaction ID Display */}
               {transactionID && (

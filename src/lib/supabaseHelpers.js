@@ -390,26 +390,16 @@ export async function createInvoice(invoiceData) {
       .insert([{
         company_id: invoiceData.company_id,
         user_id: invoiceData.user_id,
-        invoice_number: invoiceData.invoice_number,
-        sequential: invoiceData.sequential,
-        establishment: invoiceData.establishment,
-        point_of_sale: invoiceData.point_of_sale,
-        issue_date: new Date().toISOString(),
-        subtotal_amount: parseFloat(invoiceData.subtotal_amount),
-        discount_amount: parseFloat(invoiceData.discount_amount) || 0,
-        taxable_amount: parseFloat(invoiceData.taxable_amount),
-        tax_amount: parseFloat(invoiceData.tax_amount),
-        total_amount: parseFloat(invoiceData.total_amount),
-        tax_rate: parseFloat(invoiceData.tax_rate) || 12,
-        payment_method: invoiceData.payment_method,
         customer_id: invoiceData.customer_id || null,
-        customer_name: invoiceData.customer_name || '',
-        customer_email: invoiceData.customer_email || '',
-        customer_phone: invoiceData.customer_phone || '',
+        invoice_type: invoiceData.invoice_type || 'factura',
+        invoice_number: invoiceData.invoice_number,
+        issue_date: new Date().toISOString(),
+        subtotal: parseFloat(invoiceData.subtotal_amount) || 0,
+        discount_amount: parseFloat(invoiceData.discount_amount) || 0,
+        tax_amount: parseFloat(invoiceData.tax_amount) || 0,
+        total_amount: parseFloat(invoiceData.total_amount) || 0,
+        payment_method: invoiceData.payment_method || 'cash',
         status: 'pending',
-        sri_status: 'pending',
-        transaction_id: invoiceData.transaction_id,
-        reference: invoiceData.reference || '',
         notes: invoiceData.notes || ''
       }])
       .select()
@@ -501,18 +491,16 @@ export async function updateInvoiceStatus(invoiceId, status, sriStatus = null) {
 
 export async function getNextInvoiceSequential(companyId) {
   try {
-    // Get the last sequential number for this company
+    // Count invoices for this company to generate sequential number
     const { data, error } = await supabase
       .from('invoices')
-      .select('sequential')
-      .eq('company_id', companyId)
-      .order('sequential', { ascending: false })
-      .limit(1);
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', companyId);
 
     if (error && error.code !== 'PGRST116') throw new Error(error.message);
 
-    const lastSequential = data && data.length > 0 ? data[0].sequential : 0;
-    return lastSequential + 1;
+    const count = data ? data.length : 0;
+    return count + 1;
   } catch (error) {
     throw new Error(`Error getting next sequential: ${error.message}`);
   }
