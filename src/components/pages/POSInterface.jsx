@@ -18,6 +18,15 @@ export default function POSInterface() {
   const [transactionID, setTransactionID] = useState(null);
   const [discountPercent, setDiscountPercent] = useState(0);
   const [taxRate, setTaxRate] = useState(12);
+  const [showInvoiceType, setShowInvoiceType] = useState(false);
+  const [invoiceType, setInvoiceType] = useState(null); // 'final' o 'factura'
+  const [invoiceData, setInvoiceData] = useState({
+    ruc: '',
+    razonSocial: '',
+    email: '',
+    phone: '',
+    address: ''
+  });
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -107,6 +116,32 @@ export default function POSInterface() {
       showToast('warning', 'Carrito vacío');
       return;
     }
+    setShowInvoiceType(true);
+  };
+
+  const handleSelectInvoiceType = (type) => {
+    setInvoiceType(type);
+    if (type === 'final') {
+      setShowInvoiceType(false);
+      setShowPayment(true);
+    } else {
+      // Mostrar formulario para ingresar datos de factura
+      setInvoiceData({
+        ruc: '',
+        razonSocial: '',
+        email: '',
+        phone: '',
+        address: ''
+      });
+    }
+  };
+
+  const handleConfirmInvoiceData = () => {
+    if (!invoiceData.ruc || !invoiceData.razonSocial) {
+      showToast('error', 'RUC y Razón Social son requeridos');
+      return;
+    }
+    setShowInvoiceType(false);
     setShowPayment(true);
   };
 
@@ -128,6 +163,11 @@ export default function POSInterface() {
       // Generate invoice number
       const invoiceNumber = generateInvoiceNumber(billingConfig, sequential);
 
+      // Determine customer data based on invoice type
+      const customerName = invoiceType === 'final'
+        ? 'Consumidor Final'
+        : invoiceData.razonSocial || 'Consumidor Final';
+
       // Create invoice record
       const invoice = await createInvoice({
         company_id: currentUser.company_id,
@@ -144,11 +184,11 @@ export default function POSInterface() {
         tax_rate: billingConfig.taxRate || taxRate,
         payment_method: paymentMethod,
         customer_id: null,
-        customer_name: customerData.name || 'Consumidor Final',
-        customer_email: customerData.email || '',
-        customer_phone: customerData.phone || '',
+        customer_name: customerName,
+        customer_email: invoiceType === 'factura' ? invoiceData.email : '',
+        customer_phone: invoiceType === 'factura' ? invoiceData.phone : '',
         transaction_id: `TX-${Date.now()}`,
-        reference: '',
+        reference: invoiceType === 'factura' ? invoiceData.ruc : '',
         notes: ''
       });
 
@@ -175,11 +215,14 @@ export default function POSInterface() {
       }
 
       setTransactionID(invoice.id);
-      showToast('success', `Factura creada: ${invoiceNumber}`);
+      const typeLabel = invoiceType === 'final' ? 'consumidor final' : 'factura';
+      showToast('success', `${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} creada: ${invoiceNumber}`);
 
       setTimeout(() => {
         setCart([]);
         setCustomerData({ name: '', email: '', phone: '' });
+        setInvoiceData({ ruc: '', razonSocial: '', email: '', phone: '', address: '' });
+        setInvoiceType(null);
         setPaymentMethod('cash');
         setDiscountPercent(0);
         setShowPayment(false);
@@ -505,6 +548,118 @@ export default function POSInterface() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice Type Selection Modal */}
+      {showInvoiceType && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 w-full max-w-2xl">
+            <h3 className="text-2xl font-bold text-white mb-6">Tipo de Venta</h3>
+
+            {invoiceType === null ? (
+              <div className="space-y-4">
+                <p className="text-zinc-300 mb-6">¿Cómo deseas procesar esta venta?</p>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Consumidor Final */}
+                  <button
+                    onClick={() => handleSelectInvoiceType('final')}
+                    className="bg-blue-600/20 border-2 border-blue-500 hover:bg-blue-600/30 rounded-xl p-6 transition-all"
+                  >
+                    <div className="text-2xl mb-2">👤</div>
+                    <h4 className="font-bold text-blue-300 mb-2">Consumidor Final</h4>
+                    <p className="text-xs text-blue-200">Sin factura formal, venta simple</p>
+                  </button>
+
+                  {/* Con Factura */}
+                  <button
+                    onClick={() => handleSelectInvoiceType('factura')}
+                    className="bg-emerald-600/20 border-2 border-emerald-500 hover:bg-emerald-600/30 rounded-xl p-6 transition-all"
+                  >
+                    <div className="text-2xl mb-2">📋</div>
+                    <h4 className="font-bold text-emerald-300 mb-2">Con Factura</h4>
+                    <p className="text-xs text-emerald-200">Factura formal con RUC</p>
+                  </button>
+                </div>
+              </div>
+            ) : invoiceType === 'factura' ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">RUC *</label>
+                  <input
+                    type="text"
+                    maxLength="13"
+                    placeholder="1706111505001"
+                    value={invoiceData.ruc}
+                    onChange={(e) => setInvoiceData({...invoiceData, ruc: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Razón Social *</label>
+                  <input
+                    type="text"
+                    placeholder="Nombre de la empresa"
+                    value={invoiceData.razonSocial}
+                    onChange={(e) => setInvoiceData({...invoiceData, razonSocial: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-2">Email</label>
+                    <input
+                      type="email"
+                      placeholder="empresa@example.com"
+                      value={invoiceData.email}
+                      onChange={(e) => setInvoiceData({...invoiceData, email: e.target.value})}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono</label>
+                    <input
+                      type="tel"
+                      placeholder="+593..."
+                      value={invoiceData.phone}
+                      onChange={(e) => setInvoiceData({...invoiceData, phone: e.target.value})}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Dirección</label>
+                  <input
+                    type="text"
+                    placeholder="Calle principal 123"
+                    value={invoiceData.address}
+                    onChange={(e) => setInvoiceData({...invoiceData, address: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => setInvoiceType(null)}
+                    className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+                  >
+                    Atrás
+                  </button>
+                  <button
+                    onClick={handleConfirmInvoiceData}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors"
+                  >
+                    Continuar
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       )}
