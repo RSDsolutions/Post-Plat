@@ -3,6 +3,7 @@ import { FileText, Save, AlertCircle, CheckCircle, Loader, Upload, ShieldCheck }
 import { useStore } from '../../store/useStore.js';
 import { saveBillingConfig, getBillingConfig, getPaymentMethods, fetchCompanyById, uploadSriCertificate } from '../../lib/supabaseHelpers.js';
 import { validateRUC } from '../../lib/invoiceUtils.js';
+import { validateP12Certificate } from '../../lib/certValidation.js';
 
 export default function BillingConfiguration() {
   const { currentUser, showToast } = useStore();
@@ -167,11 +168,22 @@ export default function BillingConfiguration() {
 
     try {
       setUploadingCert(true);
+
+      // Validate the file + password actually parse as a valid, currently-valid
+      // .p12 with a private key before uploading it anywhere
+      const certInfo = await validateP12Certificate(certFile, certPassword);
+
       const result = await uploadSriCertificate(currentUser.company_id, certFile, certPassword);
-      setConfig(prev => ({ ...prev, certStoragePath: result.certStoragePath, certUploadedAt: result.certUploadedAt }));
+      setConfig(prev => ({
+        ...prev,
+        certStoragePath: result.certStoragePath,
+        certUploadedAt: result.certUploadedAt,
+        certHolderName: certInfo.commonName,
+        certExpiresAt: certInfo.notAfter
+      }));
       setCertFile(null);
       setCertPassword('');
-      showToast('success', 'Certificado cargado correctamente');
+      showToast('success', `Certificado válido de "${certInfo.commonName}" cargado correctamente`);
     } catch (error) {
       console.error('Error uploading certificate:', error);
       showToast('error', error.message || 'Error al subir el certificado');
@@ -418,9 +430,15 @@ export default function BillingConfiguration() {
           <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 flex items-center gap-3">
             <CheckCircle className="text-emerald-400" size={20} />
             <div>
-              <div className="text-sm font-bold text-emerald-300">Certificado cargado</div>
+              <div className="text-sm font-bold text-emerald-300">Certificado cargado y validado</div>
+              {config.certHolderName && (
+                <div className="text-xs text-emerald-300">Titular: {config.certHolderName}</div>
+              )}
+              {config.certExpiresAt && (
+                <div className="text-xs text-emerald-400">Vence: {new Date(config.certExpiresAt).toLocaleDateString()}</div>
+              )}
               <div className="text-xs text-emerald-400">
-                {config.certUploadedAt ? new Date(config.certUploadedAt).toLocaleString() : ''}
+                {config.certUploadedAt ? `Subido: ${new Date(config.certUploadedAt).toLocaleString()}` : ''}
               </div>
             </div>
           </div>
