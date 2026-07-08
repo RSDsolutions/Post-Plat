@@ -9,6 +9,7 @@ import InvoiceManagement from '../pages/InvoiceManagement.jsx';
 import CashierManagement from '../pages/CashierManagement.jsx';
 import CustomerManagement from '../pages/CustomerManagement.jsx';
 import StoreSettings from '../pages/StoreSettings.jsx';
+import BillingConfiguration from '../pages/BillingConfiguration.jsx';
 import Toast from '../ui/Toast.jsx';
 import ConfirmDialog from '../ui/ConfirmDialog.jsx';
 
@@ -24,6 +25,7 @@ export default function StoreManagerLayout() {
     case 'cashiers': Content = CashierManagement; break;
     case 'customers': Content = CustomerManagement; break;
     case 'settings': Content = StoreSettings; break;
+    case 'billing': Content = BillingConfiguration; break;
     default: Content = StoreManagerDashboard;
   }
 

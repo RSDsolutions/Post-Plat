@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, TrendingUp, FileText, Users, Settings, LogOut, Building2 } from 'lucide-react';
+import { LayoutDashboard, Package, TrendingUp, FileText, Users, Settings, LogOut, Building2, Receipt } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 
 export default function StoreManagerSidebar() {
@@ -12,6 +12,7 @@ export default function StoreManagerSidebar() {
     { id: 'inventory', label: 'Inventario', icon: Package },
     { id: 'customers', label: 'Clientes', icon: Users },
     { id: 'cashiers', label: 'Cajas', icon: Building2 },
+    { id: 'billing', label: 'Facturación SRI', icon: Receipt },
     { id: 'settings', label: 'Configuración', icon: Settings },
   ];
 

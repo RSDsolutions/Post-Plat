@@ -520,13 +520,30 @@ export async function getNextInvoiceSequential(companyId) {
 
 export async function saveBillingConfig(companyId, config) {
   try {
-    // This would be stored in a billing_config table
-    // For now, we'll use localStorage as a temporary solution
-    localStorage.setItem(
-      `billing_config_${companyId}`,
-      JSON.stringify(config)
-    );
-    return config;
+    const { data, error } = await supabase
+      .from('billing_configs')
+      .upsert({
+        company_id: companyId,
+        establishment: config.establishment || '001',
+        point_of_sale: config.pointOfSale || '001',
+        sri_environment: config.environment || 'production',
+        sri_username: config.sriUsername || null,
+        sri_password_encrypted: config.sriPassword || null,
+        sri_test_mode: config.sriTestMode !== false,
+        current_sequential: config.currentSequential || 1,
+        accounting_regime: config.accountingRegime || 'general',
+        tax_rate: parseFloat(config.taxRate) || 12.00,
+        receipt_footer_text: config.receiptFooterText || '',
+        auto_send_sri: config.autoSendSRI !== true,
+        store_phone: config.phone || '',
+        store_email: config.email || '',
+        store_address: config.address || ''
+      })
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
   } catch (error) {
     throw new Error(`Error saving billing config: ${error.message}`);
   }
@@ -534,9 +551,59 @@ export async function saveBillingConfig(companyId, config) {
 
 export async function getBillingConfig(companyId) {
   try {
-    const config = localStorage.getItem(`billing_config_${companyId}`);
-    return config ? JSON.parse(config) : null;
+    const { data, error } = await supabase
+      .from('billing_configs')
+      .select('*')
+      .eq('company_id', companyId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw new Error(error.message);
+
+    if (!data) {
+      // Return default config if not found
+      return {
+        establishment: '001',
+        pointOfSale: '001',
+        environment: 'production',
+        sriTestMode: true,
+        currentSequential: 1,
+        accountingRegime: 'general',
+        taxRate: 12.00
+      };
+    }
+
+    return {
+      establishment: data.establishment,
+      pointOfSale: data.point_of_sale,
+      environment: data.sri_environment,
+      sriUsername: data.sri_username,
+      sriPassword: data.sri_password_encrypted,
+      sriTestMode: data.sri_test_mode,
+      currentSequential: data.current_sequential,
+      accountingRegime: data.accounting_regime,
+      taxRate: data.tax_rate,
+      receiptFooterText: data.receipt_footer_text,
+      autoSendSRI: data.auto_send_sri,
+      phone: data.store_phone,
+      email: data.store_email,
+      address: data.store_address
+    };
   } catch (error) {
     throw new Error(`Error getting billing config: ${error.message}`);
+  }
+}
+
+export async function getPaymentMethods() {
+  try {
+    const { data, error } = await supabase
+      .from('payment_methods')
+      .select('*')
+      .eq('is_active', true)
+      .order('sri_code', { ascending: true });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  } catch (error) {
+    throw new Error(`Error fetching payment methods: ${error.message}`);
   }
 }
