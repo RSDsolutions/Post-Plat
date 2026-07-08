@@ -399,7 +399,7 @@ export async function createInvoice(invoiceData) {
         tax_amount: parseFloat(invoiceData.tax_amount) || 0,
         total_amount: parseFloat(invoiceData.total_amount) || 0,
         payment_method: invoiceData.payment_method || 'cash',
-        status: 'pending',
+        status: 'borrador',
         notes: invoiceData.notes || ''
       }])
       .select()

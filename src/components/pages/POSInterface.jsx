@@ -489,13 +489,19 @@ export default function POSInterface() {
 
               {/* Transaction ID Display */}
               {transactionID && (
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 text-center">
-                  <div className="flex items-center justify-center mb-2">
-                    <span className="text-2xl">✅</span>
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 text-center">
+                  <div className="flex items-center justify-center mb-3">
+                    <span className="text-4xl">✅</span>
                   </div>
-                  <div className="text-sm text-emerald-100 mb-2">¡Bienvenido {customerData.name || 'Cliente'}!</div>
-                  <div className="text-xs text-emerald-200 mb-3">Venta completada exitosamente</div>
-                  <div className="text-lg font-bold text-emerald-400 font-mono break-all">{transactionID}</div>
+                  <div className="text-base sm:text-lg text-emerald-100 mb-2 font-bold">¡Venta completada exitosamente!</div>
+                  <div className="text-xs sm:text-sm text-emerald-200 mb-4">
+                    {invoiceType === 'final' ? 'Consumidor Final' : `${invoiceData.razonSocial}`}
+                  </div>
+                  <div className="bg-emerald-950/50 rounded p-3 mb-3">
+                    <div className="text-xs text-emerald-300 mb-1">Número de Venta</div>
+                    <div className="text-base sm:text-lg font-bold text-emerald-300 font-mono break-all">{transactionID}</div>
+                  </div>
+                  <div className="text-xs text-emerald-300">Gracias por tu compra</div>
                 </div>
               )}
 
