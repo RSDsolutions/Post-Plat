@@ -1,8 +1,4 @@
 import forge from 'node-forge';
-import * as xadesjs from 'xadesjs';
-import { Crypto } from '@peculiar/webcrypto';
-import * as xmldom from '@xmldom/xmldom';
-import xpath from 'xpath';
 
 // The original hand-rolled signer (ported from open-factura) built the XAdES-BES
 // signature and its digests by hand with plain string concatenation and ad-hoc
@@ -10,20 +6,34 @@ import xpath from 'xpath';
 // rejected it with "FIRMA INVALIDA (firma y/o certificados alterados)" - the digest
 // values didn't match what a spec-compliant canonicalizer produces. xadesjs/xmldsigjs
 // implements real C14N and WebCrypto-based signing, so we use that instead.
+//
+// xadesjs/@peculiar/webcrypto/@xmldom/xmldom are loaded lazily (dynamic import) inside
+// signXml() rather than as static top-level imports. A static import that fails to
+// load/bundle on Vercel crashes the whole function before any try/catch can run
+// (this bit us once already with open-factura's node-fetch); dynamic import lets a
+// load failure surface as a normal catchable error with a readable message instead.
 
-const cryptoEngine = new Crypto();
-let engineReady = false;
+let cryptoEngine = null;
+let xadesjsMod = null;
 
-function ensureEngine() {
-  if (engineReady) return;
+async function ensureEngine() {
+  if (xadesjsMod) return;
+  const [xadesjs, { Crypto }, xmldom, xpathMod] = await Promise.all([
+    import('xadesjs'),
+    import('@peculiar/webcrypto'),
+    import('@xmldom/xmldom'),
+    import('xpath')
+  ]);
+
+  cryptoEngine = new Crypto();
   xadesjs.Application.setEngine('NodeJS', cryptoEngine);
   xadesjs.setNodeDependencies({
     XMLSerializer: xmldom.XMLSerializer,
     DOMParser: xmldom.DOMParser,
     DOMImplementation: xmldom.DOMImplementation,
-    xpath
+    xpath: xpathMod.default || xpathMod
   });
-  engineReady = true;
+  xadesjsMod = xadesjs;
 }
 
 function extractCertAndKey(p12Data, p12Password) {
@@ -94,7 +104,8 @@ function certificateToBase64(certificate) {
 }
 
 export async function signXml(p12Data, p12Password, xmlData) {
-  ensureEngine();
+  await ensureEngine();
+  const xadesjs = xadesjsMod;
 
   const { certificate, key } = extractCertAndKey(p12Data, p12Password);
   const privateKey = await importPrivateKey(key);
