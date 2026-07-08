@@ -295,9 +295,9 @@ export default function POSInterface() {
 
       {/* Payment Modal */}
       {showPayment && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-3xl font-bold text-white mb-6">Confirmar Pago</h3>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 md:p-8 w-full max-w-xl md:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <h3 className="text-2xl md:text-3xl font-bold text-white mb-6">Confirmar Pago</h3>
 
             <div className="space-y-6">
               {/* Total Display */}
@@ -388,9 +388,13 @@ export default function POSInterface() {
 
               {/* Transaction ID Display */}
               {transactionID && (
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
-                  <div className="text-sm text-emerald-100 mb-1">ID de Transacción</div>
-                  <div className="text-xl font-bold text-emerald-400 font-mono">{transactionID}</div>
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 text-center">
+                  <div className="flex items-center justify-center mb-2">
+                    <span className="text-2xl">✅</span>
+                  </div>
+                  <div className="text-sm text-emerald-100 mb-2">¡Bienvenido {customerData.name || 'Cliente'}!</div>
+                  <div className="text-xs text-emerald-200 mb-3">Venta completada exitosamente</div>
+                  <div className="text-lg font-bold text-emerald-400 font-mono break-all">{transactionID}</div>
                 </div>
               )}
 
