@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus } from 'lucide-react';
+import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus, Trash2, Loader } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData } from '../../lib/supabaseHelpers.js';
+import { fetchData, createProduct, updateProduct, deleteProduct, fetchProductsByCompany } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import { formatUSD } from '../../lib/format.js';
 
@@ -29,9 +29,7 @@ export default function InventoryManagement() {
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const data = await fetchData('products', {
-          filter: { column: 'company_id', value: currentUser.company_id }
-        });
+        const data = await fetchProductsByCompany(currentUser.company_id);
         setProducts(data || []);
 
         // Load tax rate configured by store manager
@@ -77,7 +75,7 @@ export default function InventoryManagement() {
     return price * (1 + taxRate / 100);
   };
 
-  const handleAddProduct = () => {
+  const handleAddProduct = async () => {
     if (!newProduct.code || !newProduct.name || !newProduct.category) {
       showToast('error', 'Completa los campos requeridos: Código, Nombre y Categoría');
       return;
@@ -88,65 +86,89 @@ export default function InventoryManagement() {
       return;
     }
 
-    const product = {
-      id: `temp_${Date.now()}`,
-      ...newProduct,
-      quantity: parseInt(newProduct.quantity) || 0,
-      minStock: parseInt(newProduct.minStock) || 10,
-      salePrice: parseFloat(newProduct.salePrice),
-      discount: parseFloat(newProduct.discount) || 0,
-      sale_price: parseFloat(newProduct.salePrice),
-      min_stock: parseInt(newProduct.minStock) || 10,
-      price_includes_vat: newProduct.priceIncludesVat
-    };
+    try {
+      await createProduct({
+        code: newProduct.code,
+        name: newProduct.name,
+        category: newProduct.category,
+        company_id: currentUser.company_id,
+        quantity: parseInt(newProduct.quantity) || 0,
+        minStock: parseInt(newProduct.minStock) || 10,
+        salePrice: parseFloat(newProduct.salePrice),
+        priceIncludesVat: newProduct.priceIncludesVat,
+        discount: parseFloat(newProduct.discount) || 0,
+        promotion: newProduct.promotion
+      });
 
-    setProducts([...products, product]);
-    showToast('success', `Producto "${newProduct.name}" agregado al inventario`);
+      showToast('success', `Producto "${newProduct.name}" agregado al inventario`);
 
-    // Reset form
-    setNewProduct({
-      code: '',
-      name: '',
-      category: '',
-      quantity: 0,
-      minStock: 10,
-      salePrice: 0,
-      priceIncludesVat: true,
-      discount: 0,
-      promotion: ''
-    });
-    setShowAddModal(false);
+      // Reload products from database
+      const updatedProducts = await fetchProductsByCompany(currentUser.company_id);
+      setProducts(updatedProducts || []);
+
+      // Reset form
+      setNewProduct({
+        code: '',
+        name: '',
+        category: '',
+        quantity: 0,
+        minStock: 10,
+        salePrice: 0,
+        priceIncludesVat: true,
+        discount: 0,
+        promotion: ''
+      });
+      setShowAddModal(false);
+    } catch (error) {
+      console.error('Error creating product:', error);
+      showToast('error', 'Error al crear producto');
+    }
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingProduct) return;
 
-    const basePrice = parseFloat(editForm.salePrice);
-    const priceToStore = editForm.priceIncludesVat
-      ? basePrice
-      : basePrice;
+    try {
+      await updateProduct(editingProduct.id, {
+        salePrice: parseFloat(editForm.salePrice),
+        priceIncludesVat: editForm.priceIncludesVat,
+        discount: parseFloat(editForm.discount),
+        promotion: editForm.promotion,
+        quantity: parseInt(editForm.quantity),
+        minStock: parseInt(editForm.minStock)
+      });
 
-    const updatedProducts = products.map(p =>
-      p.id === editingProduct.id
-        ? {
-            ...p,
-            sale_price: priceToStore,
-            price_includes_vat: editForm.priceIncludesVat,
-            discount: parseFloat(editForm.discount),
-            promotion: editForm.promotion,
-            quantity: parseInt(editForm.quantity),
-            min_stock: parseInt(editForm.minStock)
-          }
-        : p
-    );
+      // Reload products from database
+      const updatedProducts = await fetchProductsByCompany(currentUser.company_id);
+      setProducts(updatedProducts || []);
 
-    setProducts(updatedProducts);
-    showToast('success', `Producto ${editingProduct.name} actualizado`);
-    setEditingProduct(null);
+      showToast('success', `Producto ${editingProduct.name} actualizado`);
+      setEditingProduct(null);
+    } catch (error) {
+      console.error('Error updating product:', error);
+      showToast('error', 'Error al actualizar producto');
+    }
   };
 
   const getDiscountedPrice = (price, discount) => {
     return price - (price * discount / 100);
+  };
+
+  const handleDeleteProduct = async (productId, productName) => {
+    if (window.confirm(`¿Eliminar producto "${productName}"?`)) {
+      try {
+        await deleteProduct(productId);
+
+        // Reload products from database
+        const updatedProducts = await fetchProductsByCompany(currentUser.company_id);
+        setProducts(updatedProducts || []);
+
+        showToast('success', `Producto ${productName} eliminado`);
+      } catch (error) {
+        console.error('Error deleting product:', error);
+        showToast('error', 'Error al eliminar producto');
+      }
+    }
   };
 
   return (
@@ -211,7 +233,7 @@ export default function InventoryManagement() {
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
         {!loading ? (
           <Table
-            columns={['Código', 'Producto', 'Categoría', 'Stock', 'Precio', 'Descuento', 'Promoción', 'Acciones']}
+            columns={['Código', 'Producto', 'Categoría', 'Stock', 'Precio', 'Descuento', 'Promoción', 'Editar', 'Eliminar']}
             data={filtered}
             renderRow={(product) => {
               const isLowStock = product.quantity <= product.min_stock;
@@ -259,6 +281,15 @@ export default function InventoryManagement() {
                     >
                       <Edit2 size={14} />
                       Editar
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => handleDeleteProduct(product.id, product.name)}
+                      className="inline-flex items-center gap-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold transition-colors"
+                    >
+                      <Trash2 size={14} />
+                      Eliminar
                     </button>
                   </td>
                 </tr>

@@ -295,3 +295,89 @@ export async function deleteData(table, id) {
   if (error) throw new Error(`Error deleting from ${table}: ${error.message}`);
   return true;
 }
+
+// Products - Complete CRUD
+export async function createProduct(productData) {
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .insert([{
+        code: productData.code,
+        name: productData.name,
+        category: productData.category,
+        company_id: productData.company_id,
+        quantity: parseInt(productData.quantity) || 0,
+        min_stock: parseInt(productData.minStock) || 10,
+        sale_price: parseFloat(productData.salePrice),
+        price_includes_vat: productData.priceIncludesVat !== false,
+        discount: parseFloat(productData.discount) || 0,
+        promotion: productData.promotion || '',
+        created_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (error) {
+    throw new Error(`Error creating product: ${error.message}`);
+  }
+}
+
+export async function updateProduct(productId, updates) {
+  try {
+    const updateData = {
+      ...updates,
+      quantity: updates.quantity ? parseInt(updates.quantity) : undefined,
+      min_stock: updates.minStock ? parseInt(updates.minStock) : undefined,
+      sale_price: updates.salePrice ? parseFloat(updates.salePrice) : undefined,
+      discount: updates.discount !== undefined ? parseFloat(updates.discount) : undefined,
+      promotion: updates.promotion !== undefined ? updates.promotion : undefined,
+      price_includes_vat: updates.priceIncludesVat !== undefined ? updates.priceIncludesVat : undefined
+    };
+
+    // Remove undefined values
+    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+
+    const { data, error } = await supabase
+      .from('products')
+      .update(updateData)
+      .eq('id', productId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (error) {
+    throw new Error(`Error updating product: ${error.message}`);
+  }
+}
+
+export async function deleteProduct(productId) {
+  try {
+    const { error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', productId);
+
+    if (error) throw new Error(error.message);
+    return true;
+  } catch (error) {
+    throw new Error(`Error deleting product: ${error.message}`);
+  }
+}
+
+export async function fetchProductsByCompany(companyId) {
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(error.message);
+    return data || [];
+  } catch (error) {
+    throw new Error(`Error fetching products: ${error.message}`);
+  }
+}
