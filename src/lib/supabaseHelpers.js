@@ -586,11 +586,18 @@ export async function submitInvoiceToSRI(invoiceId, companyId, userId) {
     body: JSON.stringify({ invoiceId, companyId, userId })
   });
 
-  const result = await response.json();
+  const rawText = await response.text();
+  let result;
+  try {
+    result = JSON.parse(rawText);
+  } catch {
+    throw new Error(`El servidor no respondió correctamente (status ${response.status}). Respuesta: ${rawText.slice(0, 300)}`);
+  }
 
   if (!response.ok) {
     const error = new Error(result.error || 'Error al enviar la factura al SRI');
     error.detail = result.detail;
+    error.stack_remote = result.stack;
     throw error;
   }
 

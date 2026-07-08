@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { generateInvoice, generateInvoiceXml, signXml, documentReception, documentAuthorization } from 'open-factura';
 
 const SRI_URLS = {
   test: {
@@ -46,6 +45,19 @@ export default async function handler(req, res) {
   }
 
   const supabase = createClient(supabaseUrl, serviceKey);
+
+  let generateInvoice, generateInvoiceXml, signXml, documentReception, documentAuthorization;
+  try {
+    const openFactura = await import('open-factura');
+    ({ generateInvoice, generateInvoiceXml, signXml, documentReception, documentAuthorization } = openFactura);
+  } catch (importError) {
+    console.error('Failed to load open-factura:', importError);
+    return res.status(500).json({
+      error: 'No se pudo cargar el módulo de firma electrónica en el servidor',
+      detail: importError.message,
+      stack: importError.stack
+    });
+  }
 
   try {
     // Verificar que el usuario pertenece a la empresa y tiene rol autorizado
@@ -260,6 +272,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: `El SRI no autorizó el comprobante (estado: ${authStatus})`, detail: authObj });
   } catch (error) {
     console.error('SRI submission error:', error);
-    return res.status(500).json({ error: error.message || 'Error al enviar la factura al SRI' });
+    return res.status(500).json({
+      error: error.message || 'Error al enviar la factura al SRI',
+      stack: error.stack
+    });
   }
 }
