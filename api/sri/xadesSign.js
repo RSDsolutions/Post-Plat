@@ -125,7 +125,11 @@ export async function signXml(p12Data, p12Password, xmlData) {
     {
       x509: [certBase64],
       signingCertificate: certBase64,
-      references: [{ hash: 'SHA-1', transforms: ['enveloped'] }]
+      // SRI's validator specifically checks that the "comprobante" node (the
+      // factura root element's id="comprobante") is what's referenced by the
+      // signature - an implicit empty-URI/whole-document Reference isn't
+      // enough ("El nodo [comprobante] no se encuentra firmado")
+      references: [{ uri: '#comprobante', hash: 'SHA-1', transforms: ['enveloped'] }]
     }
   );
 
