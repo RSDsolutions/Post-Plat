@@ -451,6 +451,7 @@ export default function POSInterface() {
       });
 
       const receiptItems = [];
+      let totalProductSavings = 0;
 
       for (const item of cart) {
         // Use the tax-exclusive base price (same as the on-screen totals above),
@@ -477,7 +478,23 @@ export default function POSInterface() {
           total: itemTotal
         });
 
-        receiptItems.push({ name: item.name, quantity: item.quantity, lineTotal: itemTotal });
+        // Product's own promotional discount (set in Inventario) - what the
+        // customer actually saved on this line vs. the regular sticker price,
+        // separate from any additional discount the cashier applies at checkout.
+        const productDiscountPercent = item.discount || 0;
+        const itemSavings = productDiscountPercent > 0
+          ? (item.sale_price - getDiscountedPrice(item)) * item.quantity
+          : 0;
+        totalProductSavings += itemSavings;
+
+        receiptItems.push({
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.sale_price,
+          discountPercent: productDiscountPercent,
+          savings: itemSavings,
+          lineTotal: itemTotal
+        });
       }
 
       setTransactionID(invoice.id);
@@ -488,6 +505,8 @@ export default function POSInterface() {
         items: receiptItems,
         subtotal,
         discount,
+        productSavings: totalProductSavings,
+        totalSavings: totalProductSavings + discount,
         tax,
         taxRate: billingConfig.taxRate || taxRate,
         total,
@@ -879,6 +898,12 @@ export default function POSInterface() {
                 <span className="text-zinc-300">Total</span>
                 <span className="text-emerald-400">{formatUSD(lastCompletedSale.total)}</span>
               </div>
+              {lastCompletedSale.totalSavings > 0 && (
+                <div className="flex justify-between text-xs font-bold text-pink-400 bg-pink-500/10 -mx-4 -mb-2 px-4 py-2 rounded-b-lg">
+                  <span>Ahorro del cliente</span>
+                  <span>{formatUSD(lastCompletedSale.totalSavings)}</span>
+                </div>
+              )}
             </div>
 
             <button
@@ -1015,6 +1040,11 @@ export default function POSInterface() {
                     <div className="text-xs text-emerald-400 mb-1">Número de Factura</div>
                     <div className="text-base font-bold text-emerald-300 font-mono break-all">{lastCompletedSale?.invoiceNumber}</div>
                   </div>
+                  {lastCompletedSale?.totalSavings > 0 && (
+                    <div className="bg-pink-500/10 border border-pink-500/30 rounded p-2 mt-3">
+                      <span className="text-sm font-bold text-pink-400">¡Ahorraste {formatUSD(lastCompletedSale.totalSavings)}!</span>
+                    </div>
+                  )}
                   <div className="text-xs text-emerald-400 mt-3">Pendiente de aprobación por el gerente</div>
                 </div>
               )}

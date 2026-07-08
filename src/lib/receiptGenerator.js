@@ -62,6 +62,14 @@ export function generateSaleReceipt({ sale, company }) {
     doc.text(`${item.quantity}x ${item.name}`, margin, y, { maxWidth: contentWidth - 14 });
     doc.text(formatUSD(item.lineTotal), width - margin, y, { align: 'right' });
     y += 4.5;
+    // Show the promo discount on its own line so the customer can see the
+    // saving on this specific product, not just a lump sum at the bottom.
+    if (item.discountPercent > 0) {
+      doc.setFontSize(7);
+      doc.text(`  Precio regular ${formatUSD(item.unitPrice)} c/u (-${item.discountPercent}%)`, margin, y, { maxWidth: contentWidth });
+      y += 4;
+      doc.setFontSize(8);
+    }
   });
 
   y += 1;
@@ -70,7 +78,7 @@ export function generateSaleReceipt({ sale, company }) {
 
   const totalsRows = [
     ['Subtotal:', formatUSD(sale.subtotal)],
-    ...(sale.discount > 0 ? [['Descuento:', '-' + formatUSD(sale.discount)]] : []),
+    ...(sale.discount > 0 ? [['Descuento adicional:', '-' + formatUSD(sale.discount)]] : []),
     [`IVA (${sale.taxRate}%):`, formatUSD(sale.tax)]
   ];
   doc.setFontSize(8);
@@ -85,6 +93,18 @@ export function generateSaleReceipt({ sale, company }) {
   doc.text('TOTAL:', margin, y);
   doc.text(formatUSD(sale.total), width - margin, y, { align: 'right' });
   y += 6;
+
+  // Total savings banner - product promos + any extra cashier discount combined,
+  // so the customer sees at a glance how much they saved on this purchase.
+  if (sale.totalSavings > 0) {
+    doc.setFillColor(230, 250, 240);
+    doc.rect(margin, y - 4, contentWidth, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text(`¡Ahorraste ${formatUSD(sale.totalSavings)}!`, width / 2, y + 1, { align: 'center' });
+    y += 8;
+    doc.setFont('helvetica', 'normal');
+  }
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);

@@ -297,15 +297,26 @@ export default function InvoiceManagement() {
                   <div className="text-center text-zinc-500 py-4 text-sm">Cargando...</div>
                 ) : (
                   <div className="space-y-2">
-                    {invoiceDetails.map(item => (
-                      <div key={item.id} className="flex justify-between items-center bg-zinc-950 rounded-lg p-3 text-sm">
-                        <div>
-                          <div className="text-zinc-100">{item.product_name}</div>
-                          <div className="text-xs text-zinc-500">{item.quantity} x {formatUSD(item.unit_price)}</div>
+                    {invoiceDetails.map(item => {
+                      // invoice_details has no discount_amount column - derive it
+                      // from what's actually stored (gross - net subtotal)
+                      const grossAmount = parseFloat(item.unit_price) * parseFloat(item.quantity);
+                      const discountAmount = grossAmount - parseFloat(item.subtotal);
+                      return (
+                        <div key={item.id} className="flex justify-between items-center bg-zinc-950 rounded-lg p-3 text-sm">
+                          <div>
+                            <div className="text-zinc-100">{item.product_name}</div>
+                            <div className="text-xs text-zinc-500">{item.quantity} x {formatUSD(item.unit_price)}</div>
+                            {item.discount_percent > 0 && (
+                              <div className="text-xs text-pink-400 font-bold">
+                                -{item.discount_percent}% dto. (-{formatUSD(discountAmount)})
+                              </div>
+                            )}
+                          </div>
+                          <div className="font-bold text-emerald-400">{formatUSD(item.total)}</div>
                         </div>
-                        <div className="font-bold text-emerald-400">{formatUSD(item.total)}</div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
