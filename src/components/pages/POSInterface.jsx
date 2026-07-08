@@ -186,6 +186,14 @@ export default function POSInterface() {
   const tax = taxableAmount * (taxRate / 100);
   const total = taxableAmount + tax;
 
+  // Live product-promo savings while shopping (before checkout), so the
+  // cashier/customer sees the discount right next to the subtotal instead of
+  // only after the sale is completed.
+  const cartProductSavings = cart.reduce((sum, item) => {
+    if (!item.discount) return sum;
+    return sum + (item.sale_price - getDiscountedPrice(item)) * item.quantity;
+  }, 0);
+
   const cashReceivedNum = parseFloat(cashReceived) || 0;
   const change = Math.max(0, cashReceivedNum - total);
   const cashInsufficient = paymentMethod === 'cash' && cashReceivedNum < total;
@@ -433,37 +441,22 @@ export default function POSInterface() {
         }
       }
 
-      const invoice = await createInvoice({
-        company_id: currentUser.company_id,
-        user_id: currentUser.id,
-        invoice_number: invoiceNumber,
-        invoice_type: 'factura',
-        access_key: accessKey,
-        subtotal_amount: subtotal,
-        discount_amount: discount,
-        tax_amount: tax,
-        total_amount: total,
-        payment_method: paymentMethod,
-        customer_id: customerId,
-        notes: invoiceType === 'factura'
-          ? `Cliente: ${customerName} | ${invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}: ${invoiceData.identification}`
-          : 'Consumidor Final'
-      });
-
-      const receiptItems = [];
+      // Compute every line FIRST (before creating the invoice header) so the
+      // header's subtotal_amount/discount_amount can reflect the TRUE gross
+      // amount and TRUE combined discount (product promo + cashier discount),
+      // not the silently pre-discounted totals the on-screen `subtotal`/
+      // `discount` variables carry. unit_price is the ORIGINAL tax-exclusive
+      // sticker price (no discount applied), and discount_percent is the
+      // combined discount as one equivalent percentage off that original
+      // price - this nets out to the exact same subtotal/tax/total charged,
+      // just decomposed in a way that's actually visible in the invoice, the
+      // PDF, and the SRI XML instead of hidden inside a lower unit price.
+      const lineItems = [];
+      let trueGrossSubtotal = 0;
+      let trueTotalDiscount = 0;
       let totalProductSavings = 0;
 
       for (const item of cart) {
-        // The invoice line (and therefore the SRI XML) must show the TRUE
-        // regular price and the TRUE discount, not a silently pre-discounted
-        // unit_price with discount_percent=0 - that made a product on promo
-        // look like it simply cost less, with no visible discount anywhere in
-        // the invoice or the SRI record. So unit_price here is the ORIGINAL
-        // tax-exclusive sticker price (no discount applied), and
-        // discount_percent is the combined product-promo + cashier discount
-        // expressed as one equivalent percentage off that original price -
-        // this nets out to exactly the same subtotal/tax/total as before,
-        // just decomposed in a way that's actually visible.
         const regularUnitPrice = item.price_includes_vat
           ? item.sale_price / (1 + taxRate / 100)
           : item.sale_price;
@@ -477,6 +470,38 @@ export default function POSInterface() {
         const itemTax = itemSubtotal * (billingConfig.taxRate / 100);
         const itemTotal = itemSubtotal + itemTax;
 
+        trueGrossSubtotal += grossLineAmount;
+        trueTotalDiscount += itemDiscount;
+        if (productDiscountPercent > 0) {
+          totalProductSavings += (item.sale_price - getDiscountedPrice(item)) * item.quantity;
+        }
+
+        lineItems.push({
+          item, regularUnitPrice, combinedDiscountPercent, itemDiscount,
+          itemSubtotal, itemTax, itemTotal
+        });
+      }
+
+      const invoice = await createInvoice({
+        company_id: currentUser.company_id,
+        user_id: currentUser.id,
+        invoice_number: invoiceNumber,
+        invoice_type: 'factura',
+        access_key: accessKey,
+        subtotal_amount: trueGrossSubtotal,
+        discount_amount: trueTotalDiscount,
+        tax_amount: tax,
+        total_amount: total,
+        payment_method: paymentMethod,
+        customer_id: customerId,
+        notes: invoiceType === 'factura'
+          ? `Cliente: ${customerName} | ${invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}: ${invoiceData.identification}`
+          : 'Consumidor Final'
+      });
+
+      const receiptItems = [];
+
+      for (const { item, regularUnitPrice, combinedDiscountPercent, itemDiscount, itemSubtotal, itemTax, itemTotal } of lineItems) {
         await createInvoiceDetail({
           invoice_id: invoice.id,
           product_id: item.id,
@@ -492,20 +517,12 @@ export default function POSInterface() {
           total: itemTotal
         });
 
-        // Product's own promotional discount (set in Inventario) - what the
-        // customer actually saved on this line vs. the regular sticker price,
-        // separate from any additional discount the cashier applies at checkout.
-        const itemSavings = productDiscountPercent > 0
-          ? (item.sale_price - getDiscountedPrice(item)) * item.quantity
-          : 0;
-        totalProductSavings += itemSavings;
-
         receiptItems.push({
           name: item.name,
           quantity: item.quantity,
           unitPrice: item.sale_price,
-          discountPercent: productDiscountPercent,
-          savings: itemSavings,
+          discountPercent: item.discount || 0,
+          savings: (item.discount || 0) > 0 ? (item.sale_price - getDiscountedPrice(item)) * item.quantity : 0,
           lineTotal: itemTotal
         });
       }
@@ -519,7 +536,11 @@ export default function POSInterface() {
         subtotal,
         discount,
         productSavings: totalProductSavings,
-        totalSavings: totalProductSavings + discount,
+        // Use the same combined discount actually stored on the invoice
+        // (compounds product-promo % and cashier % rather than adding them
+        // linearly), so the receipt's total savings always matches what's
+        // in the invoice/SRI record - not an approximation that could drift.
+        totalSavings: trueTotalDiscount,
         tax,
         taxRate: billingConfig.taxRate || taxRate,
         total,
@@ -789,9 +810,15 @@ export default function POSInterface() {
               <span>Subtotal</span>
               <span>{formatUSD(subtotal)}</span>
             </div>
+            {cartProductSavings > 0 && (
+              <div className="flex justify-between text-pink-400">
+                <span>Ahorro en promociones</span>
+                <span>-{formatUSD(cartProductSavings)}</span>
+              </div>
+            )}
             {discountPercent > 0 && (
               <div className="flex justify-between text-red-400">
-                <span>Descuento ({discountPercent}%)</span>
+                <span>Descuento adicional ({discountPercent}%)</span>
                 <span>-{formatUSD(discount)}</span>
               </div>
             )}
@@ -803,6 +830,12 @@ export default function POSInterface() {
               <span>Total</span>
               <span className="text-emerald-400">{formatUSD(total)}</span>
             </div>
+            {(cartProductSavings + discount) > 0 && (
+              <div className="flex justify-between text-xs font-bold text-pink-400 pt-1">
+                <span>¡Estás ahorrando!</span>
+                <span>{formatUSD(cartProductSavings + discount)}</span>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2">

@@ -117,10 +117,15 @@ export function generateRidePdf({ invoice, details, company, sriEnvironment }) {
       doc.addPage();
       y = 20;
     }
+    // discount_amount isn't a stored column - derive it the same way the
+    // detail view does: (unit_price * quantity) - subtotal (the net amount
+    // actually charged after discount).
+    const grossAmount = parseFloat(item.unit_price) * parseFloat(item.quantity);
+    const itemDiscount = grossAmount - parseFloat(item.subtotal);
     doc.text(String(item.quantity), margin + 2, y + 4);
     doc.text(item.product_name, margin + 18, y + 4, { maxWidth: pageWidth - margin - 18 - 60 });
     doc.text(parseFloat(item.unit_price).toFixed(2), pageWidth - margin - 55, y + 4);
-    doc.text('0.00', pageWidth - margin - 35, y + 4);
+    doc.text(itemDiscount.toFixed(2), pageWidth - margin - 35, y + 4);
     doc.text(parseFloat(item.total).toFixed(2), pageWidth - margin - 15, y + 4);
     y += 6;
     doc.setDrawColor(220);
