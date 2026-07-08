@@ -22,6 +22,7 @@ export default function InvoiceManagement() {
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [submittingId, setSubmittingId] = useState(null);
   const [sriEnvironment, setSriEnvironment] = useState(null);
+  const [lastError, setLastError] = useState(null);
 
   const loadInvoices = async () => {
     try {
@@ -62,6 +63,7 @@ export default function InvoiceManagement() {
       `¿Confirmas enviar la factura ${invoice.invoice_number} al SRI en ambiente de ${envLabel}? El comprobante se firmará con el certificado cargado y se enviará al webservice real del SRI. Puede tardar varios segundos.`,
       async () => {
         setSubmittingId(invoice.id);
+        setLastError(null);
         try {
           await submitInvoiceToSRI(invoice.id, currentUser.company_id, currentUser.id);
           showToast('success', `Factura ${invoice.invoice_number} autorizada por el SRI`);
@@ -70,6 +72,11 @@ export default function InvoiceManagement() {
         } catch (error) {
           console.error('SRI submission error:', error);
           showToast('error', error.message || 'Error al enviar la factura al SRI');
+          setLastError({
+            message: error.message,
+            detail: error.detail,
+            stack: error.stack_remote
+          });
           await loadInvoices();
         } finally {
           setSubmittingId(null);
@@ -114,6 +121,26 @@ export default function InvoiceManagement() {
           </span>
         )}
       </div>
+
+      {lastError && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-red-400">Error al enviar al SRI (detalle técnico)</h3>
+            <button onClick={() => setLastError(null)} className="text-red-400 hover:text-red-300 text-xs font-bold">Cerrar</button>
+          </div>
+          <div className="text-sm text-red-300">{lastError.message}</div>
+          {lastError.detail && (
+            <pre className="text-xs text-red-300/80 whitespace-pre-wrap break-all bg-red-950/30 rounded p-2 max-h-48 overflow-y-auto">
+              {typeof lastError.detail === 'string' ? lastError.detail : JSON.stringify(lastError.detail, null, 2)}
+            </pre>
+          )}
+          {lastError.stack && (
+            <pre className="text-[10px] text-red-300/60 whitespace-pre-wrap break-all bg-red-950/30 rounded p-2 max-h-48 overflow-y-auto">
+              {lastError.stack}
+            </pre>
+          )}
+        </div>
+      )}
 
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
         {loading ? (
