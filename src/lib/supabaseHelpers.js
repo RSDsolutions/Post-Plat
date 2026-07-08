@@ -520,30 +520,57 @@ export async function getNextInvoiceSequential(companyId) {
 
 export async function saveBillingConfig(companyId, config) {
   try {
-    const { data, error } = await supabase
+    // First, check if config exists for this company
+    const { data: existing, error: fetchError } = await supabase
       .from('billing_configs')
-      .upsert({
-        company_id: companyId,
-        establishment: config.establishment || '001',
-        point_of_sale: config.pointOfSale || '001',
-        sri_environment: config.environment || 'production',
-        sri_username: config.sriUsername || null,
-        sri_password_encrypted: config.sriPassword || null,
-        sri_test_mode: config.sriTestMode !== false,
-        current_sequential: config.currentSequential || 1,
-        accounting_regime: config.accountingRegime || 'general',
-        tax_rate: parseFloat(config.taxRate) || 12.00,
-        receipt_footer_text: config.receiptFooterText || '',
-        auto_send_sri: config.autoSendSRI !== true,
-        store_phone: config.phone || '',
-        store_email: config.email || '',
-        store_address: config.address || ''
-      })
-      .select()
+      .select('id')
+      .eq('company_id', companyId)
       .single();
 
-    if (error) throw new Error(error.message);
-    return data;
+    const configData = {
+      company_id: companyId,
+      establishment: config.establishment || '001',
+      point_of_sale: config.pointOfSale || '001',
+      sri_environment: config.environment || 'production',
+      sri_username: config.sriUsername || null,
+      sri_password_encrypted: config.sriPassword || null,
+      sri_test_mode: config.sriTestMode !== false,
+      current_sequential: config.currentSequential || 1,
+      accounting_regime: config.accountingRegime || 'general',
+      tax_rate: parseFloat(config.taxRate) || 12.00,
+      receipt_footer_text: config.receiptFooterText || '',
+      auto_send_sri: config.autoSendSRI !== true,
+      store_phone: config.phone || '',
+      store_email: config.email || '',
+      store_address: config.address || ''
+    };
+
+    let result;
+
+    if (existing) {
+      // Update existing config
+      const { data, error } = await supabase
+        .from('billing_configs')
+        .update(configData)
+        .eq('company_id', companyId)
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      result = data;
+    } else {
+      // Insert new config
+      const { data, error } = await supabase
+        .from('billing_configs')
+        .insert([configData])
+        .select()
+        .single();
+
+      if (error) throw new Error(error.message);
+      result = data;
+    }
+
+    return result;
   } catch (error) {
     throw new Error(`Error saving billing config: ${error.message}`);
   }
