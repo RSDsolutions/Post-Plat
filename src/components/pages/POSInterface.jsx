@@ -295,21 +295,21 @@ export default function POSInterface() {
 
       {/* Payment Modal */}
       {showPayment && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 md:p-8 w-full max-w-xl md:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h3 className="text-2xl md:text-3xl font-bold text-white mb-6">Confirmar Pago</h3>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-6 lg:p-8 w-[95vw] sm:w-[90vw] md:w-full max-w-3xl max-h-[95vh] overflow-y-auto">
+            <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-4 sm:mb-6">Confirmar Pago</h3>
 
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {/* Total Display */}
-              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 p-6 rounded-xl border border-emerald-500">
-                <div className="text-sm text-emerald-100 mb-1">Total a cobrar</div>
-                <div className="text-5xl font-bold text-white">{formatUSD(total)}</div>
+              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 p-4 sm:p-6 rounded-xl border border-emerald-500">
+                <div className="text-xs sm:text-sm text-emerald-100 mb-1">Total a cobrar</div>
+                <div className="text-4xl sm:text-5xl font-bold text-white">{formatUSD(total)}</div>
               </div>
 
               {/* Payment Method */}
               <div>
-                <label className="block text-sm font-bold text-zinc-300 mb-3">Método de Pago</label>
-                <div className="grid grid-cols-3 gap-2">
+                <label className="block text-xs sm:text-sm font-bold text-zinc-300 mb-2 sm:mb-3">Método de Pago</label>
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {[
                     { value: 'cash', label: 'Efectivo', icon: '💵' },
                     { value: 'card', label: 'Tarjeta', icon: '💳' },
@@ -318,13 +318,15 @@ export default function POSInterface() {
                     <button
                       key={method.value}
                       onClick={() => setPaymentMethod(method.value)}
-                      className={`py-3 rounded-lg font-bold text-sm transition-all ${
+                      className={`py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
                         paymentMethod === method.value
                           ? 'bg-emerald-600 text-white shadow-lg'
                           : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                       }`}
                     >
-                      {method.icon} {method.label}
+                      <span className="block sm:inline">{method.icon}</span>
+                      <span className="hidden sm:inline ml-1">{method.label}</span>
+                      <span className="sm:hidden text-xs">{method.label}</span>
                     </button>
                   ))}
                 </div>
@@ -399,21 +401,21 @@ export default function POSInterface() {
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-zinc-800">
+              <div className="flex gap-2 sm:gap-3 pt-4 sm:pt-6 border-t border-zinc-800 flex-col sm:flex-row">
                 <button
                   onClick={() => {
                     setShowPayment(false);
                     setShowCustomerForm(false);
                   }}
-                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-lg transition-colors"
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 sm:py-3 rounded-lg transition-colors text-sm sm:text-base"
                 >
                   Cancelar
                 </button>
                 <button
                   onClick={completeSale}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 sm:py-3 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
                 >
-                  <Send size={18} />
+                  <Send size={16} className="sm:w-[18px] sm:h-[18px]" />
                   Confirmar Pago
                 </button>
               </div>
