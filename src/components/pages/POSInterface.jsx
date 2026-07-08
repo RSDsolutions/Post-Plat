@@ -2,10 +2,10 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Search, Plus, Minus, Trash2, LogOut, ShoppingCart, Send, Store,
   Banknote, CreditCard, Building2, User, FileText, CheckCircle,
-  PauseCircle, Printer, X, Tag
+  PauseCircle, Printer, X, Tag, Loader2, UserCheck
 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential, fetchCompanyById, findOrCreateCustomer } from '../../lib/supabaseHelpers.js';
+import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential, fetchCompanyById, findOrCreateCustomer, findCustomerByIdentification } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
 import { generateAccessKey } from '../../lib/invoiceUtils.js';
 import { generateSaleReceipt } from '../../lib/receiptGenerator.js';
@@ -42,6 +42,7 @@ export default function POSInterface() {
   const [showInvoiceType, setShowInvoiceType] = useState(false);
   const [invoiceType, setInvoiceType] = useState(null); // 'final' o 'factura'
   const [invoiceData, setInvoiceData] = useState(EMPTY_INVOICE_DATA);
+  const [customerLookupStatus, setCustomerLookupStatus] = useState('idle'); // idle | checking | found | new
   const [heldSales, setHeldSales] = useState([]);
   const [showHeldSales, setShowHeldSales] = useState(false);
   const [lastCompletedSale, setLastCompletedSale] = useState(null);
@@ -270,6 +271,45 @@ export default function POSInterface() {
       setShowPayment(true);
     } else {
       setInvoiceData(EMPTY_INVOICE_DATA);
+      setCustomerLookupStatus('idle');
+    }
+  };
+
+  // Looks up an existing customer as soon as the RUC/Cédula reaches its full
+  // length: if found, auto-fills their saved data instead of making the
+  // cashier retype it on every visit; if not, leaves the fields empty so a
+  // new customer record gets created at checkout (findOrCreateCustomer).
+  const handleIdentificationChange = async (value) => {
+    const digitsOnly = value.replace(/\D/g, '');
+    const expectedLength = invoiceData.identificationType === 'ruc' ? 13 : 10;
+
+    if (digitsOnly.length < expectedLength) {
+      setInvoiceData(prev => ({ ...prev, identification: digitsOnly }));
+      setCustomerLookupStatus('idle');
+      return;
+    }
+
+    setInvoiceData(prev => ({ ...prev, identification: digitsOnly }));
+    setCustomerLookupStatus('checking');
+
+    try {
+      const existing = await findCustomerByIdentification(currentUser.company_id, digitsOnly);
+      if (existing) {
+        setInvoiceData(prev => ({
+          ...prev,
+          identification: digitsOnly,
+          razonSocial: existing.name || '',
+          email: existing.email || '',
+          phone: existing.phone || '',
+          address: existing.address || ''
+        }));
+        setCustomerLookupStatus('found');
+      } else {
+        setCustomerLookupStatus('new');
+      }
+    } catch (error) {
+      console.error('Error looking up customer:', error);
+      setCustomerLookupStatus('idle');
     }
   };
 
@@ -395,6 +435,7 @@ export default function POSInterface() {
       setTimeout(() => {
         clearCart();
         setInvoiceData(EMPTY_INVOICE_DATA);
+        setCustomerLookupStatus('idle');
         setInvoiceType(null);
         setPaymentMethod('cash');
         setCashReceived('');
@@ -967,7 +1008,7 @@ export default function POSInterface() {
                   <label className="block text-xs font-bold text-zinc-400 mb-2">Tipo de Identificación *</label>
                   <div className="flex gap-3 mb-3">
                     <button
-                      onClick={() => setInvoiceData({...invoiceData, identificationType: 'ruc', identification: ''})}
+                      onClick={() => { setInvoiceData({...invoiceData, identificationType: 'ruc', identification: ''}); setCustomerLookupStatus('idle'); }}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-colors ${
                         invoiceData.identificationType === 'ruc'
                           ? 'bg-emerald-600 text-white'
@@ -977,7 +1018,7 @@ export default function POSInterface() {
                       RUC
                     </button>
                     <button
-                      onClick={() => setInvoiceData({...invoiceData, identificationType: 'cedula', identification: ''})}
+                      onClick={() => { setInvoiceData({...invoiceData, identificationType: 'cedula', identification: ''}); setCustomerLookupStatus('idle'); }}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-colors ${
                         invoiceData.identificationType === 'cedula'
                           ? 'bg-emerald-600 text-white'
@@ -993,14 +1034,30 @@ export default function POSInterface() {
                   <label className="block text-xs font-bold text-zinc-400 mb-2">
                     {invoiceData.identificationType === 'ruc' ? 'RUC (13 dígitos)' : 'Cédula (10 dígitos)'} *
                   </label>
-                  <input
-                    type="text"
-                    maxLength={invoiceData.identificationType === 'ruc' ? '13' : '10'}
-                    placeholder={invoiceData.identificationType === 'ruc' ? '1706111505001' : '1234567890'}
-                    value={invoiceData.identification}
-                    onChange={(e) => setInvoiceData({...invoiceData, identification: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 font-mono"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      maxLength={invoiceData.identificationType === 'ruc' ? '13' : '10'}
+                      placeholder={invoiceData.identificationType === 'ruc' ? '1706111505001' : '1234567890'}
+                      value={invoiceData.identification}
+                      onChange={(e) => handleIdentificationChange(e.target.value)}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 pr-9 text-white placeholder-zinc-500 font-mono"
+                    />
+                    {customerLookupStatus === 'checking' && (
+                      <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 animate-spin" />
+                    )}
+                    {customerLookupStatus === 'found' && (
+                      <UserCheck size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400" />
+                    )}
+                  </div>
+                  {customerLookupStatus === 'found' && (
+                    <p className="text-xs text-emerald-400 mt-1.5 flex items-center gap-1">
+                      <UserCheck size={12} /> Cliente encontrado - datos cargados automáticamente
+                    </p>
+                  )}
+                  {customerLookupStatus === 'new' && (
+                    <p className="text-xs text-blue-400 mt-1.5">Cliente nuevo - completa sus datos</p>
+                  )}
                 </div>
 
                 <div>

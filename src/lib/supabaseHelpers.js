@@ -389,6 +389,22 @@ export async function fetchProductsByCompany(companyId) {
 }
 
 // Customers
+export async function findCustomerByIdentification(companyId, identificationNumber) {
+  try {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('id, identification_type, identification_number, name, email, phone, address')
+      .eq('company_id', companyId)
+      .eq('identification_number', identificationNumber)
+      .limit(1);
+
+    if (error) throw new Error(error.message);
+    return data && data.length > 0 ? data[0] : null;
+  } catch (error) {
+    throw new Error(`Error finding customer: ${error.message}`);
+  }
+}
+
 export async function findOrCreateCustomer(companyId, customerData) {
   try {
     const { data: existing, error: findError } = await supabase
