@@ -204,26 +204,20 @@ export async function getCurrentUser() {
 
 // Admin Authentication
 export async function validateAdminCredentials(email, password) {
-  const { data, error } = await supabase
-    .from('admin_users')
-    .select('id, email, password, name, role')
-    .eq('email', email)
-    .eq('is_active', true)
-    .single();
+  const { data, error } = await supabase.rpc('verify_admin_password', {
+    p_email: email,
+    p_password: password
+  });
 
-  if (error || !data) {
-    throw new Error('Email o contraseña inválidos');
-  }
-
-  if (data.password !== password) {
+  if (error || !data || data.length === 0) {
     throw new Error('Email o contraseña inválidos');
   }
 
   return {
-    id: data.id,
-    email: data.email,
-    name: data.name,
-    role: data.role
+    id: data[0].id,
+    email: data[0].email,
+    name: data[0].name,
+    role: data[0].role
   };
 }
 
