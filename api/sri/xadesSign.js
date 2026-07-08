@@ -1,4 +1,5 @@
 import forge from 'node-forge';
+import { webcrypto } from 'node:crypto';
 
 // The original hand-rolled signer (ported from open-factura) built the XAdES-BES
 // signature and its digests by hand with plain string concatenation and ad-hoc
@@ -7,26 +8,29 @@ import forge from 'node-forge';
 // values didn't match what a spec-compliant canonicalizer produces. xadesjs/xmldsigjs
 // implements real C14N and WebCrypto-based signing, so we use that instead.
 //
-// xadesjs/@peculiar/webcrypto/@xmldom/xmldom are loaded lazily (dynamic import) inside
+// Uses Node's built-in crypto.webcrypto instead of the @peculiar/webcrypto polyfill:
+// that package's dual CJS/ESM "exports" map got mis-resolved by Vercel's bundler
+// (loaded the ESM build via require(), crashing with "Cannot use import statement
+// outside a module"). Node has shipped a spec-compliant crypto.webcrypto since v19,
+// which sidesteps the whole package-resolution problem.
+//
+// xadesjs/@xmldom/xmldom/xpath are still loaded lazily (dynamic import) inside
 // signXml() rather than as static top-level imports. A static import that fails to
 // load/bundle on Vercel crashes the whole function before any try/catch can run
 // (this bit us once already with open-factura's node-fetch); dynamic import lets a
 // load failure surface as a normal catchable error with a readable message instead.
 
-let cryptoEngine = null;
 let xadesjsMod = null;
 
 async function ensureEngine() {
   if (xadesjsMod) return;
-  const [xadesjs, { Crypto }, xmldom, xpathMod] = await Promise.all([
+  const [xadesjs, xmldom, xpathMod] = await Promise.all([
     import('xadesjs'),
-    import('@peculiar/webcrypto'),
     import('@xmldom/xmldom'),
     import('xpath')
   ]);
 
-  cryptoEngine = new Crypto();
-  xadesjs.Application.setEngine('NodeJS', cryptoEngine);
+  xadesjs.Application.setEngine('NodeJS', webcrypto);
   xadesjs.setNodeDependencies({
     XMLSerializer: xmldom.XMLSerializer,
     DOMParser: xmldom.DOMParser,
@@ -89,7 +93,7 @@ async function importPrivateKey(forgeKey) {
   const pkcs8Der = forge.asn1.toDer(pkcs8Asn1).getBytes();
   const pkcs8Buffer = Buffer.from(pkcs8Der, 'binary');
 
-  return cryptoEngine.subtle.importKey(
+  return webcrypto.subtle.importKey(
     'pkcs8',
     pkcs8Buffer,
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-1' },
