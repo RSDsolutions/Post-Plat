@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Minus, Trash2, LogOut, DollarSign, ShoppingCart, Send } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential } from '../../lib/supabaseHelpers.js';
+import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential, fetchCompanyById, findOrCreateCustomer } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
+import { generateAccessKey } from '../../lib/invoiceUtils.js';
 
 export default function POSInterface() {
   const { currentUser, logout, showToast } = useStore();
@@ -13,6 +14,7 @@ export default function POSInterface() {
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [showPayment, setShowPayment] = useState(false);
   const [transactionID, setTransactionID] = useState(null);
+  const [lastInvoiceInfo, setLastInvoiceInfo] = useState(null);
   const [discountPercent, setDiscountPercent] = useState(0);
   const [taxRate, setTaxRate] = useState(12);
   const [showInvoiceType, setShowInvoiceType] = useState(false);
@@ -147,8 +149,11 @@ export default function POSInterface() {
 
   const completeSale = async () => {
     try {
-      // Load billing config for tax rate
-      const billingConfig = await getBillingConfig(currentUser.company_id);
+      // Load billing config and company (for RUC) needed to generate the SRI access key
+      const [billingConfig, company] = await Promise.all([
+        getBillingConfig(currentUser.company_id),
+        fetchCompanyById(currentUser.company_id)
+      ]);
 
       // Get next sequential number
       const sequential = await getNextInvoiceSequential(currentUser.company_id);
@@ -159,10 +164,34 @@ export default function POSInterface() {
       const taxAmount = tax;
       const totalAmount = total;
 
+      const establishment = billingConfig.establishment || '001';
+      const pointOfSale = billingConfig.pointOfSale || '001';
+
       // Generate SRI-compliant invoice number: Establecimiento-PuntoVenta-Secuencial
-      const estab = (billingConfig.establishment || '001').padStart(3, '0');
-      const pos = (billingConfig.pointOfSale || '001').padStart(3, '0');
-      const invoiceNumber = `${estab}-${pos}-${String(sequential).padStart(9, '0')}`;
+      const invoiceNumber = `${establishment.padStart(3, '0')}-${pointOfSale.padStart(3, '0')}-${String(sequential).padStart(9, '0')}`;
+
+      // Generate SRI access key (clave de acceso) - the code the store manager approves
+      const accessKey = generateAccessKey({
+        issueDate: new Date().toISOString(),
+        ruc: company.ruc,
+        environment: billingConfig.environment,
+        establishment,
+        pointOfSale,
+        sequential
+      });
+
+      // If invoicing with identification, find or create the customer record
+      let customerId = null;
+      if (invoiceType === 'factura') {
+        customerId = await findOrCreateCustomer(currentUser.company_id, {
+          identification_type: invoiceData.identificationType,
+          identification_number: invoiceData.identification,
+          name: invoiceData.razonSocial,
+          email: invoiceData.email,
+          phone: invoiceData.phone,
+          address: invoiceData.address
+        });
+      }
 
       // Create invoice record
       const invoice = await createInvoice({
@@ -170,12 +199,13 @@ export default function POSInterface() {
         user_id: currentUser.id,
         invoice_number: invoiceNumber,
         invoice_type: 'factura',
+        access_key: accessKey,
         subtotal_amount: subtotalAmount,
         discount_amount: discountAmount,
         tax_amount: taxAmount,
         total_amount: totalAmount,
         payment_method: paymentMethod,
-        customer_id: null,
+        customer_id: customerId,
         notes: invoiceType === 'factura'
           ? `Cliente: ${invoiceData.razonSocial} | ${invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}: ${invoiceData.identification}`
           : 'Consumidor Final'
@@ -204,6 +234,7 @@ export default function POSInterface() {
       }
 
       setTransactionID(invoice.id);
+      setLastInvoiceInfo({ invoiceNumber, accessKey });
       const typeLabel = invoiceType === 'final' ? 'consumidor final' : 'factura';
       showToast('success', `${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} creada: ${invoiceNumber}`);
 
@@ -222,7 +253,8 @@ export default function POSInterface() {
         setDiscountPercent(0);
         setShowPayment(false);
         setTransactionID(null);
-      }, 2000);
+        setLastInvoiceInfo(null);
+      }, 4000);
     } catch (error) {
       console.error('Error creating invoice:', error);
       showToast('error', error.message || 'Error al procesar la venta');
@@ -511,10 +543,16 @@ export default function POSInterface() {
                     {invoiceType === 'final' ? 'Consumidor Final' : `${invoiceData.razonSocial}`}
                   </div>
                   <div className="bg-emerald-950/50 rounded p-3 mb-3">
-                    <div className="text-xs text-emerald-300 mb-1">Número de Venta</div>
-                    <div className="text-base sm:text-lg font-bold text-emerald-300 font-mono break-all">{transactionID}</div>
+                    <div className="text-xs text-emerald-300 mb-1">Número de Factura</div>
+                    <div className="text-base sm:text-lg font-bold text-emerald-300 font-mono break-all">{lastInvoiceInfo?.invoiceNumber}</div>
                   </div>
-                  <div className="text-xs text-emerald-300">Gracias por tu compra</div>
+                  {lastInvoiceInfo?.accessKey && (
+                    <div className="bg-emerald-950/50 rounded p-3 mb-3">
+                      <div className="text-xs text-emerald-300 mb-1">Clave de Acceso SRI</div>
+                      <div className="text-[10px] sm:text-xs font-bold text-emerald-300 font-mono break-all">{lastInvoiceInfo.accessKey}</div>
+                    </div>
+                  )}
+                  <div className="text-xs text-emerald-300">Pendiente de aprobación por el gerente</div>
                 </div>
               )}
 

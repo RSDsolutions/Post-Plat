@@ -94,7 +94,7 @@ export function generateSRIXML(invoice, details, company) {
     <razonSocial>${escapeXML(company.razonSocial)}</razonSocial>
     <nombreComercial>${escapeXML(company.nombreComercial)}</nombreComercial>
     <ruc>${company.ruc}</ruc>
-    <claveAcceso>${generateAccessKey(invoice)}</claveAcceso>
+    <claveAcceso>${invoice.access_key || invoice.authorization_number || ''}</claveAcceso>
     <tipoComprobante>01</tipoComprobante>
     <secuencial>${String(invoice.sequential).padStart(9, '0')}</secuencial>
     <dirMatriz>${escapeXML(company.address)}</dirMatriz>
@@ -141,40 +141,50 @@ export function generateSRIXML(invoice, details, company) {
 }
 
 /**
- * Generate access key for SRI
- * Format: DD/MM/YYYY + RUC (13 digits) + Type (2 digits) + Sequential (9 digits) + Check digit (1 digit)
+ * Generate SRI access key (Clave de Acceso) - 49 digits total
+ * Format: ddmmyyyy(8) + tipoComprobante(2) + RUC(13) + ambiente(1) + estab+ptoVenta(6)
+ *         + secuencial(9) + codigoNumerico(8) + tipoEmision(1) + digitoVerificador(1)
  */
-export function generateAccessKey(invoice) {
-  const date = new Date(invoice.issue_date);
+export function generateAccessKey({ issueDate, ruc, environment, establishment, pointOfSale, sequential }) {
+  const date = new Date(issueDate);
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear().toString().substring(2);
+  const year = String(date.getFullYear());
+  const fecha = day + month + year;
 
-  const ruc = (invoice.ruc || '').padStart(13, '0');
-  const type = '01'; // Factura
-  const sequential = String(invoice.sequential).padStart(9, '0');
+  const tipoComprobante = '01'; // Factura
+  const rucPadded = (ruc || '').padStart(13, '0');
+  const ambiente = environment === 'production' ? '2' : '1'; // 1=Pruebas, 2=Producción
+  const serie = (establishment || '001').padStart(3, '0') + (pointOfSale || '001').padStart(3, '0');
+  const secuencial = String(sequential).padStart(9, '0');
+  const codigoNumerico = String(Math.floor(10000000 + Math.random() * 90000000));
+  const tipoEmision = '1'; // Normal
 
-  const baseKey = year + month + day + ruc + type + sequential;
+  const baseKey = fecha + tipoComprobante + rucPadded + ambiente + serie + secuencial + codigoNumerico + tipoEmision;
   const checkDigit = calculateAccessKeyCheckDigit(baseKey);
 
   return baseKey + checkDigit;
 }
 
 /**
- * Calculate check digit for access key
+ * Calculate check digit for access key using Módulo 11 (SRI standard)
+ * Weights cycle 2-7 from the rightmost digit
  */
 export function calculateAccessKeyCheckDigit(baseKey) {
-  const weights = [7, 6, 5, 4, 3, 2, 7, 6, 5, 4, 3, 2, 7, 6, 5, 4, 3, 2, 7, 6, 5];
   let sum = 0;
+  let factor = 2;
 
-  for (let i = 0; i < baseKey.length; i++) {
-    sum += parseInt(baseKey[i]) * weights[i];
+  for (let i = baseKey.length - 1; i >= 0; i--) {
+    sum += parseInt(baseKey[i], 10) * factor;
+    factor = factor === 7 ? 2 : factor + 1;
   }
 
   const remainder = sum % 11;
   const checkDigit = 11 - remainder;
 
-  return checkDigit === 11 ? 0 : checkDigit === 10 ? 1 : checkDigit;
+  if (checkDigit === 11) return 0;
+  if (checkDigit === 10) return 1;
+  return checkDigit;
 }
 
 /**

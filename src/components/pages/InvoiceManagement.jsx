@@ -1,47 +1,260 @@
 import React, { useState, useEffect } from 'react';
-import { FileText } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, X, Copy } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData } from '../../lib/supabaseHelpers.js';
+import { fetchInvoicesByCompany, fetchInvoiceDetails, approveInvoice, voidInvoice } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Badge from '../ui/Badge.jsx';
 import { formatUSD } from '../../lib/format.js';
 
+const STATUS_LABELS = {
+  borrador: 'Pendiente',
+  autorizada: 'Autorizada',
+  anulada: 'Anulada',
+  devuelta: 'Devuelta'
+};
+
 export default function InvoiceManagement() {
-  const { currentUser } = useStore();
+  const { currentUser, showToast, openConfirm } = useStore();
   const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [invoiceDetails, setInvoiceDetails] = useState([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
+  const loadInvoices = async () => {
+    try {
+      const data = await fetchInvoicesByCompany(currentUser.company_id);
+      setInvoices(data || []);
+    } catch (error) {
+      console.error('Error loading invoices:', error);
+      showToast('error', 'Error al cargar facturas');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await fetchData('invoices', {
-          filter: { column: 'company_id', value: currentUser.company_id },
-          orderBy: { column: 'issue_date', ascending: false }
-        });
-        setInvoices(data || []);
-      } catch (e) { console.error(e); }
-    };
-    if (currentUser?.company_id) load();
-  }, [currentUser]);
+    if (currentUser?.company_id) loadInvoices();
+  }, [currentUser?.company_id]);
+
+  const openInvoiceDetail = async (invoice) => {
+    setSelectedInvoice(invoice);
+    setLoadingDetails(true);
+    try {
+      const details = await fetchInvoiceDetails(invoice.id);
+      setInvoiceDetails(details);
+    } catch (error) {
+      showToast('error', 'Error al cargar detalles de la factura');
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
+  const handleApprove = (invoice) => {
+    openConfirm(
+      'Aprobar factura',
+      `¿Confirmas la aprobación de la factura ${invoice.invoice_number}? Esta acción autoriza el comprobante ante el SRI con la clave de acceso generada.`,
+      async () => {
+        try {
+          await approveInvoice(invoice.id);
+          showToast('success', `Factura ${invoice.invoice_number} autorizada`);
+          await loadInvoices();
+          setSelectedInvoice(null);
+        } catch (error) {
+          showToast('error', error.message || 'Error al aprobar la factura');
+        }
+      }
+    );
+  };
+
+  const handleVoid = (invoice) => {
+    openConfirm(
+      'Anular factura',
+      `¿Confirmas anular la factura ${invoice.invoice_number}? Esta acción no se puede deshacer.`,
+      async () => {
+        try {
+          await voidInvoice(invoice.id, 'Anulada por el gerente');
+          showToast('success', `Factura ${invoice.invoice_number} anulada`);
+          await loadInvoices();
+          setSelectedInvoice(null);
+        } catch (error) {
+          showToast('error', error.message || 'Error al anular la factura');
+        }
+      }
+    );
+  };
+
+  const copyAccessKey = (key) => {
+    navigator.clipboard.writeText(key);
+    showToast('success', 'Clave de acceso copiada');
+  };
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <h1 className="text-4xl font-bold text-zinc-100">Gestión de Facturas</h1>
+
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
-        <Table
-          columns={['Factura', 'Fecha', 'Monto', 'IVA', 'Total', 'Estado']}
-          data={invoices}
-          renderRow={(inv) => (
-            <tr key={inv.id} className="hover:bg-zinc-800/50">
-              <td className="px-4 py-3 font-bold text-zinc-100">{inv.invoice_number}</td>
-              <td className="px-4 py-3 text-zinc-400">{new Date(inv.issue_date).toLocaleDateString()}</td>
-              <td className="px-4 py-3 text-zinc-100">{formatUSD(inv.subtotal)}</td>
-              <td className="px-4 py-3 text-zinc-100">{formatUSD(inv.tax_amount)}</td>
-              <td className="px-4 py-3 font-bold text-emerald-400">{formatUSD(inv.total_amount)}</td>
-              <td className="px-4 py-3"><Badge status={inv.status} /></td>
-            </tr>
-          )}
-        />
+        {loading ? (
+          <div className="p-8 text-center text-zinc-500">Cargando facturas...</div>
+        ) : invoices.length === 0 ? (
+          <div className="p-8 text-center text-zinc-500">No hay facturas registradas</div>
+        ) : (
+          <Table
+            columns={['Factura', 'Cliente', 'Fecha', 'Total', 'Estado', 'Acciones']}
+            data={invoices}
+            renderRow={(inv) => (
+              <tr key={inv.id} className="hover:bg-zinc-800/50 cursor-pointer" onClick={() => openInvoiceDetail(inv)}>
+                <td className="px-4 py-3 font-bold text-zinc-100 font-mono">{inv.invoice_number}</td>
+                <td className="px-4 py-3 text-zinc-300">
+                  {inv.customers?.name || 'Consumidor Final'}
+                </td>
+                <td className="px-4 py-3 text-zinc-400">{new Date(inv.issue_date).toLocaleDateString()}</td>
+                <td className="px-4 py-3 font-bold text-emerald-400">{formatUSD(inv.total_amount)}</td>
+                <td className="px-4 py-3"><Badge status={STATUS_LABELS[inv.status] || inv.status} /></td>
+                <td className="px-4 py-3">
+                  {inv.status === 'borrador' && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleApprove(inv); }}
+                        className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                      >
+                        <CheckCircle size={14} /> Aprobar
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleVoid(inv); }}
+                        className="text-xs font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
+                      >
+                        <XCircle size={14} /> Anular
+                      </button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            )}
+          />
+        )}
       </div>
+
+      {/* Invoice Detail Modal */}
+      {selectedInvoice && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <FileText className="text-emerald-500" size={28} />
+                <h3 className="text-2xl font-bold text-white">Detalle de Factura</h3>
+              </div>
+              <button onClick={() => setSelectedInvoice(null)} className="text-zinc-500 hover:text-zinc-300">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-xs text-zinc-500">Número de Factura</div>
+                  <div className="text-lg font-bold text-zinc-100 font-mono">{selectedInvoice.invoice_number}</div>
+                </div>
+                <Badge status={STATUS_LABELS[selectedInvoice.status] || selectedInvoice.status} />
+              </div>
+
+              {/* Access Key */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-xs font-bold text-zinc-400">Clave de Acceso SRI</div>
+                  {selectedInvoice.authorization_number && (
+                    <button
+                      onClick={() => copyAccessKey(selectedInvoice.authorization_number)}
+                      className="text-zinc-500 hover:text-emerald-400"
+                    >
+                      <Copy size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="text-xs sm:text-sm text-emerald-400 font-mono break-all">
+                  {selectedInvoice.authorization_number || 'No generada'}
+                </div>
+              </div>
+
+              {/* Customer Info */}
+              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+                <div className="text-xs font-bold text-zinc-400 mb-2">Cliente</div>
+                {selectedInvoice.customers ? (
+                  <div className="space-y-1 text-sm">
+                    <div className="text-zinc-100 font-bold">{selectedInvoice.customers.name}</div>
+                    <div className="text-zinc-400">
+                      {selectedInvoice.customers.identification_type === 'ruc' ? 'RUC' : 'Cédula'}: {selectedInvoice.customers.identification_number}
+                    </div>
+                    {selectedInvoice.customers.email && <div className="text-zinc-500 text-xs">{selectedInvoice.customers.email}</div>}
+                    {selectedInvoice.customers.phone && <div className="text-zinc-500 text-xs">{selectedInvoice.customers.phone}</div>}
+                  </div>
+                ) : (
+                  <div className="text-sm text-zinc-300">Consumidor Final</div>
+                )}
+              </div>
+
+              {/* Line Items */}
+              <div>
+                <div className="text-xs font-bold text-zinc-400 mb-2">Productos</div>
+                {loadingDetails ? (
+                  <div className="text-center text-zinc-500 py-4 text-sm">Cargando...</div>
+                ) : (
+                  <div className="space-y-2">
+                    {invoiceDetails.map(item => (
+                      <div key={item.id} className="flex justify-between items-center bg-zinc-950 rounded-lg p-3 text-sm">
+                        <div>
+                          <div className="text-zinc-100">{item.product_name}</div>
+                          <div className="text-xs text-zinc-500">{item.quantity} x {formatUSD(item.unit_price)}</div>
+                        </div>
+                        <div className="font-bold text-emerald-400">{formatUSD(item.total)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Totals */}
+              <div className="border-t border-zinc-800 pt-4 space-y-1 text-sm">
+                <div className="flex justify-between text-zinc-400">
+                  <span>Subtotal:</span>
+                  <span>{formatUSD(selectedInvoice.subtotal)}</span>
+                </div>
+                {selectedInvoice.discount_amount > 0 && (
+                  <div className="flex justify-between text-red-400">
+                    <span>Descuento:</span>
+                    <span>-{formatUSD(selectedInvoice.discount_amount)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-zinc-400">
+                  <span>IVA:</span>
+                  <span>{formatUSD(selectedInvoice.tax_amount)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg text-emerald-400 pt-1">
+                  <span>Total:</span>
+                  <span>{formatUSD(selectedInvoice.total_amount)}</span>
+                </div>
+              </div>
+
+              {selectedInvoice.status === 'borrador' && (
+                <div className="flex gap-3 pt-4 border-t border-zinc-800">
+                  <button
+                    onClick={() => handleVoid(selectedInvoice)}
+                    className="flex-1 bg-zinc-800 hover:bg-red-900/30 text-red-400 font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <XCircle size={18} /> Anular
+                  </button>
+                  <button
+                    onClick={() => handleApprove(selectedInvoice)}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle size={18} /> Aprobar Factura
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

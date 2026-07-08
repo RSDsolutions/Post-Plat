@@ -382,6 +382,44 @@ export async function fetchProductsByCompany(companyId) {
   }
 }
 
+// Customers
+export async function findOrCreateCustomer(companyId, customerData) {
+  try {
+    const { data: existing, error: findError } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('identification_number', customerData.identification_number)
+      .limit(1);
+
+    if (findError) throw new Error(findError.message);
+
+    if (existing && existing.length > 0) {
+      return existing[0].id;
+    }
+
+    const { data: created, error: createError } = await supabase
+      .from('customers')
+      .insert([{
+        company_id: companyId,
+        identification_type: customerData.identification_type,
+        identification_number: customerData.identification_number,
+        name: customerData.name,
+        email: customerData.email || null,
+        phone: customerData.phone || null,
+        address: customerData.address || null,
+        is_active: true
+      }])
+      .select('id')
+      .single();
+
+    if (createError) throw new Error(createError.message);
+    return created.id;
+  } catch (error) {
+    throw new Error(`Error finding/creating customer: ${error.message}`);
+  }
+}
+
 // Invoices & Billing
 export async function createInvoice(invoiceData) {
   try {
@@ -410,6 +448,7 @@ export async function createInvoice(invoiceData) {
         invoice_type: invoiceData.invoice_type || 'factura',
         invoice_number: invoiceData.invoice_number,
         issue_date: new Date().toISOString(),
+        authorization_number: invoiceData.access_key || null,
         subtotal: parseFloat(invoiceData.subtotal_amount) || 0,
         discount_amount: parseFloat(invoiceData.discount_amount) || 0,
         tax_amount: parseFloat(invoiceData.tax_amount) || 0,
@@ -459,7 +498,7 @@ export async function fetchInvoicesByCompany(companyId) {
   try {
     const { data, error } = await supabase
       .from('invoices')
-      .select('*')
+      .select('*, customers(name, identification_type, identification_number, email, phone)')
       .eq('company_id', companyId)
       .order('issue_date', { ascending: false });
 
@@ -485,14 +524,11 @@ export async function fetchInvoiceDetails(invoiceId) {
   }
 }
 
-export async function updateInvoiceStatus(invoiceId, status, sriStatus = null) {
+export async function updateInvoiceStatus(invoiceId, status) {
   try {
-    const updateData = { status };
-    if (sriStatus) updateData.sri_status = sriStatus;
-
     const { data, error } = await supabase
       .from('invoices')
-      .update(updateData)
+      .update({ status })
       .eq('id', invoiceId)
       .select()
       .single();
@@ -501,6 +537,45 @@ export async function updateInvoiceStatus(invoiceId, status, sriStatus = null) {
     return data;
   } catch (error) {
     throw new Error(`Error updating invoice status: ${error.message}`);
+  }
+}
+
+export async function approveInvoice(invoiceId) {
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .update({
+        status: 'autorizada',
+        authorization_date: new Date().toISOString()
+      })
+      .eq('id', invoiceId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (error) {
+    throw new Error(`Error approving invoice: ${error.message}`);
+  }
+}
+
+export async function voidInvoice(invoiceId, reason) {
+  try {
+    const { data, error } = await supabase
+      .from('invoices')
+      .update({
+        status: 'anulada',
+        voided_at: new Date().toISOString(),
+        voided_reason: reason || null
+      })
+      .eq('id', invoiceId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (error) {
+    throw new Error(`Error voiding invoice: ${error.message}`);
   }
 }
 
