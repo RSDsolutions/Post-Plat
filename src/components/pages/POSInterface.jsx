@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Minus, Trash2, LogOut, Clock, DollarSign, ShoppingCart, Phone, Mail, CreditCard, Banknote, Send } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData } from '../../lib/supabaseHelpers.js';
+import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
+import { generateInvoiceNumber } from '../../lib/invoiceUtils.js';
 
 export default function POSInterface() {
   const { currentUser, logout, showToast } = useStore();
@@ -111,10 +112,70 @@ export default function POSInterface() {
 
   const completeSale = async () => {
     try {
-      const txId = `TX-${Date.now()}`;
-      setTransactionID(txId);
+      // Load billing config to get invoice settings
+      const billingConfig = await getBillingConfig(currentUser.company_id);
 
-      showToast('success', `Venta completada: ${txId}`);
+      // Get next sequential number
+      const sequential = await getNextInvoiceSequential(currentUser.company_id);
+
+      // Calculate totals
+      const subtotalAmount = subtotal;
+      const discountAmount = discount;
+      const taxableAmount = subtotal - discount;
+      const taxAmount = tax;
+      const totalAmount = total;
+
+      // Generate invoice number
+      const invoiceNumber = generateInvoiceNumber(billingConfig, sequential);
+
+      // Create invoice record
+      const invoice = await createInvoice({
+        company_id: currentUser.company_id,
+        user_id: currentUser.id,
+        invoice_number: invoiceNumber,
+        sequential: sequential,
+        establishment: billingConfig.establishment,
+        point_of_sale: billingConfig.pointOfSale,
+        subtotal_amount: subtotalAmount,
+        discount_amount: discountAmount,
+        taxable_amount: taxableAmount,
+        tax_amount: taxAmount,
+        total_amount: totalAmount,
+        tax_rate: billingConfig.taxRate || taxRate,
+        payment_method: paymentMethod,
+        customer_id: null,
+        customer_name: customerData.name || 'Consumidor Final',
+        customer_email: customerData.email || '',
+        customer_phone: customerData.phone || '',
+        transaction_id: `TX-${Date.now()}`,
+        reference: '',
+        notes: ''
+      });
+
+      // Create invoice details for each cart item
+      for (const item of cart) {
+        const itemDiscount = item.sale_price * item.quantity * (discountPercent / 100);
+        const itemSubtotal = item.sale_price * item.quantity - itemDiscount;
+        const itemTax = itemSubtotal * (billingConfig.taxRate / 100);
+
+        await createInvoiceDetail({
+          invoice_id: invoice.id,
+          product_id: item.id,
+          product_code: item.code,
+          product_name: item.name,
+          quantity: item.quantity,
+          unit_price: item.sale_price,
+          discount_percent: discountPercent,
+          discount_amount: itemDiscount,
+          subtotal: itemSubtotal,
+          tax_rate: billingConfig.taxRate || taxRate,
+          tax_amount: itemTax,
+          total: itemSubtotal + itemTax
+        });
+      }
+
+      setTransactionID(invoice.id);
+      showToast('success', `Factura creada: ${invoiceNumber}`);
 
       setTimeout(() => {
         setCart([]);
@@ -125,7 +186,8 @@ export default function POSInterface() {
         setTransactionID(null);
       }, 2000);
     } catch (error) {
-      showToast('error', 'Error al procesar la venta');
+      console.error('Error creating invoice:', error);
+      showToast('error', error.message || 'Error al procesar la venta');
     }
   };
 
