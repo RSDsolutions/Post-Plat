@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Minus, Trash2, LogOut, Clock, DollarSign, ShoppingCart, Phone, Mail, CreditCard, Banknote, Send } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, LogOut, DollarSign, ShoppingCart, Send } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
-import { generateInvoiceNumber } from '../../lib/invoiceUtils.js';
 
 export default function POSInterface() {
   const { currentUser, logout, showToast } = useStore();
@@ -12,9 +11,7 @@ export default function POSInterface() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [customerData, setCustomerData] = useState({ name: '', email: '', phone: '' });
   const [showPayment, setShowPayment] = useState(false);
-  const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [transactionID, setTransactionID] = useState(null);
   const [discountPercent, setDiscountPercent] = useState(0);
   const [taxRate, setTaxRate] = useState(12);
@@ -150,30 +147,29 @@ export default function POSInterface() {
 
   const completeSale = async () => {
     try {
+      // Load billing config for tax rate
+      const billingConfig = await getBillingConfig(currentUser.company_id);
+
       // Get next sequential number
       const sequential = await getNextInvoiceSequential(currentUser.company_id);
 
       // Calculate totals
       const subtotalAmount = subtotal;
       const discountAmount = discount;
-      const taxableAmount = subtotal - discount;
       const taxAmount = tax;
       const totalAmount = total;
 
-      // Generate invoice number
-      const invoiceNumber = `INV-${String(sequential).padStart(8, '0')}`;
-
-      // Determine customer data based on invoice type
-      const customerName = invoiceType === 'final'
-        ? 'Consumidor Final'
-        : invoiceData.razonSocial || 'Consumidor Final';
+      // Generate SRI-compliant invoice number: Establecimiento-PuntoVenta-Secuencial
+      const estab = (billingConfig.establishment || '001').padStart(3, '0');
+      const pos = (billingConfig.pointOfSale || '001').padStart(3, '0');
+      const invoiceNumber = `${estab}-${pos}-${String(sequential).padStart(9, '0')}`;
 
       // Create invoice record
       const invoice = await createInvoice({
         company_id: currentUser.company_id,
         user_id: currentUser.id,
         invoice_number: invoiceNumber,
-        invoice_type: invoiceType === 'final' ? 'consumidor_final' : 'factura',
+        invoice_type: 'factura',
         subtotal_amount: subtotalAmount,
         discount_amount: discountAmount,
         tax_amount: taxAmount,
@@ -181,8 +177,8 @@ export default function POSInterface() {
         payment_method: paymentMethod,
         customer_id: null,
         notes: invoiceType === 'factura'
-          ? `${invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}: ${invoiceData.identification}`
-          : ''
+          ? `Cliente: ${invoiceData.razonSocial} | ${invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}: ${invoiceData.identification}`
+          : 'Consumidor Final'
       });
 
       // Create invoice details for each cart item
@@ -213,7 +209,6 @@ export default function POSInterface() {
 
       setTimeout(() => {
         setCart([]);
-        setCustomerData({ name: '', email: '', phone: '' });
         setInvoiceData({
           identificationType: 'ruc',
           identification: '',
@@ -526,10 +521,7 @@ export default function POSInterface() {
               {/* Action Buttons */}
               <div className="flex gap-2 sm:gap-3 pt-4 sm:pt-6 border-t border-zinc-800 flex-col sm:flex-row">
                 <button
-                  onClick={() => {
-                    setShowPayment(false);
-                    setShowCustomerForm(false);
-                  }}
+                  onClick={() => setShowPayment(false)}
                   className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 sm:py-3 rounded-lg transition-colors text-sm sm:text-base"
                 >
                   Cancelar

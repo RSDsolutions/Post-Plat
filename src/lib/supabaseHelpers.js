@@ -385,20 +385,20 @@ export async function fetchProductsByCompany(companyId) {
 // Invoices & Billing
 export async function createInvoice(invoiceData) {
   try {
-    // Get first POS for this company
-    const { data: posData, error: posError } = await supabase
+    // Get first active POS for this company
+    const { data: posList, error: posError } = await supabase
       .from('point_of_sales')
       .select('id')
       .eq('company_id', invoiceData.company_id)
       .eq('is_active', true)
-      .limit(1)
-      .single();
+      .limit(1);
 
-    if (!posData && !posError) {
-      throw new Error('No hay punto de venta activo para esta tienda');
+    if (posError) throw new Error(`Error buscando punto de venta: ${posError.message}`);
+    if (!posList || posList.length === 0) {
+      throw new Error('No hay punto de venta activo configurado para esta tienda');
     }
 
-    const posId = posData?.id;
+    const posId = posList[0].id;
 
     const { data, error } = await supabase
       .from('invoices')
@@ -437,12 +437,11 @@ export async function createInvoiceDetail(detailData) {
         product_id: detailData.product_id,
         product_code: detailData.product_code,
         product_name: detailData.product_name,
-        quantity: parseInt(detailData.quantity),
+        quantity: parseFloat(detailData.quantity),
         unit_price: parseFloat(detailData.unit_price),
         discount_percent: parseFloat(detailData.discount_percent) || 0,
-        discount_amount: parseFloat(detailData.discount_amount) || 0,
         subtotal: parseFloat(detailData.subtotal),
-        tax_rate: parseFloat(detailData.tax_rate) || 12,
+        tax_percent: parseFloat(detailData.tax_rate) || 12,
         tax_amount: parseFloat(detailData.tax_amount),
         total: parseFloat(detailData.total)
       }])
