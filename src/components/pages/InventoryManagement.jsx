@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info } from 'lucide-react';
+import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { fetchData } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
@@ -12,6 +12,18 @@ export default function InventoryManagement() {
   const [filterCategory, setFilterCategory] = useState('all');
   const [editingProduct, setEditingProduct] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newProduct, setNewProduct] = useState({
+    code: '',
+    name: '',
+    category: '',
+    quantity: 0,
+    minStock: 10,
+    salePrice: 0,
+    priceIncludesVat: true,
+    discount: 0,
+    promotion: ''
+  });
   const [taxRate, setTaxRate] = useState(12);
 
   useEffect(() => {
@@ -63,6 +75,47 @@ export default function InventoryManagement() {
   const getPriceWithVat = (price, includesVat) => {
     if (includesVat) return price;
     return price * (1 + taxRate / 100);
+  };
+
+  const handleAddProduct = () => {
+    if (!newProduct.code || !newProduct.name || !newProduct.category) {
+      showToast('error', 'Completa los campos requeridos: Código, Nombre y Categoría');
+      return;
+    }
+
+    if (parseFloat(newProduct.salePrice) <= 0) {
+      showToast('error', 'El precio debe ser mayor a 0');
+      return;
+    }
+
+    const product = {
+      id: `temp_${Date.now()}`,
+      ...newProduct,
+      quantity: parseInt(newProduct.quantity) || 0,
+      minStock: parseInt(newProduct.minStock) || 10,
+      salePrice: parseFloat(newProduct.salePrice),
+      discount: parseFloat(newProduct.discount) || 0,
+      sale_price: parseFloat(newProduct.salePrice),
+      min_stock: parseInt(newProduct.minStock) || 10,
+      price_includes_vat: newProduct.priceIncludesVat
+    };
+
+    setProducts([...products, product]);
+    showToast('success', `Producto "${newProduct.name}" agregado al inventario`);
+
+    // Reset form
+    setNewProduct({
+      code: '',
+      name: '',
+      category: '',
+      quantity: 0,
+      minStock: 10,
+      salePrice: 0,
+      priceIncludesVat: true,
+      discount: 0,
+      promotion: ''
+    });
+    setShowAddModal(false);
   };
 
   const handleSaveEdit = () => {
@@ -133,8 +186,8 @@ export default function InventoryManagement() {
         </div>
       )}
 
-      {/* Filter */}
-      <div className="flex gap-2">
+      {/* Filter & Actions */}
+      <div className="flex gap-2 flex-col sm:flex-row">
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
@@ -145,6 +198,13 @@ export default function InventoryManagement() {
             <option key={cat} value={cat}>{cat}</option>
           ))}
         </select>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
+        >
+          <Plus size={20} />
+          Agregar Producto
+        </button>
       </div>
 
       {/* Products Table */}
@@ -395,6 +455,220 @@ export default function InventoryManagement() {
               >
                 <Save size={18} />
                 Guardar Cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Product Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-zinc-100">Agregar Nuevo Producto</h2>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="text-zinc-500 hover:text-zinc-300"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="space-y-4 mb-6">
+              {/* Basic Info */}
+              <div className="space-y-3">
+                <h3 className="font-bold text-zinc-300">Información Básica</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-2">Código (Requerido)</label>
+                    <input
+                      type="text"
+                      placeholder="SKU-001"
+                      value={newProduct.code}
+                      onChange={(e) => setNewProduct({...newProduct, code: e.target.value})}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-2">Nombre (Requerido)</label>
+                    <input
+                      type="text"
+                      placeholder="Nombre del producto"
+                      value={newProduct.name}
+                      onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Categoría (Requerido)</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Electrónica, Ropa, Alimentos..."
+                    value={newProduct.category}
+                    onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  />
+                </div>
+              </div>
+
+              {/* Stock Management */}
+              <div className="space-y-3">
+                <h3 className="font-bold text-zinc-300">Stock</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-2">Cantidad Inicial</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={newProduct.quantity}
+                      onChange={(e) => setNewProduct({...newProduct, quantity: e.target.value})}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-2">Stock Mínimo</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={newProduct.minStock}
+                      onChange={(e) => setNewProduct({...newProduct, minStock: e.target.value})}
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Pricing */}
+              <div className="space-y-3">
+                <h3 className="font-bold text-zinc-300">Precio</h3>
+
+                {/* Price Includes VAT Toggle */}
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Info size={16} className="text-blue-400" />
+                    <label className="text-xs font-bold text-blue-400">¿El precio incluye IVA?</label>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setNewProduct({...newProduct, priceIncludesVat: true})}
+                      className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
+                        newProduct.priceIncludesVat
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      Sí, incluye IVA
+                    </button>
+                    <button
+                      onClick={() => setNewProduct({...newProduct, priceIncludesVat: false})}
+                      className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
+                        !newProduct.priceIncludesVat
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      No, sin IVA
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-300 mt-2">
+                    {newProduct.priceIncludesVat
+                      ? `El precio ingresado ya contiene el IVA del ${taxRate}%`
+                      : `El IVA del ${taxRate}% se agregará al precio ingresado`}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">
+                    {newProduct.priceIncludesVat ? 'Precio Final (con IVA)' : 'Precio Base (sin IVA)'} ($)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newProduct.salePrice}
+                    onChange={(e) => setNewProduct({...newProduct, salePrice: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                  />
+                </div>
+
+                {/* Price Preview */}
+                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-950/50 rounded border border-zinc-800">
+                  <div>
+                    <div className="text-xs text-zinc-500 font-bold">Precio sin IVA</div>
+                    <div className="text-lg font-bold text-zinc-100">
+                      {formatUSD(getPriceWithoutVat(parseFloat(newProduct.salePrice) || 0, newProduct.priceIncludesVat))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-zinc-500 font-bold">Precio con IVA ({taxRate}%)</div>
+                    <div className="text-lg font-bold text-emerald-400">
+                      {formatUSD(getPriceWithVat(parseFloat(newProduct.salePrice) || 0, newProduct.priceIncludesVat))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Discount */}
+              <div className="space-y-3">
+                <h3 className="font-bold text-zinc-300 flex items-center gap-2">
+                  <Percent size={18} />
+                  Descuento (Opcional)
+                </h3>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Porcentaje de Descuento (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    value={newProduct.discount}
+                    onChange={(e) => setNewProduct({...newProduct, discount: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                  />
+                  {parseFloat(newProduct.discount) > 0 && (
+                    <div className="mt-2 p-2 bg-emerald-500/10 border border-emerald-500/30 rounded text-sm text-emerald-400">
+                      Precio con descuento: <span className="font-bold">{formatUSD(getDiscountedPrice(parseFloat(newProduct.salePrice), parseFloat(newProduct.discount)))}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Promotion */}
+              <div className="space-y-3">
+                <h3 className="font-bold text-zinc-300 flex items-center gap-2">
+                  <Tag size={18} />
+                  Promoción (Opcional)
+                </h3>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Descripción de Promoción</label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Compre 2 y lleve 3, Black Friday, etc"
+                    value={newProduct.promotion}
+                    onChange={(e) => setNewProduct({...newProduct, promotion: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  />
+                  <p className="text-xs text-zinc-500 mt-1">Ej: "Compre 2 lleve 3", "Black Friday 50%", "Promoción Flash"</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 border-t border-zinc-800 pt-4">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAddProduct}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <Plus size={18} />
+                Agregar Producto
               </button>
             </div>
           </div>
