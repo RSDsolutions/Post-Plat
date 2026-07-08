@@ -244,7 +244,7 @@ export default function CompanyDetail() {
                       <span className="font-bold text-zinc-100">{company.monthlyComprobantes} / {plan?.comprobantesLimit}</span>
                     </div>
                     <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                      {(() => {
+                      {plan && (() => {
                         const pct = (company.monthlyComprobantes / plan.comprobantesLimit) * 100;
                         const color = pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
                         return <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />;

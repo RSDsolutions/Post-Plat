@@ -19,6 +19,7 @@ const transformCompany = (dbCompany) => ({
                      dbCompany.subscription_status === 'suspendida' ? 'Suspendida' : 'Activa',
   subscriptionStart: new Date(dbCompany.subscription_start),
   subscriptionRenewal: new Date(dbCompany.subscription_renewal),
+  billingCycle: 'mensual',
   monthlyComprobantes: 0,
   prevMonthComprobantes: 0,
   activeUsers: 0,
@@ -46,16 +47,27 @@ const transformPlan = (dbPlan) => ({
   description: dbPlan.description,
   features: [],
   usersLimit: 10,
+  branchesLimit: 5,
   includesProduction: true,
-  includesLots: true
+  includesLots: true,
+  color: 'emerald'
 });
 
 export default function App() {
   const isAuthenticated = useStore(state => state.isAuthenticated);
   const initData = useStore(state => state.initData);
   const brand = useStore(state => state.brand);
+  const restoreAuth = useStore(state => state.restoreAuth);
 
   useEffect(() => {
+    // Restore authentication from localStorage
+    restoreAuth();
+    applyBrandColors(brand.color);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
     const loadData = async () => {
       try {
         const [companies, plans, activityLog] = await Promise.all([
@@ -74,9 +86,8 @@ export default function App() {
     };
 
     loadData();
-    applyBrandColors(brand.color);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isAuthenticated]);
 
   if (!isAuthenticated) {
     return <Login />;

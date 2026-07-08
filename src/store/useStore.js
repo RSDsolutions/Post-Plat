@@ -39,9 +39,32 @@ export const useStore = create((set, get) => ({
   companyPlanFilter: 'all',
 
   // Auth actions
-  setCurrentUser: (user, role) => set({ currentUser: user, userRole: role, isAuthenticated: true, isAuthenticating: false }),
-  logout: () => set({ currentUser: null, userRole: null, isAuthenticated: false, activePage: 'dashboard' }),
+  setCurrentUser: (user, role) => {
+    const authState = { currentUser: user, userRole: role, isAuthenticated: true, isAuthenticating: false };
+    set(authState);
+    // Persist to localStorage
+    localStorage.setItem('postplat_auth', JSON.stringify({ user, role }));
+  },
+  logout: () => {
+    set({ currentUser: null, userRole: null, isAuthenticated: false, activePage: 'dashboard' });
+    localStorage.removeItem('postplat_auth');
+  },
   setIsAuthenticating: (authenticating) => set({ isAuthenticating: authenticating }),
+  restoreAuth: () => {
+    const saved = localStorage.getItem('postplat_auth');
+    if (saved) {
+      try {
+        const { user, role } = JSON.parse(saved);
+        set({ currentUser: user, userRole: role, isAuthenticated: true, isAuthenticating: false });
+        return true;
+      } catch (e) {
+        console.error('Error restoring auth:', e);
+        localStorage.removeItem('postplat_auth');
+        return false;
+      }
+    }
+    return false;
+  },
 
   setBrand: (name, color) => set((state) => ({ brand: { ...state.brand, name, color } })),
   setActivePage: (activePage) => set({ activePage, selectedCompanyId: null }),

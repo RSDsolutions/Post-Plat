@@ -78,11 +78,11 @@ export default function Subscriptions() {
               )}
 
               <ul className="space-y-3 text-sm text-zinc-400 border-t border-zinc-800/50 pt-5 font-medium">
-                <li className="flex items-center"><Check size={16} className={`text-${plan.color}-500 mr-2`} /> <span>{plan.comprobantesLimit} comprobantes/mes</span></li>
-                <li className="flex items-center"><Check size={16} className={`text-${plan.color}-500 mr-2`} /> <span>{plan.usersLimit} usuarios permitidos</span></li>
-                <li className="flex items-center"><Check size={16} className={`text-${plan.color}-500 mr-2`} /> <span>{plan.branchesLimit} sucursales</span></li>
-                {plan.includesLots && <li className="flex items-center"><Check size={16} className={`text-${plan.color}-500 mr-2`} /> <span>Control de lotes</span></li>}
-                {plan.includesProduction && <li className="flex items-center"><Check size={16} className={`text-${plan.color}-500 mr-2`} /> <span>Módulo de producción</span></li>}
+                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.comprobantesLimit} comprobantes/mes</span></li>
+                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.usersLimit} usuarios permitidos</span></li>
+                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.branchesLimit} sucursales</span></li>
+                {plan.includesLots && <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>Control de lotes</span></li>}
+                {plan.includesProduction && <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>Módulo de producción</span></li>}
               </ul>
             </div>
           );
@@ -107,7 +107,7 @@ export default function Subscriptions() {
             if (count === 0) return null;
             const portion = (count * p.price) / mrr * 100;
             return (
-              <div key={p.id} style={{ width: `${portion}%` }} className={`bg-${p.color}-500 flex items-center justify-center text-xs font-bold text-white overflow-hidden transition-all duration-500`}>
+              <div key={p.id} style={{ width: `${portion}%`, backgroundColor: '#10b981' }} className="flex items-center justify-center text-xs font-bold text-white overflow-hidden transition-all duration-500">
                 {portion > 10 ? p.name : ''}
               </div>
             );
@@ -127,7 +127,7 @@ export default function Subscriptions() {
             return (
               <tr key={company.id} className="hover:bg-zinc-800/50 transition-colors border-b border-zinc-800/50 last:border-0">
                 <td className="px-5 py-4 font-bold text-zinc-100">{company.nombreComercial}</td>
-                <td className="px-5 py-4"><span className={`px-3 py-1 rounded-full text-xs font-bold bg-${plan?.color}-500/10 text-${plan?.color}-400 border border-${plan?.color}-500/20`}>{plan?.name}</span></td>
+                <td className="px-5 py-4"><span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{plan?.name}</span></td>
                 <td className="px-5 py-4 font-medium text-zinc-300 capitalize">{company.billingCycle}</td>
                 <td className="px-5 py-4 font-medium text-zinc-400">{formatDate(company.subscriptionRenewal)}</td>
                 <td className="px-5 py-4"><Badge status={company.paymentStatus} /></td>
