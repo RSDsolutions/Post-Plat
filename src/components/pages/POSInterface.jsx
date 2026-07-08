@@ -153,12 +153,25 @@ export default function POSInterface() {
     setDiscountPercent(0);
   };
 
-  // Calculate prices, handling both price_includes_vat cases
+  // A product's own promotional discount (set in Inventario, e.g. "10% off this
+  // week") was never applied here - the POS charged the full sale_price
+  // regardless. getDiscountedPrice mirrors InventoryManagement.jsx's own math
+  // (discount % taken off the sticker price) so both screens agree on what the
+  // "real" price of a discounted product is.
+  const getDiscountedPrice = (product) => {
+    const productDiscount = product.discount || 0;
+    return product.sale_price * (1 - productDiscount / 100);
+  };
+
+  // Tax-exclusive unit price: sticker price -> product's own promo discount
+  // (if any) -> VAT extraction (if price_includes_vat). VAT must be computed
+  // on what's actually charged after the discount, not the original sticker.
   const getPriceBase = (product) => {
+    const discountedPrice = getDiscountedPrice(product);
     if (product.price_includes_vat) {
-      return product.sale_price / (1 + taxRate / 100);
+      return discountedPrice / (1 + taxRate / 100);
     }
-    return product.sale_price;
+    return discountedPrice;
   };
 
   const subtotal = cart.reduce((sum, item) => sum + getPriceBase(item) * item.quantity, 0);
@@ -511,10 +524,20 @@ export default function POSInterface() {
                   </div>
                   <div className="flex items-end justify-between border-t border-zinc-800 pt-2">
                     <div>
-                      <div className="text-lg font-bold text-emerald-400">{formatUSD(product.sale_price)}</div>
-                      <div className="text-[10px] text-zinc-500">
-                        {product.price_includes_vat !== false ? 'IVA incl.' : 'Sin IVA'}
-                      </div>
+                      {product.discount > 0 ? (
+                        <>
+                          <div className="text-[10px] text-zinc-500 line-through">{formatUSD(product.sale_price)}</div>
+                          <div className="text-lg font-bold text-pink-400">{formatUSD(getDiscountedPrice(product))}</div>
+                          <div className="text-[10px] text-pink-400 font-bold">-{product.discount}% dto.</div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-lg font-bold text-emerald-400">{formatUSD(product.sale_price)}</div>
+                          <div className="text-[10px] text-zinc-500">
+                            {product.price_includes_vat !== false ? 'IVA incl.' : 'Sin IVA'}
+                          </div>
+                        </>
+                      )}
                     </div>
                     <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                       product.quantity > 10 ? 'bg-emerald-500/10 text-emerald-400' : product.quantity > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-red-500/10 text-red-400'
@@ -556,7 +579,14 @@ export default function POSInterface() {
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0">
                     <div className="font-bold text-zinc-100 text-sm truncate">{item.name}</div>
-                    <div className="text-xs text-zinc-500">{formatUSD(item.sale_price)} c/u</div>
+                    {item.discount > 0 ? (
+                      <div className="text-xs">
+                        <span className="text-zinc-600 line-through">{formatUSD(item.sale_price)}</span>{' '}
+                        <span className="text-pink-400 font-bold">{formatUSD(getDiscountedPrice(item))} c/u</span>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-zinc-500">{formatUSD(item.sale_price)} c/u</div>
+                    )}
                   </div>
                   <button
                     onClick={() => removeFromCart(item.id)}
