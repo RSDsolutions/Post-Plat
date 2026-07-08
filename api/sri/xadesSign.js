@@ -106,7 +106,7 @@ export async function signXml(p12Data, p12Password, xmlData) {
   xml = xml.replace(/\t|\r/g, '');
   const sha1_xml = sha1Base64(xml.replace('<?xml version="1.0" encoding="UTF-8"?>', ''), 'utf8');
 
-  const nameSpaces = 'xmlns:ds="http://www.w3.org/2000/09/xmldisg#" xmlns:etsi="http://uri.etsi.org/01903/v1.3.2#"';
+  const nameSpaces = 'xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:etsi="http://uri.etsi.org/01903/v1.3.2#"';
   const certificateNumber = getRandomNumber();
   const signatureNumber = getRandomNumber();
   const signedPropertiesNumber = getRandomNumber();
@@ -185,7 +185,7 @@ export async function signXml(p12Data, p12Password, xmlData) {
   signedInfo += '<ds:SignedInfo Id="Signature-SignedInfo' + signedInfoNumber + '">';
   signedInfo += '\n<ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315">';
   signedInfo += '</ds:CanonicalizationMethod>';
-  signedInfo += '\n<ds:SignatureMethod Algorith="http://www.w3.org/2000/09/xmldsig#rsa-sha1">';
+  signedInfo += '\n<ds:SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1">';
   signedInfo += '</ds:SignatureMethod>';
   signedInfo += '\n<ds:Reference Id="SignedPropertiesID' + signedPropertiesIdNumber + '" Type="http://uri.etsi.org/01903#SignedProperties" URI="#Signature' + signatureNumber + '-SignedProperties' + signedPropertiesNumber + '">';
   signedInfo += '\n<ds:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1">';
@@ -203,7 +203,7 @@ export async function signXml(p12Data, p12Password, xmlData) {
   signedInfo += '\n</ds:Reference>';
   signedInfo += '\n<ds:Reference Id="Reference-ID' + referenceIdNumber + '" URI="#comprobante">';
   signedInfo += '\n<ds:Transforms>';
-  signedInfo += '\n<ds:Transform Algorithm="http://www.w3.org/2000/09/xmlndsig#enveloped-signature">';
+  signedInfo += '\n<ds:Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature">';
   signedInfo += '</ds:Transform>';
   signedInfo += '\n</ds:Transforms>';
   signedInfo += '\n<ds:DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1">';
