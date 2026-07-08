@@ -520,7 +520,25 @@ export async function getNextInvoiceSequential(companyId) {
 
 export async function saveBillingConfig(companyId, config) {
   try {
-    // First, check if config exists for this company
+    // Step 1: Update companies table with identification data
+    const companyUpdateData = {
+      ruc: config.ruc || null,
+      razon_social: config.razonSocial || null,
+      nombre_comercial: config.nombreComercial || null,
+      direccion: config.address || null,
+      telefono_facturacion: config.phone || null,
+      email_facturacion: config.email || null,
+      lleva_contabilidad: config.llevaContabilidad || false
+    };
+
+    const { error: companyError } = await supabase
+      .from('companies')
+      .update(companyUpdateData)
+      .eq('id', companyId);
+
+    if (companyError) throw new Error(`Error updating company: ${companyError.message}`);
+
+    // Step 2: Check if billing config exists for this company
     const { data: existing, error: fetchError } = await supabase
       .from('billing_configs')
       .select('id')
@@ -547,6 +565,7 @@ export async function saveBillingConfig(companyId, config) {
 
     let result;
 
+    // Step 3: Insert or update billing_configs
     if (existing) {
       // Update existing config
       const { data, error } = await supabase
