@@ -11,6 +11,12 @@ export const useStore = create((set, get) => ({
     colorSoft: 'rgba(16, 185, 129, 0.1)',
   },
 
+  // Authentication
+  isAuthenticated: false,
+  currentUser: null,
+  userRole: null,
+  isAuthenticating: false,
+
   activePage: 'dashboard',
   sidebarCollapsed: false,
   companies: [],
@@ -31,6 +37,11 @@ export const useStore = create((set, get) => ({
   companySearch: '',
   companyStatusFilter: 'all',
   companyPlanFilter: 'all',
+
+  // Auth actions
+  setCurrentUser: (user, role) => set({ currentUser: user, userRole: role, isAuthenticated: true, isAuthenticating: false }),
+  logout: () => set({ currentUser: null, userRole: null, isAuthenticated: false, activePage: 'dashboard' }),
+  setIsAuthenticating: (authenticating) => set({ isAuthenticating: authenticating }),
 
   setBrand: (name, color) => set((state) => ({ brand: { ...state.brand, name, color } })),
   setActivePage: (activePage) => set({ activePage, selectedCompanyId: null }),

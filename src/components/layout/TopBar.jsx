@@ -1,10 +1,10 @@
 import React from 'react';
-import { Search, Bell, Menu } from 'lucide-react';
+import { Search, Bell, Menu, LogOut } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { getBrandInitials } from '../../lib/brand.js';
 
 export default function TopBar() {
-  const { brand, globalSearch, setGlobalSearch, alerts, setActivePage, toggleSidebar } = useStore();
+  const { brand, globalSearch, setGlobalSearch, alerts, setActivePage, toggleSidebar, currentUser, logout } = useStore();
   const initials = getBrandInitials(brand.name);
   const unreadAlerts = alerts.filter(a => !a.attended).length;
 
@@ -38,7 +38,7 @@ export default function TopBar() {
       </div>
 
       <div className="flex items-center gap-6 flex-1 justify-end">
-        <button 
+        <button
           className="relative p-2 text-zinc-400 hover:text-zinc-100 transition-colors rounded-full"
           onClick={() => setActivePage('activity')}
         >
@@ -48,10 +48,17 @@ export default function TopBar() {
             </span>
           )}
         </button>
-        
-        <div className="flex items-center gap-3 bg-zinc-900 py-1.5 px-3 rounded-full border border-zinc-800">
+
+        <div className="flex items-center gap-2 bg-zinc-900 py-1.5 px-3 rounded-full border border-zinc-800">
           <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500"></div>
-          <span className="text-xs font-semibold text-zinc-300">Administrador</span>
+          <span className="text-xs font-semibold text-zinc-300">{currentUser?.name || 'Administrador'}</span>
+          <button
+            onClick={logout}
+            className="ml-2 p-1 text-zinc-400 hover:text-red-400 transition-colors"
+            title="Cerrar sesión"
+          >
+            <LogOut size={14} />
+          </button>
         </div>
       </div>
     </header>
