@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, CheckCircle, XCircle, X, Copy } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, X, Copy, Loader } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchInvoicesByCompany, fetchInvoiceDetails, approveInvoice, voidInvoice } from '../../lib/supabaseHelpers.js';
+import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Badge from '../ui/Badge.jsx';
 import { formatUSD } from '../../lib/format.js';
@@ -20,6 +20,8 @@ export default function InvoiceManagement() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [invoiceDetails, setInvoiceDetails] = useState([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [submittingId, setSubmittingId] = useState(null);
+  const [sriEnvironment, setSriEnvironment] = useState(null);
 
   const loadInvoices = async () => {
     try {
@@ -34,7 +36,10 @@ export default function InvoiceManagement() {
   };
 
   useEffect(() => {
-    if (currentUser?.company_id) loadInvoices();
+    if (currentUser?.company_id) {
+      loadInvoices();
+      getBillingConfig(currentUser.company_id).then(cfg => setSriEnvironment(cfg.environment)).catch(() => {});
+    }
   }, [currentUser?.company_id]);
 
   const openInvoiceDetail = async (invoice) => {
@@ -51,17 +56,23 @@ export default function InvoiceManagement() {
   };
 
   const handleApprove = (invoice) => {
+    const envLabel = sriEnvironment === 'production' ? 'PRODUCCIÓN (real)' : 'PRUEBAS';
     openConfirm(
-      'Aprobar factura',
-      `¿Confirmas la aprobación de la factura ${invoice.invoice_number}? Esta acción autoriza el comprobante ante el SRI con la clave de acceso generada.`,
+      'Aprobar y enviar al SRI',
+      `¿Confirmas enviar la factura ${invoice.invoice_number} al SRI en ambiente de ${envLabel}? El comprobante se firmará con el certificado cargado y se enviará al webservice real del SRI. Puede tardar varios segundos.`,
       async () => {
+        setSubmittingId(invoice.id);
         try {
-          await approveInvoice(invoice.id);
-          showToast('success', `Factura ${invoice.invoice_number} autorizada`);
+          await submitInvoiceToSRI(invoice.id, currentUser.company_id, currentUser.id);
+          showToast('success', `Factura ${invoice.invoice_number} autorizada por el SRI`);
           await loadInvoices();
           setSelectedInvoice(null);
         } catch (error) {
-          showToast('error', error.message || 'Error al aprobar la factura');
+          console.error('SRI submission error:', error);
+          showToast('error', error.message || 'Error al enviar la factura al SRI');
+          await loadInvoices();
+        } finally {
+          setSubmittingId(null);
         }
       }
     );
@@ -91,7 +102,18 @@ export default function InvoiceManagement() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <h1 className="text-4xl font-bold text-zinc-100">Gestión de Facturas</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-4xl font-bold text-zinc-100">Gestión de Facturas</h1>
+        {sriEnvironment && (
+          <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
+            sriEnvironment === 'production'
+              ? 'bg-red-500/10 text-red-400 border-red-500/30'
+              : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+          }`}>
+            SRI: {sriEnvironment === 'production' ? 'Producción (real)' : 'Pruebas'}
+          </span>
+        )}
+      </div>
 
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
         {loading ? (
@@ -113,20 +135,26 @@ export default function InvoiceManagement() {
                 <td className="px-4 py-3"><Badge status={STATUS_LABELS[inv.status] || inv.status} /></td>
                 <td className="px-4 py-3">
                   {inv.status === 'borrador' && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleApprove(inv); }}
-                        className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                      >
-                        <CheckCircle size={14} /> Aprobar
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleVoid(inv); }}
-                        className="text-xs font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
-                      >
-                        <XCircle size={14} /> Anular
-                      </button>
-                    </div>
+                    submittingId === inv.id ? (
+                      <div className="text-xs font-bold text-zinc-400 flex items-center gap-1">
+                        <Loader size={14} className="animate-spin" /> Enviando al SRI...
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleApprove(inv); }}
+                          className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                        >
+                          <CheckCircle size={14} /> Aprobar
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleVoid(inv); }}
+                          className="text-xs font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
+                        >
+                          <XCircle size={14} /> Anular
+                        </button>
+                      </div>
+                    )
                   )}
                 </td>
               </tr>
@@ -175,6 +203,13 @@ export default function InvoiceManagement() {
                   {selectedInvoice.authorization_number || 'No generada'}
                 </div>
               </div>
+
+              {selectedInvoice.status === 'devuelta' && selectedInvoice.sri_response_message && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+                  <div className="text-xs font-bold text-red-400 mb-1">Respuesta del SRI (rechazo)</div>
+                  <div className="text-xs text-red-300 break-all whitespace-pre-wrap">{selectedInvoice.sri_response_message}</div>
+                </div>
+              )}
 
               {/* Customer Info */}
               <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
@@ -239,15 +274,21 @@ export default function InvoiceManagement() {
                 <div className="flex gap-3 pt-4 border-t border-zinc-800">
                   <button
                     onClick={() => handleVoid(selectedInvoice)}
-                    className="flex-1 bg-zinc-800 hover:bg-red-900/30 text-red-400 font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    disabled={submittingId === selectedInvoice.id}
+                    className="flex-1 bg-zinc-800 hover:bg-red-900/30 disabled:opacity-50 text-red-400 font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <XCircle size={18} /> Anular
                   </button>
                   <button
                     onClick={() => handleApprove(selectedInvoice)}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    disabled={submittingId === selectedInvoice.id}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
-                    <CheckCircle size={18} /> Aprobar Factura
+                    {submittingId === selectedInvoice.id ? (
+                      <><Loader size={18} className="animate-spin" /> Enviando al SRI...</>
+                    ) : (
+                      <><CheckCircle size={18} /> Aprobar y Enviar al SRI</>
+                    )}
                   </button>
                 </div>
               )}

@@ -579,6 +579,24 @@ export async function voidInvoice(invoiceId, reason) {
   }
 }
 
+export async function submitInvoiceToSRI(invoiceId, companyId, userId) {
+  const response = await fetch('/api/sri/submit-invoice', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invoiceId, companyId, userId })
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    const error = new Error(result.error || 'Error al enviar la factura al SRI');
+    error.detail = result.detail;
+    throw error;
+  }
+
+  return result;
+}
+
 export async function getNextInvoiceSequential(companyId) {
   try {
     // Read current sequential counter from billing config
@@ -704,7 +722,9 @@ export async function getBillingConfig(companyId) {
         sriTestMode: true,
         currentSequential: 1,
         accountingRegime: 'general',
-        taxRate: 12.00
+        taxRate: 12.00,
+        certStoragePath: null,
+        certUploadedAt: null
       };
     }
 
@@ -712,8 +732,6 @@ export async function getBillingConfig(companyId) {
       establishment: data.establishment,
       pointOfSale: data.point_of_sale,
       environment: data.sri_environment,
-      sriUsername: data.sri_username,
-      sriPassword: data.sri_password_encrypted,
       sriTestMode: data.sri_test_mode,
       currentSequential: data.current_sequential,
       accountingRegime: data.accounting_regime,
@@ -722,10 +740,56 @@ export async function getBillingConfig(companyId) {
       autoSendSRI: data.auto_send_sri,
       phone: data.store_phone,
       email: data.store_email,
-      address: data.store_address
+      address: data.store_address,
+      certStoragePath: data.cert_storage_path,
+      certUploadedAt: data.cert_uploaded_at
     };
   } catch (error) {
     throw new Error(`Error getting billing config: ${error.message}`);
+  }
+}
+
+export async function uploadSriCertificate(companyId, file, certPassword) {
+  try {
+    if (!file || !certPassword) {
+      throw new Error('Archivo de certificado y contraseña son requeridos');
+    }
+
+    const { data: existing, error: findError } = await supabase
+      .from('billing_configs')
+      .select('id')
+      .eq('company_id', companyId)
+      .single();
+
+    if (findError && findError.code !== 'PGRST116') throw new Error(findError.message);
+    if (!existing) {
+      throw new Error('Guarda la configuración de facturación antes de subir el certificado');
+    }
+
+    const storagePath = `${companyId}/certificado.p12`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('sri-certificates')
+      .upload(storagePath, file, { upsert: true });
+
+    if (uploadError) throw new Error(uploadError.message);
+
+    const uploadedAt = new Date().toISOString();
+
+    const { error: updateError } = await supabase
+      .from('billing_configs')
+      .update({
+        cert_storage_path: storagePath,
+        cert_password: certPassword,
+        cert_uploaded_at: uploadedAt
+      })
+      .eq('company_id', companyId);
+
+    if (updateError) throw new Error(updateError.message);
+
+    return { certStoragePath: storagePath, certUploadedAt: uploadedAt };
+  } catch (error) {
+    throw new Error(`Error uploading certificate: ${error.message}`);
   }
 }
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Save, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { FileText, Save, AlertCircle, CheckCircle, Loader, Upload, ShieldCheck } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { saveBillingConfig, getBillingConfig, getPaymentMethods, fetchCompanyById } from '../../lib/supabaseHelpers.js';
+import { saveBillingConfig, getBillingConfig, getPaymentMethods, fetchCompanyById, uploadSriCertificate } from '../../lib/supabaseHelpers.js';
 import { validateRUC } from '../../lib/invoiceUtils.js';
 
 export default function BillingConfiguration() {
@@ -16,8 +16,6 @@ export default function BillingConfiguration() {
     establishment: '001',
     pointOfSale: '001',
     environment: 'production',
-    sriUsername: '',
-    sriPassword: '',
     sriTestMode: true,
     currentSequential: 1,
     accountingRegime: 'general',
@@ -30,8 +28,14 @@ export default function BillingConfiguration() {
     ruc: '',
     razonSocial: '',
     nombreComercial: '',
-    llevaContabilidad: false
+    llevaContabilidad: false,
+    certStoragePath: null,
+    certUploadedAt: null
   });
+
+  const [certFile, setCertFile] = useState(null);
+  const [certPassword, setCertPassword] = useState('');
+  const [uploadingCert, setUploadingCert] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -58,14 +62,14 @@ export default function BillingConfiguration() {
           establishment: billingConfig.establishment || '001',
           pointOfSale: billingConfig.pointOfSale || '001',
           environment: billingConfig.environment || 'production',
-          sriUsername: billingConfig.sriUsername || '',
-          sriPassword: billingConfig.sriPassword || '',
           sriTestMode: billingConfig.sriTestMode !== false,
           currentSequential: billingConfig.currentSequential || 1,
           accountingRegime: billingConfig.accountingRegime || 'general',
           taxRate: billingConfig.taxRate || 12.00,
           receiptFooterText: billingConfig.receiptFooterText || '',
-          autoSendSRI: billingConfig.autoSendSRI || false
+          autoSendSRI: billingConfig.autoSendSRI || false,
+          certStoragePath: billingConfig.certStoragePath || null,
+          certUploadedAt: billingConfig.certUploadedAt || null
         });
 
         // Load payment methods
@@ -113,14 +117,6 @@ export default function BillingConfiguration() {
         return;
       }
 
-      // Si es en ambiente de producción y usa SRI, validar credenciales
-      if (config.environment === 'production' && config.autoSendSRI) {
-        if (!config.sriUsername || !config.sriPassword) {
-          showToast('error', 'Usuario y contraseña del SRI son requeridos para envío automático');
-          return;
-        }
-      }
-
       // Guardar en Supabase
       await saveBillingConfig(currentUser.company_id, config);
 
@@ -142,20 +138,45 @@ export default function BillingConfiguration() {
         establishment: updatedBillingConfig.establishment || '001',
         pointOfSale: updatedBillingConfig.pointOfSale || '001',
         environment: updatedBillingConfig.environment || 'production',
-        sriUsername: updatedBillingConfig.sriUsername || '',
-        sriPassword: updatedBillingConfig.sriPassword || '',
         sriTestMode: updatedBillingConfig.sriTestMode !== false,
         currentSequential: updatedBillingConfig.currentSequential || 1,
         accountingRegime: updatedBillingConfig.accountingRegime || 'general',
         taxRate: updatedBillingConfig.taxRate || 12.00,
         receiptFooterText: updatedBillingConfig.receiptFooterText || '',
-        autoSendSRI: updatedBillingConfig.autoSendSRI || false
+        autoSendSRI: updatedBillingConfig.autoSendSRI || false,
+        certStoragePath: updatedBillingConfig.certStoragePath || null,
+        certUploadedAt: updatedBillingConfig.certUploadedAt || null
       });
     } catch (error) {
       console.error('Error saving:', error);
       showToast('error', error.message || 'Error al guardar configuración');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleUploadCert = async () => {
+    if (!certFile) {
+      showToast('error', 'Selecciona el archivo .p12 del certificado');
+      return;
+    }
+    if (!certPassword) {
+      showToast('error', 'Ingresa la contraseña del certificado');
+      return;
+    }
+
+    try {
+      setUploadingCert(true);
+      const result = await uploadSriCertificate(currentUser.company_id, certFile, certPassword);
+      setConfig(prev => ({ ...prev, certStoragePath: result.certStoragePath, certUploadedAt: result.certUploadedAt }));
+      setCertFile(null);
+      setCertPassword('');
+      showToast('success', 'Certificado cargado correctamente');
+    } catch (error) {
+      console.error('Error uploading certificate:', error);
+      showToast('error', error.message || 'Error al subir el certificado');
+    } finally {
+      setUploadingCert(false);
     }
   };
 
@@ -371,48 +392,6 @@ export default function BillingConfiguration() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 pt-2">
-          <input
-            type="checkbox"
-            id="autoSendSRI"
-            checked={config.autoSendSRI}
-            onChange={(e) => setConfig({...config, autoSendSRI: e.target.checked})}
-            className="w-4 h-4 rounded"
-          />
-          <label htmlFor="autoSendSRI" className="text-sm text-zinc-300">
-            Enviar facturas automáticamente al SRI
-          </label>
-        </div>
-
-        {config.autoSendSRI && config.environment === 'production' && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded p-3 space-y-3">
-            <p className="text-xs text-amber-400 font-bold">⚠️ Requiere credenciales SRI para envío automático</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Usuario SRI *</label>
-                <input
-                  type="text"
-                  placeholder="RFC@empresa.com"
-                  value={config.sriUsername}
-                  onChange={(e) => setConfig({...config, sriUsername: e.target.value})}
-                  className="w-full bg-zinc-700 border border-zinc-600 rounded px-3 py-2 text-white placeholder-zinc-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Contraseña SRI *</label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={config.sriPassword}
-                  onChange={(e) => setConfig({...config, sriPassword: e.target.value})}
-                  className="w-full bg-zinc-700 border border-zinc-600 rounded px-3 py-2 text-white placeholder-zinc-500"
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
         <div>
           <label className="block text-xs font-bold text-zinc-400 mb-2">Pie de Recibo (Opcional)</label>
           <textarea
@@ -423,6 +402,64 @@ export default function BillingConfiguration() {
             className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
           />
         </div>
+      </div>
+
+      {/* Certificado de Firma Electrónica */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
+        <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+          <ShieldCheck size={24} className="text-emerald-500" />
+          Certificado de Firma Electrónica
+        </h2>
+        <p className="text-xs text-zinc-500">
+          Necesario para firmar y enviar facturas electrónicas reales al SRI. Debe ser un archivo .p12 emitido por una entidad certificadora autorizada (Banco Central, Security Data, ANF, etc.)
+        </p>
+
+        {config.certStoragePath ? (
+          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 flex items-center gap-3">
+            <CheckCircle className="text-emerald-400" size={20} />
+            <div>
+              <div className="text-sm font-bold text-emerald-300">Certificado cargado</div>
+              <div className="text-xs text-emerald-400">
+                {config.certUploadedAt ? new Date(config.certUploadedAt).toLocaleString() : ''}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+            <p className="text-xs text-amber-400 font-bold">⚠️ Aún no has cargado un certificado. No podrás enviar facturas reales al SRI hasta hacerlo.</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-zinc-400 mb-2">Archivo del certificado (.p12 / .pfx)</label>
+            <input
+              type="file"
+              accept=".p12,.pfx"
+              onChange={(e) => setCertFile(e.target.files?.[0] || null)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white text-sm file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-700 file:text-zinc-200 file:text-xs"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-zinc-400 mb-2">Contraseña del certificado</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={certPassword}
+              onChange={(e) => setCertPassword(e.target.value)}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={handleUploadCert}
+          disabled={uploadingCert || !certFile}
+          className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800/50 disabled:text-zinc-600 disabled:cursor-not-allowed text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+        >
+          <Upload size={16} />
+          {uploadingCert ? 'Subiendo...' : config.certStoragePath ? 'Reemplazar Certificado' : 'Subir Certificado'}
+        </button>
       </div>
 
       {/* Métodos de Pago */}
