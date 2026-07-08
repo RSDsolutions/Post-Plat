@@ -680,6 +680,10 @@ export async function saveBillingConfig(companyId, config) {
 
     let result;
 
+    // Exclude cert_password from the RETURNING columns - the client has no SELECT
+    // grant on it (bare .select() defaults to SELECT * and would fail entirely)
+    const returnColumns = 'id, company_id, establishment, point_of_sale, sri_environment, sri_test_mode, current_sequential, accounting_regime, tax_rate, receipt_footer_text, auto_send_sri, store_phone, store_email, store_address, cert_storage_path, cert_uploaded_at';
+
     // Step 3: Insert or update billing_configs
     if (existing) {
       // Update existing config
@@ -687,7 +691,7 @@ export async function saveBillingConfig(companyId, config) {
         .from('billing_configs')
         .update(configData)
         .eq('company_id', companyId)
-        .select()
+        .select(returnColumns)
         .single();
 
       if (error) throw new Error(error.message);
@@ -697,7 +701,7 @@ export async function saveBillingConfig(companyId, config) {
       const { data, error } = await supabase
         .from('billing_configs')
         .insert([configData])
-        .select()
+        .select(returnColumns)
         .single();
 
       if (error) throw new Error(error.message);
@@ -712,9 +716,12 @@ export async function saveBillingConfig(companyId, config) {
 
 export async function getBillingConfig(companyId) {
   try {
+    // Explicitly exclude cert_password - the client is not granted SELECT on that
+    // column (see billing_configs RLS/grants); only the server-side SRI submission
+    // function reads it, via the service role key which bypasses column privileges.
     const { data, error } = await supabase
       .from('billing_configs')
-      .select('*')
+      .select('id, company_id, establishment, point_of_sale, sri_environment, sri_test_mode, current_sequential, accounting_regime, tax_rate, receipt_footer_text, auto_send_sri, store_phone, store_email, store_address, cert_storage_path, cert_uploaded_at')
       .eq('company_id', companyId)
       .single();
 

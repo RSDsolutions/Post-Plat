@@ -153,6 +153,12 @@ export default async function handler(req, res) {
     const [estab, ptoEmi, secuencialStr] = invoice.invoice_number.split('-');
 
     const detalles = details.map(d => {
+      // d.subtotal is already net of discount (computed at sale time as
+      // unitPrice*quantity - discount); SRI's schema expects the gross amount
+      // and the discount reported separately, with
+      // precioTotalSinImpuesto = (cantidad*precioUnitario) - descuento
+      const grossAmount = parseFloat(d.unit_price) * parseFloat(d.quantity);
+      const discountAmount = (grossAmount * (parseFloat(d.discount_percent) || 0) / 100).toFixed(2);
       const baseImponible = parseFloat(d.subtotal).toFixed(2);
       const valorImpuesto = parseFloat(d.tax_amount).toFixed(2);
       return {
@@ -161,7 +167,7 @@ export default async function handler(req, res) {
         descripcion: d.product_name,
         cantidad: String(d.quantity),
         precioUnitario: parseFloat(d.unit_price).toFixed(2),
-        descuento: '0.00',
+        descuento: discountAmount,
         precioTotalSinImpuesto: baseImponible,
         impuestos: {
           impuesto: [{
