@@ -32,8 +32,8 @@ export default function Login() {
       // Update last login timestamp
       await updateAdminLastLogin(email);
 
-      // Determine role: admin if company_id is null, otherwise vendedor
-      const role = user.company_id ? 'vendedor' : 'admin';
+      // Determine role: use the actual role from the database
+      const role = user.role || (user.company_id ? 'vendedor' : 'admin');
 
       // Successful login
       setCurrentUser(user, role);
@@ -59,7 +59,7 @@ export default function Login() {
       const user = await validateAdminCredentials(credentials.email, credentials.password);
       await updateAdminLastLogin(credentials.email);
 
-      const role = user.company_id ? 'vendedor' : 'admin';
+      const role = user.role || (user.company_id ? 'vendedor' : 'admin');
       setCurrentUser(user, role);
 
       showToast('success', `¡Demo - Bienvenido ${user.name}!`);
