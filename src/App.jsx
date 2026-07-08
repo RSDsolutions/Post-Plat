@@ -3,6 +3,7 @@ import { useStore } from './store/useStore.js';
 import { fetchCompanies, fetchPlans, fetchActivityLog } from './lib/supabaseHelpers.js';
 import { applyBrandColors } from './lib/brand.js';
 import Layout from './components/layout/Layout.jsx';
+import StoreLayout from './components/layout/StoreLayout.jsx';
 import Login from './components/pages/Login.jsx';
 
 const transformCompany = (dbCompany) => ({
@@ -55,6 +56,7 @@ const transformPlan = (dbPlan) => ({
 
 export default function App() {
   const isAuthenticated = useStore(state => state.isAuthenticated);
+  const userRole = useStore(state => state.userRole);
   const initData = useStore(state => state.initData);
   const brand = useStore(state => state.brand);
   const restoreAuth = useStore(state => state.restoreAuth);
@@ -93,5 +95,6 @@ export default function App() {
     return <Login />;
   }
 
-  return <Layout />;
+  // Show StoreLayout for store/vendedor users, AdminLayout for admin
+  return userRole === 'vendedor' ? <StoreLayout /> : <Layout />;
 }
