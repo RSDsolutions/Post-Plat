@@ -5,7 +5,7 @@ import {
   PauseCircle, Printer, X, Tag, Loader2, UserCheck
 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential, fetchCompanyById, findOrCreateCustomer, findCustomerByIdentification } from '../../lib/supabaseHelpers.js';
+import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential, fetchCompanyById, findOrCreateCustomer, findCustomerByIdentification, updateCustomer } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
 import { generateAccessKey } from '../../lib/invoiceUtils.js';
 import { generateSaleReceipt } from '../../lib/receiptGenerator.js';
@@ -43,6 +43,11 @@ export default function POSInterface() {
   const [invoiceType, setInvoiceType] = useState(null); // 'final' o 'factura'
   const [invoiceData, setInvoiceData] = useState(EMPTY_INVOICE_DATA);
   const [customerLookupStatus, setCustomerLookupStatus] = useState('idle'); // idle | checking | found | new
+  const [foundCustomer, setFoundCustomer] = useState(null);
+  const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
+  const [newCustomerForm, setNewCustomerForm] = useState({ name: '', email: '', phone: '', address: '' });
+  const [showEditCustomerModal, setShowEditCustomerModal] = useState(false);
+  const [editCustomerForm, setEditCustomerForm] = useState({ name: '', email: '', phone: '', address: '' });
   const [heldSales, setHeldSales] = useState([]);
   const [showHeldSales, setShowHeldSales] = useState(false);
   const [lastCompletedSale, setLastCompletedSale] = useState(null);
@@ -185,6 +190,12 @@ export default function POSInterface() {
   const change = Math.max(0, cashReceivedNum - total);
   const cashInsufficient = paymentMethod === 'cash' && cashReceivedNum < total;
 
+  // Customer being invoiced: an existing record (read-only, edited only via
+  // "Editar Cliente") or the data just entered in the new-customer modal.
+  const customerDisplay = customerLookupStatus === 'found' && foundCustomer
+    ? foundCustomer
+    : { name: invoiceData.razonSocial, email: invoiceData.email, phone: invoiceData.phone, address: invoiceData.address };
+
   const quickCashAmounts = useMemo(() => {
     if (total <= 0) return [];
     const amounts = new Set([Math.ceil(total * 100) / 100]);
@@ -231,6 +242,8 @@ export default function POSInterface() {
     setShowInvoiceType(false);
     setShowHeldSales(false);
     setShowReceiptModal(false);
+    setShowNewCustomerModal(false);
+    setShowEditCustomerModal(false);
   };
 
   // Keyboard shortcuts: F2 search, F4 checkout, Esc close modals
@@ -272,40 +285,38 @@ export default function POSInterface() {
     } else {
       setInvoiceData(EMPTY_INVOICE_DATA);
       setCustomerLookupStatus('idle');
+      setFoundCustomer(null);
     }
   };
 
   // Looks up an existing customer as soon as the RUC/Cédula reaches its full
-  // length: if found, auto-fills their saved data instead of making the
-  // cashier retype it on every visit; if not, leaves the fields empty so a
-  // new customer record gets created at checkout (findOrCreateCustomer).
+  // length. Found -> shown read-only (edited only via "Editar Cliente", which
+  // updates the saved record). Not found -> opens a dedicated registration
+  // modal instead of leaving editable fields inline, so it's unambiguous
+  // whether you're looking at a saved customer or entering a new one.
   const handleIdentificationChange = async (value) => {
     const digitsOnly = value.replace(/\D/g, '');
     const expectedLength = invoiceData.identificationType === 'ruc' ? 13 : 10;
 
+    setInvoiceData(prev => ({ ...prev, identification: digitsOnly, razonSocial: '', email: '', phone: '', address: '' }));
+    setFoundCustomer(null);
+
     if (digitsOnly.length < expectedLength) {
-      setInvoiceData(prev => ({ ...prev, identification: digitsOnly }));
       setCustomerLookupStatus('idle');
       return;
     }
 
-    setInvoiceData(prev => ({ ...prev, identification: digitsOnly }));
     setCustomerLookupStatus('checking');
 
     try {
       const existing = await findCustomerByIdentification(currentUser.company_id, digitsOnly);
       if (existing) {
-        setInvoiceData(prev => ({
-          ...prev,
-          identification: digitsOnly,
-          razonSocial: existing.name || '',
-          email: existing.email || '',
-          phone: existing.phone || '',
-          address: existing.address || ''
-        }));
+        setFoundCustomer(existing);
         setCustomerLookupStatus('found');
       } else {
         setCustomerLookupStatus('new');
+        setNewCustomerForm({ name: '', email: '', phone: '', address: '' });
+        setShowNewCustomerModal(true);
       }
     } catch (error) {
       console.error('Error looking up customer:', error);
@@ -313,10 +324,61 @@ export default function POSInterface() {
     }
   };
 
+  const handleSaveNewCustomer = () => {
+    if (!newCustomerForm.name) {
+      showToast('error', 'El nombre del cliente es requerido');
+      return;
+    }
+    setInvoiceData(prev => ({
+      ...prev,
+      razonSocial: newCustomerForm.name,
+      email: newCustomerForm.email,
+      phone: newCustomerForm.phone,
+      address: newCustomerForm.address
+    }));
+    setShowNewCustomerModal(false);
+  };
+
+  const handleOpenEditCustomer = () => {
+    if (!foundCustomer) return;
+    setEditCustomerForm({
+      name: foundCustomer.name || '',
+      email: foundCustomer.email || '',
+      phone: foundCustomer.phone || '',
+      address: foundCustomer.address || ''
+    });
+    setShowEditCustomerModal(true);
+  };
+
+  const handleSaveEditCustomer = async () => {
+    if (!editCustomerForm.name) {
+      showToast('error', 'El nombre del cliente es requerido');
+      return;
+    }
+    try {
+      const updated = await updateCustomer(foundCustomer.id, editCustomerForm);
+      setFoundCustomer(updated);
+      setShowEditCustomerModal(false);
+      showToast('success', 'Cliente actualizado');
+    } catch (error) {
+      console.error('Error updating customer:', error);
+      showToast('error', error.message || 'Error al actualizar cliente');
+    }
+  };
+
   const handleConfirmInvoiceData = () => {
-    if (!invoiceData.identification || !invoiceData.razonSocial) {
-      const idType = invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula';
-      showToast('error', `${idType} y Razón Social son requeridos`);
+    const idType = invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula';
+    if (!invoiceData.identification) {
+      showToast('error', `${idType} es requerido`);
+      return;
+    }
+    if (customerLookupStatus === 'new' && !invoiceData.razonSocial) {
+      showToast('error', 'Registra los datos del cliente para continuar');
+      setShowNewCustomerModal(true);
+      return;
+    }
+    if (customerLookupStatus !== 'found' && customerLookupStatus !== 'new') {
+      showToast('error', `Ingresa un ${idType} válido`);
       return;
     }
     setShowInvoiceType(false);
@@ -352,15 +414,23 @@ export default function POSInterface() {
       });
 
       let customerId = null;
+      let customerName = null;
       if (invoiceType === 'factura') {
-        customerId = await findOrCreateCustomer(currentUser.company_id, {
-          identification_type: invoiceData.identificationType,
-          identification_number: invoiceData.identification,
-          name: invoiceData.razonSocial,
-          email: invoiceData.email,
-          phone: invoiceData.phone,
-          address: invoiceData.address
-        });
+        if (customerLookupStatus === 'found' && foundCustomer) {
+          // Already have the id from the lookup - no need to search again
+          customerId = foundCustomer.id;
+          customerName = foundCustomer.name;
+        } else {
+          customerName = invoiceData.razonSocial;
+          customerId = await findOrCreateCustomer(currentUser.company_id, {
+            identification_type: invoiceData.identificationType,
+            identification_number: invoiceData.identification,
+            name: invoiceData.razonSocial,
+            email: invoiceData.email,
+            phone: invoiceData.phone,
+            address: invoiceData.address
+          });
+        }
       }
 
       const invoice = await createInvoice({
@@ -376,7 +446,7 @@ export default function POSInterface() {
         payment_method: paymentMethod,
         customer_id: customerId,
         notes: invoiceType === 'factura'
-          ? `Cliente: ${invoiceData.razonSocial} | ${invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}: ${invoiceData.identification}`
+          ? `Cliente: ${customerName} | ${invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}: ${invoiceData.identification}`
           : 'Consumidor Final'
       });
 
@@ -414,7 +484,7 @@ export default function POSInterface() {
       setLastCompletedSale({
         invoiceNumber,
         invoiceType,
-        customerName: invoiceType === 'factura' ? invoiceData.razonSocial : null,
+        customerName: invoiceType === 'factura' ? customerName : null,
         items: receiptItems,
         subtotal,
         discount,
@@ -436,6 +506,7 @@ export default function POSInterface() {
         clearCart();
         setInvoiceData(EMPTY_INVOICE_DATA);
         setCustomerLookupStatus('idle');
+        setFoundCustomer(null);
         setInvoiceType(null);
         setPaymentMethod('cash');
         setCashReceived('');
@@ -917,16 +988,16 @@ export default function POSInterface() {
                     <div className="text-xs font-bold text-zinc-500">
                       {invoiceData.identificationType === 'ruc' ? 'Razón Social' : 'Nombre'}
                     </div>
-                    <div className="text-sm text-zinc-200">{invoiceData.razonSocial}</div>
+                    <div className="text-sm text-zinc-200">{customerDisplay.name}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <div className="text-xs font-bold text-zinc-500">Email</div>
-                      <div className="text-xs text-zinc-300">{invoiceData.email || '-'}</div>
+                      <div className="text-xs text-zinc-300">{customerDisplay.email || '-'}</div>
                     </div>
                     <div>
                       <div className="text-xs font-bold text-zinc-500">Teléfono</div>
-                      <div className="text-xs text-zinc-300">{invoiceData.phone || '-'}</div>
+                      <div className="text-xs text-zinc-300">{customerDisplay.phone || '-'}</div>
                     </div>
                   </div>
                 </div>
@@ -938,7 +1009,7 @@ export default function POSInterface() {
                   <CheckCircle size={40} className="text-emerald-400 mx-auto mb-3" />
                   <div className="text-base sm:text-lg text-emerald-100 mb-1 font-bold">¡Venta completada!</div>
                   <div className="text-xs sm:text-sm text-emerald-300 mb-4">
-                    {invoiceType === 'final' ? 'Consumidor Final' : invoiceData.razonSocial}
+                    {invoiceType === 'final' ? 'Consumidor Final' : customerDisplay.name}
                   </div>
                   <div className="bg-emerald-950/50 rounded p-3">
                     <div className="text-xs text-emerald-400 mb-1">Número de Factura</div>
@@ -1060,51 +1131,28 @@ export default function POSInterface() {
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Razón Social / Nombre *</label>
-                  <input
-                    type="text"
-                    placeholder={invoiceData.identificationType === 'ruc' ? 'Nombre de la empresa' : 'Nombre completo'}
-                    value={invoiceData.razonSocial}
-                    onChange={(e) => setInvoiceData({...invoiceData, razonSocial: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Email</label>
-                    <input
-                      type="email"
-                      placeholder="empresa@example.com"
-                      value={invoiceData.email}
-                      onChange={(e) => setInvoiceData({...invoiceData, email: e.target.value})}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
-                    />
+                {/* Read-only customer summary: found customers are only editable via
+                    "Editar Cliente" (updates the saved record); newly registered
+                    customers can be corrected by reopening the registration modal. */}
+                {(customerLookupStatus === 'found' || (customerLookupStatus === 'new' && invoiceData.razonSocial)) && (
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Datos del Cliente</span>
+                      <button
+                        onClick={customerLookupStatus === 'found' ? handleOpenEditCustomer : () => setShowNewCustomerModal(true)}
+                        className="text-xs font-bold text-blue-400 hover:text-blue-300"
+                      >
+                        Editar Cliente
+                      </button>
+                    </div>
+                    <div className="text-sm font-bold text-zinc-100">{customerDisplay.name}</div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-zinc-400">
+                      <div>{customerDisplay.email || 'Sin email'}</div>
+                      <div>{customerDisplay.phone || 'Sin teléfono'}</div>
+                    </div>
+                    {customerDisplay.address && <div className="text-xs text-zinc-400">{customerDisplay.address}</div>}
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono</label>
-                    <input
-                      type="tel"
-                      placeholder="+593..."
-                      value={invoiceData.phone}
-                      onChange={(e) => setInvoiceData({...invoiceData, phone: e.target.value})}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Dirección</label>
-                  <input
-                    type="text"
-                    placeholder="Calle principal 123"
-                    value={invoiceData.address}
-                    onChange={(e) => setInvoiceData({...invoiceData, address: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
-                  />
-                </div>
+                )}
 
                 <div className="flex gap-3 pt-4">
                   <button
@@ -1115,13 +1163,175 @@ export default function POSInterface() {
                   </button>
                   <button
                     onClick={handleConfirmInvoiceData}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors"
+                    disabled={customerLookupStatus !== 'found' && !(customerLookupStatus === 'new' && invoiceData.razonSocial)}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white font-bold py-2 rounded-lg transition-colors"
                   >
                     Continuar
                   </button>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Register New Customer Modal */}
+      {showNewCustomerModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <User size={22} className="text-blue-400" />
+                Registrar Cliente
+              </h3>
+              <button onClick={() => setShowNewCustomerModal(false)} className="text-zinc-500 hover:text-zinc-300">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
+              <p className="text-xs text-blue-300">
+                No se encontró un cliente con {invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}{' '}
+                <span className="font-mono font-bold">{invoiceData.identification}</span>. Regístralo para continuar.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-zinc-400 mb-2">
+                  {invoiceData.identificationType === 'ruc' ? 'Razón Social' : 'Nombre'} *
+                </label>
+                <input
+                  type="text"
+                  placeholder={invoiceData.identificationType === 'ruc' ? 'Nombre de la empresa' : 'Nombre completo'}
+                  value={newCustomerForm.name}
+                  onChange={(e) => setNewCustomerForm({...newCustomerForm, name: e.target.value})}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Email</label>
+                  <input
+                    type="email"
+                    placeholder="cliente@example.com"
+                    value={newCustomerForm.email}
+                    onChange={(e) => setNewCustomerForm({...newCustomerForm, email: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono</label>
+                  <input
+                    type="tel"
+                    placeholder="+593..."
+                    value={newCustomerForm.phone}
+                    onChange={(e) => setNewCustomerForm({...newCustomerForm, phone: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-400 mb-2">Dirección</label>
+                <input
+                  type="text"
+                  placeholder="Calle principal 123"
+                  value={newCustomerForm.address}
+                  onChange={(e) => setNewCustomerForm({...newCustomerForm, address: e.target.value})}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-5">
+              <button
+                onClick={() => { setShowNewCustomerModal(false); setShowInvoiceType(false); setInvoiceType(null); }}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveNewCustomer}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Existing Customer Modal */}
+      {showEditCustomerModal && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <UserCheck size={22} className="text-blue-400" />
+                Editar Cliente
+              </h3>
+              <button onClick={() => setShowEditCustomerModal(false)} className="text-zinc-500 hover:text-zinc-300">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-zinc-400 mb-2">Nombre *</label>
+                <input
+                  type="text"
+                  value={editCustomerForm.name}
+                  onChange={(e) => setEditCustomerForm({...editCustomerForm, name: e.target.value})}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Email</label>
+                  <input
+                    type="email"
+                    value={editCustomerForm.email}
+                    onChange={(e) => setEditCustomerForm({...editCustomerForm, email: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono</label>
+                  <input
+                    type="tel"
+                    value={editCustomerForm.phone}
+                    onChange={(e) => setEditCustomerForm({...editCustomerForm, phone: e.target.value})}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-zinc-400 mb-2">Dirección</label>
+                <input
+                  type="text"
+                  value={editCustomerForm.address}
+                  onChange={(e) => setEditCustomerForm({...editCustomerForm, address: e.target.value})}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-5">
+              <button
+                onClick={() => setShowEditCustomerModal(false)}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveEditCustomer}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors"
+              >
+                Guardar Cambios
+              </button>
+            </div>
           </div>
         </div>
       )}

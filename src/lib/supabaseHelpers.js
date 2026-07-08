@@ -442,6 +442,27 @@ export async function findOrCreateCustomer(companyId, customerData) {
   }
 }
 
+export async function updateCustomer(customerId, customerData) {
+  try {
+    const { data, error } = await supabase
+      .from('customers')
+      .update({
+        name: customerData.name,
+        email: customerData.email || null,
+        phone: customerData.phone || null,
+        address: customerData.address || null
+      })
+      .eq('id', customerId)
+      .select('id, identification_type, identification_number, name, email, phone, address')
+      .single();
+
+    if (error) throw new Error(error.message);
+    return data;
+  } catch (error) {
+    throw new Error(`Error updating customer: ${error.message}`);
+  }
+}
+
 // Invoices & Billing
 export async function createInvoice(invoiceData) {
   try {
