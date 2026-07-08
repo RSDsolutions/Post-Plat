@@ -2,61 +2,36 @@ import React from 'react';
 import { X, CheckCircle, AlertTriangle, Info, XCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 
+const TOAST_STYLES = {
+  info: { Icon: Info, border: 'border-blue-500/30', icon: 'text-blue-400' },
+  success: { Icon: CheckCircle, border: 'border-emerald-500/30', icon: 'text-emerald-400' },
+  warning: { Icon: AlertTriangle, border: 'border-amber-500/30', icon: 'text-amber-400' },
+  error: { Icon: XCircle, border: 'border-red-500/30', icon: 'text-red-400' }
+};
+
 export default function Toast() {
   const { toasts, dismissToast } = useStore();
 
   if (!toasts.length) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col space-y-2 pointer-events-none">
+    <div className="fixed bottom-4 right-4 z-50 w-full max-w-sm flex flex-col gap-2 pointer-events-none">
       {toasts.map((toast) => {
-        let Icon = Info;
-        let bg = 'bg-blue-50';
-        let border = 'border-blue-200';
-        let text = 'text-blue-800';
-        let iconColor = 'text-blue-500';
-
-        if (toast.type === 'success') {
-          Icon = CheckCircle;
-          bg = 'bg-green-50';
-          border = 'border-green-200';
-          text = 'text-green-800';
-          iconColor = 'text-green-500';
-        } else if (toast.type === 'warning') {
-          Icon = AlertTriangle;
-          bg = 'bg-amber-50';
-          border = 'border-amber-200';
-          text = 'text-amber-800';
-          iconColor = 'text-amber-500';
-        } else if (toast.type === 'error') {
-          Icon = XCircle;
-          bg = 'bg-red-50';
-          border = 'border-red-200';
-          text = 'text-red-800';
-          iconColor = 'text-red-500';
-        }
+        const { Icon, border, icon } = TOAST_STYLES[toast.type] || TOAST_STYLES.info;
 
         return (
-          <div 
+          <div
             key={toast.id}
-            className={`pointer-events-auto flex w-full max-w-sm overflow-hidden bg-white rounded-lg shadow-lg border p-4 transition-transform duration-300 transform translate-y-0 opacity-100`}
+            className={`pointer-events-auto flex items-start gap-3 w-full bg-zinc-900 border ${border} rounded-xl shadow-lg p-4`}
           >
-            <div className="flex items-start w-full">
-              <div className="flex-shrink-0">
-                <Icon className={`h-5 w-5 ${iconColor}`} />
-              </div>
-              <div className="ml-3 w-0 flex-1 pt-0.5">
-                <p className="text-sm font-medium text-gray-900">{toast.message}</p>
-              </div>
-              <div className="ml-4 flex-shrink-0 flex">
-                <button
-                  className="bg-white rounded-md inline-flex text-gray-400 hover:text-gray-500 focus:outline-none"
-                  onClick={() => dismissToast(toast.id)}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
+            <Icon className={`${icon} flex-shrink-0`} size={20} />
+            <p className="flex-1 min-w-0 text-sm font-medium text-zinc-100 break-words">{toast.message}</p>
+            <button
+              onClick={() => dismissToast(toast.id)}
+              className="flex-shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              <X size={16} />
+            </button>
           </div>
         );
       })}
