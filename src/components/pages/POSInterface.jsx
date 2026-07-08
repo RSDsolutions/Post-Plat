@@ -16,6 +16,7 @@ export default function POSInterface() {
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [transactionID, setTransactionID] = useState(null);
   const [discountPercent, setDiscountPercent] = useState(0);
+  const [taxRate, setTaxRate] = useState(12);
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -24,6 +25,12 @@ export default function POSInterface() {
           filter: { column: 'company_id', value: currentUser.company_id }
         });
         setProducts(data || []);
+
+        // Load tax rate configured by store manager
+        const savedTaxRate = localStorage.getItem(`store_tax_${currentUser?.company_id}`);
+        if (savedTaxRate) {
+          setTaxRate(parseFloat(savedTaxRate));
+        }
       } catch (error) {
         console.error('Error loading products:', error);
         showToast('error', 'Error al cargar productos');
@@ -79,7 +86,7 @@ export default function POSInterface() {
   const subtotal = cart.reduce((sum, item) => sum + (item.sale_price * item.quantity), 0);
   const discount = subtotal * (discountPercent / 100);
   const taxableAmount = subtotal - discount;
-  const tax = taxableAmount * 0.12;
+  const tax = taxableAmount * (taxRate / 100);
   const total = taxableAmount + tax;
 
   const handleCheckout = () => {
@@ -272,7 +279,7 @@ export default function POSInterface() {
               </div>
             )}
             <div className="flex justify-between text-zinc-400">
-              <span>IVA (12%):</span>
+              <span>IVA ({taxRate}%):</span>
               <span>{formatUSD(tax)}</span>
             </div>
             <div className="border-t border-zinc-800 pt-2 flex justify-between font-bold text-lg text-emerald-400">
