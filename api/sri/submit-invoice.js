@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { signXml } from './xadesSign.js';
+import { generateAccessKey } from './accessKey.js';
 
 const SRI_URLS = {
   test: {
@@ -52,13 +53,13 @@ export default async function handler(req, res) {
   // signXml is our own local implementation (see xadesSign.js) - open-factura's version
   // uses `import * as forge from "node-forge"`, which under native Node.js ESM/CJS interop
   // leaves forge.util/forge.pki/etc. undefined (only works when bundled by esbuild/webpack).
-  let generateInvoice, generateInvoiceXml, documentReception, documentAuthorization;
+  let generateInvoiceXml, documentReception, documentAuthorization;
   try {
     // open-factura's "main" (CJS) entry does require('node-fetch'), but node-fetch v3
     // is ESM-only, which throws ERR_REQUIRE_ESM. Import the package's .mjs build directly
     // to bypass Node's CJS "main" resolution (Node ignores the "module" field).
     const openFactura = await import('open-factura/dist/index.mjs');
-    ({ generateInvoice, generateInvoiceXml, documentReception, documentAuthorization } = openFactura);
+    ({ generateInvoiceXml, documentReception, documentAuthorization } = openFactura);
   } catch (importError) {
     console.error('Failed to load open-factura:', importError);
     return res.status(500).json({
@@ -230,7 +231,29 @@ export default async function handler(req, res) {
       detalles: { detalle: detalles }
     };
 
-    const { invoice: builtInvoice, accessKey } = generateInvoice(invoiceInput);
+    // Generate the access key directly from the real Date object (not the dd/mm/yyyy
+    // string), see accessKey.js for why - avoids open-factura's date-transposition bug
+    const accessKey = generateAccessKey({
+      date: issueDate,
+      codDoc: invoiceInput.infoTributaria.codDoc,
+      ruc: invoiceInput.infoTributaria.ruc,
+      environment: invoiceInput.infoTributaria.ambiente,
+      establishment: invoiceInput.infoTributaria.estab,
+      emissionPoint: invoiceInput.infoTributaria.ptoEmi,
+      sequential: invoiceInput.infoTributaria.secuencial
+    });
+
+    const builtInvoice = {
+      factura: {
+        '@xmlns:ds': 'http://www.w3.org/2000/09/xmldsig#',
+        '@xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
+        '@id': 'comprobante',
+        '@version': '1.0.0',
+        infoTributaria: { ...invoiceInput.infoTributaria, claveAcceso: accessKey },
+        infoFactura: invoiceInput.infoFactura,
+        detalles: invoiceInput.detalles
+      }
+    };
     const xml = generateInvoiceXml(builtInvoice);
     const signedXml = await signXml(certArrayBuffer, billingConfig.cert_password, xml);
 
