@@ -581,16 +581,28 @@ export async function voidInvoice(invoiceId, reason) {
 
 export async function getNextInvoiceSequential(companyId) {
   try {
-    // Count invoices for this company to generate sequential number
-    const { data, error } = await supabase
-      .from('invoices')
-      .select('id', { count: 'exact', head: true })
-      .eq('company_id', companyId);
+    // Read current sequential counter from billing config
+    const { data: config, error: fetchError } = await supabase
+      .from('billing_configs')
+      .select('id, current_sequential')
+      .eq('company_id', companyId)
+      .single();
 
-    if (error && error.code !== 'PGRST116') throw new Error(error.message);
+    if (fetchError && fetchError.code !== 'PGRST116') throw new Error(fetchError.message);
 
-    const count = data ? data.length : 0;
-    return count + 1;
+    const sequential = config?.current_sequential || 1;
+
+    // Advance the counter for the next invoice
+    if (config) {
+      const { error: updateError } = await supabase
+        .from('billing_configs')
+        .update({ current_sequential: sequential + 1 })
+        .eq('company_id', companyId);
+
+      if (updateError) throw new Error(updateError.message);
+    }
+
+    return sequential;
   } catch (error) {
     throw new Error(`Error getting next sequential: ${error.message}`);
   }
