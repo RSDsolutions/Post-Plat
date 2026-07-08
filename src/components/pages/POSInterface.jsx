@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Minus, Trash2, LogOut, Clock, DollarSign, ShoppingCart } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, LogOut, Clock, DollarSign, ShoppingCart, Phone, Mail, CreditCard, Banknote, Send } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { fetchData } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
@@ -11,8 +11,11 @@ export default function POSInterface() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [customerEmail, setCustomerEmail] = useState('');
+  const [customerData, setCustomerData] = useState({ name: '', email: '', phone: '' });
   const [showPayment, setShowPayment] = useState(false);
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [transactionID, setTransactionID] = useState(null);
+  const [discountPercent, setDiscountPercent] = useState(0);
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -74,8 +77,10 @@ export default function POSInterface() {
   };
 
   const subtotal = cart.reduce((sum, item) => sum + (item.sale_price * item.quantity), 0);
-  const tax = subtotal * 0.12;
-  const total = subtotal + tax;
+  const discount = subtotal * (discountPercent / 100);
+  const taxableAmount = subtotal - discount;
+  const tax = taxableAmount * 0.12;
+  const total = taxableAmount + tax;
 
   const handleCheckout = () => {
     if (cart.length === 0) {
@@ -87,10 +92,19 @@ export default function POSInterface() {
 
   const completeSale = async () => {
     try {
-      showToast('success', 'Venta completada exitosamente');
-      setCart([]);
-      setCustomerEmail('');
-      setShowPayment(false);
+      const txId = `TX-${Date.now()}`;
+      setTransactionID(txId);
+
+      showToast('success', `Venta completada: ${txId}`);
+
+      setTimeout(() => {
+        setCart([]);
+        setCustomerData({ name: '', email: '', phone: '' });
+        setPaymentMethod('cash');
+        setDiscountPercent(0);
+        setShowPayment(false);
+        setTransactionID(null);
+      }, 2000);
     } catch (error) {
       showToast('error', 'Error al procesar la venta');
     }
@@ -104,12 +118,12 @@ export default function POSInterface() {
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-2xl font-bold">PUNTO DE VENTA</h1>
+              <h1 className="text-2xl font-bold">🏪 PUNTO DE VENTA</h1>
               <p className="text-blue-100 text-sm">{currentUser?.name}</p>
             </div>
             <button
               onClick={logout}
-              className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+              className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-bold"
             >
               <LogOut size={18} />
               Cerrar sesión
@@ -141,7 +155,7 @@ export default function POSInterface() {
                 <button
                   key={product.id}
                   onClick={() => addToCart(product)}
-                  className="bg-zinc-900 border border-zinc-800 hover:border-blue-500 rounded-xl p-3 transition-all hover:shadow-lg hover:shadow-blue-500/20 group"
+                  className="bg-zinc-900 border border-zinc-800 hover:border-blue-500 rounded-xl p-3 transition-all hover:shadow-lg hover:shadow-blue-500/20 group cursor-pointer"
                 >
                   <div className="mb-2">
                     <div className="text-sm font-bold text-zinc-100 line-clamp-2 group-hover:text-blue-400">
@@ -151,7 +165,9 @@ export default function POSInterface() {
                   </div>
                   <div className="space-y-1 border-t border-zinc-800 pt-2">
                     <div className="text-lg font-bold text-emerald-400">{formatUSD(product.sale_price)}</div>
-                    <div className="text-xs text-zinc-500">Stock: {product.quantity}</div>
+                    <div className={`text-xs font-bold ${product.quantity > 10 ? 'text-emerald-400' : product.quantity > 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                      Stock: {product.quantity}
+                    </div>
                   </div>
                 </button>
               ))}
@@ -169,7 +185,7 @@ export default function POSInterface() {
             <h2 className="text-xl font-bold">Carrito</h2>
           </div>
           <div className="text-sm text-emerald-100">
-            {cart.length} artículos
+            {cart.length} artículos | Total items: {cart.reduce((sum, item) => sum + item.quantity, 0)}
           </div>
         </div>
 
@@ -184,7 +200,7 @@ export default function POSInterface() {
             </div>
           ) : (
             cart.map(item => (
-              <div key={item.id} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3">
+              <div key={item.id} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 hover:border-emerald-500/30 transition-colors">
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <div className="font-bold text-zinc-100 text-sm">{item.name}</div>
@@ -197,7 +213,7 @@ export default function POSInterface() {
                     <Trash2 size={16} />
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-2">
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity - 1)}
                     className="bg-zinc-800 hover:bg-zinc-700 p-1 rounded text-zinc-300"
@@ -227,6 +243,21 @@ export default function POSInterface() {
           )}
         </div>
 
+        {/* Discount Section */}
+        {cart.length > 0 && (
+          <div className="border-t border-zinc-800 p-4 bg-zinc-950/50">
+            <label className="block text-xs font-bold text-zinc-400 mb-2">Descuento %</label>
+            <input
+              type="number"
+              value={discountPercent}
+              onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+              min="0"
+              max="100"
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white text-sm"
+            />
+          </div>
+        )}
+
         {/* Totals */}
         <div className="border-t border-zinc-800 p-4 space-y-3 bg-zinc-950/50">
           <div className="space-y-2 text-sm">
@@ -234,6 +265,12 @@ export default function POSInterface() {
               <span>Subtotal:</span>
               <span>{formatUSD(subtotal)}</span>
             </div>
+            {discountPercent > 0 && (
+              <div className="flex justify-between text-red-400">
+                <span>Descuento ({discountPercent}%):</span>
+                <span>-{formatUSD(discount)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-zinc-400">
               <span>IVA (12%):</span>
               <span>{formatUSD(tax)}</span>
@@ -258,60 +295,124 @@ export default function POSInterface() {
 
       {/* Payment Modal */}
       {showPayment && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full mx-4">
-            <h3 className="text-2xl font-bold text-white mb-6">Confirmar Pago</h3>
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-3xl font-bold text-white mb-6">Confirmar Pago</h3>
 
-            <div className="space-y-4 mb-6">
-              <div className="bg-zinc-950 p-4 rounded-xl border border-zinc-800">
-                <div className="text-sm text-zinc-500 mb-1">Total a cobrar</div>
-                <div className="text-4xl font-bold text-emerald-400">{formatUSD(total)}</div>
+            <div className="space-y-6">
+              {/* Total Display */}
+              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 p-6 rounded-xl border border-emerald-500">
+                <div className="text-sm text-emerald-100 mb-1">Total a cobrar</div>
+                <div className="text-5xl font-bold text-white">{formatUSD(total)}</div>
               </div>
 
+              {/* Payment Method */}
               <div>
-                <label className="block text-sm font-bold text-zinc-300 mb-2">Método de pago</label>
+                <label className="block text-sm font-bold text-zinc-300 mb-3">Método de Pago</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {['cash', 'card', 'transfer'].map(method => (
+                  {[
+                    { value: 'cash', label: 'Efectivo', icon: '💵' },
+                    { value: 'card', label: 'Tarjeta', icon: '💳' },
+                    { value: 'transfer', label: 'Transferencia', icon: '🏦' }
+                  ].map(method => (
                     <button
-                      key={method}
-                      onClick={() => setPaymentMethod(method)}
-                      className={`py-2 rounded-lg font-bold text-sm transition-colors ${
-                        paymentMethod === method
-                          ? 'bg-emerald-600 text-white'
+                      key={method.value}
+                      onClick={() => setPaymentMethod(method.value)}
+                      className={`py-3 rounded-lg font-bold text-sm transition-all ${
+                        paymentMethod === method.value
+                          ? 'bg-emerald-600 text-white shadow-lg'
                           : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
                       }`}
                     >
-                      {method === 'cash' ? 'Efectivo' : method === 'card' ? 'Tarjeta' : 'Transferencia'}
+                      {method.icon} {method.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-zinc-300 mb-2">Email del cliente (opcional)</label>
-                <input
-                  type="email"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  placeholder="cliente@email.com"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                />
-              </div>
-            </div>
+              {/* Customer Info */}
+              <div className="border-t border-zinc-800 pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="font-bold text-zinc-100">Datos del Cliente (Opcional)</h4>
+                  <button
+                    onClick={() => setShowCustomerForm(!showCustomerForm)}
+                    className="text-xs font-bold text-blue-400 hover:text-blue-300"
+                  >
+                    {showCustomerForm ? 'Ocultar' : 'Agregar'}
+                  </button>
+                </div>
 
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowPayment(false)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-lg transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={completeSale}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-colors"
-              >
-                Confirmar Pago
-              </button>
+                {showCustomerForm && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-400 mb-1">Nombre</label>
+                      <input
+                        type="text"
+                        value={customerData.name}
+                        onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
+                        placeholder="Nombre del cliente"
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-400 mb-1">
+                          <Mail size={14} className="inline mr-1" />
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={customerData.email}
+                          onChange={(e) => setCustomerData({...customerData, email: e.target.value})}
+                          placeholder="email@example.com"
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-zinc-400 mb-1">
+                          <Phone size={14} className="inline mr-1" />
+                          Teléfono
+                        </label>
+                        <input
+                          type="tel"
+                          value={customerData.phone}
+                          onChange={(e) => setCustomerData({...customerData, phone: e.target.value})}
+                          placeholder="+1234567890"
+                          className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Transaction ID Display */}
+              {transactionID && (
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
+                  <div className="text-sm text-emerald-100 mb-1">ID de Transacción</div>
+                  <div className="text-xl font-bold text-emerald-400 font-mono">{transactionID}</div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-zinc-800">
+                <button
+                  onClick={() => {
+                    setShowPayment(false);
+                    setShowCustomerForm(false);
+                  }}
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={completeSale}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <Send size={18} />
+                  Confirmar Pago
+                </button>
+              </div>
             </div>
           </div>
         </div>
