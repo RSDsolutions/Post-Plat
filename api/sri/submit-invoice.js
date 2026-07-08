@@ -50,7 +50,10 @@ export default async function handler(req, res) {
 
   let generateInvoice, generateInvoiceXml, signXml, documentReception, documentAuthorization;
   try {
-    const openFactura = await import('open-factura');
+    // open-factura's "main" (CJS) entry does require('node-fetch'), but node-fetch v3
+    // is ESM-only, which throws ERR_REQUIRE_ESM. Import the package's .mjs build directly
+    // to bypass Node's CJS "main" resolution (Node ignores the "module" field).
+    const openFactura = await import('open-factura/dist/index.mjs');
     ({ generateInvoice, generateInvoiceXml, signXml, documentReception, documentAuthorization } = openFactura);
   } catch (importError) {
     console.error('Failed to load open-factura:', importError);
