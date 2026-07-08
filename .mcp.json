@@ -1,12 +1,8 @@
 {
   "mcpServers": {
     "supabase": {
-      "command": "node",
-      "args": ["src/mcp-server.js"],
-      "env": {
-        "VITE_SUPABASE_URL": "https://mupqrcqwvvxubasnmron.supabase.co",
-        "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11cHFyY3F3dnZ4dWJhc25tcm9uIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MzM5NDI4MCwiZXhwIjoyMDk4OTcwMjgwfQ.k5EbWcHBrOcUBBS8MsYoUXDuSNhfe31jlo6PWcgZanE"
-      }
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=mupqrcqwvvxubasnmron&features=storage%2Cbranching%2Cfunctions%2Cdatabase%2Caccount%2Cdevelopment%2Cdebugging%2Cdocs"
     }
   }
 }
