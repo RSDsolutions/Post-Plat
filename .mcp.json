@@ -4,8 +4,8 @@
       "command": "node",
       "args": ["src/mcp-server.js"],
       "env": {
-        "VITE_SUPABASE_URL": "${VITE_SUPABASE_URL}",
-        "VITE_SUPABASE_ANON_KEY": "${VITE_SUPABASE_ANON_KEY}"
+        "VITE_SUPABASE_URL": "https://mupqrcqwvvxubasnmron.supabase.co",
+        "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im11cHFyY3F3dnZ4dWJhc25tcm9uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzOTQyODAsImV4cCI6MjA5ODk3MDI4MH0.ZY06KxK-vXqBDiH3_OQo_RAJ1uWPsHljY2KIc7YFkm0"
       }
     }
   }
