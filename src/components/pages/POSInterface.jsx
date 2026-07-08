@@ -1,51 +1,74 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Minus, Trash2, LogOut, DollarSign, ShoppingCart, Send } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import {
+  Search, Plus, Minus, Trash2, LogOut, ShoppingCart, Send, Store,
+  Banknote, CreditCard, Building2, User, FileText, CheckCircle,
+  PauseCircle, Printer, X, Tag
+} from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential, fetchCompanyById, findOrCreateCustomer } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
 import { generateAccessKey } from '../../lib/invoiceUtils.js';
+import { generateSaleReceipt } from '../../lib/receiptGenerator.js';
+
+const PAYMENT_METHODS = [
+  { value: 'cash', label: 'Efectivo', icon: Banknote },
+  { value: 'card', label: 'Tarjeta', icon: CreditCard },
+  { value: 'transfer', label: 'Transferencia', icon: Building2 }
+];
+
+const EMPTY_INVOICE_DATA = {
+  identificationType: 'ruc',
+  identification: '',
+  razonSocial: '',
+  email: '',
+  phone: '',
+  address: ''
+};
 
 export default function POSInterface() {
   const { currentUser, logout, showToast } = useStore();
   const [products, setProducts] = useState([]);
+  const [company, setCompany] = useState(null);
   const [cart, setCart] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [cashReceived, setCashReceived] = useState('');
   const [showPayment, setShowPayment] = useState(false);
   const [transactionID, setTransactionID] = useState(null);
-  const [lastInvoiceInfo, setLastInvoiceInfo] = useState(null);
   const [discountPercent, setDiscountPercent] = useState(0);
   const [taxRate, setTaxRate] = useState(12);
   const [showInvoiceType, setShowInvoiceType] = useState(false);
   const [invoiceType, setInvoiceType] = useState(null); // 'final' o 'factura'
-  const [invoiceData, setInvoiceData] = useState({
-    identificationType: 'ruc', // 'ruc' o 'cedula'
-    identification: '',
-    razonSocial: '',
-    email: '',
-    phone: '',
-    address: ''
-  });
+  const [invoiceData, setInvoiceData] = useState(EMPTY_INVOICE_DATA);
+  const [heldSales, setHeldSales] = useState([]);
+  const [showHeldSales, setShowHeldSales] = useState(false);
+  const [lastCompletedSale, setLastCompletedSale] = useState(null);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+
+  const searchInputRef = useRef(null);
+  const heldStorageKey = currentUser?.company_id ? `pos_held_${currentUser.company_id}` : null;
 
   useEffect(() => {
-    const loadProducts = async () => {
+    const loadData = async () => {
       try {
-        const [data, billingConfig] = await Promise.all([
+        const [productData, billingConfig, companyData] = await Promise.all([
           fetchData('products', {
             filter: { column: 'company_id', value: currentUser.company_id }
           }),
-          getBillingConfig(currentUser.company_id)
+          getBillingConfig(currentUser.company_id),
+          fetchCompanyById(currentUser.company_id)
         ]);
-        setProducts(data || []);
-
+        setProducts(productData || []);
         // Tax rate must come from billing_configs - it's the same rate actually
-        // submitted to the SRI (see api/sri/submit-invoice.js). A separate
-        // localStorage-cached rate (StoreSettings) could drift out of sync and
-        // corrupt the VAT extraction for price_includes_vat products.
+        // submitted to the SRI (api/sri/submit-invoice.js). A previously separate
+        // localStorage-cached rate could drift out of sync and corrupt VAT
+        // extraction for price_includes_vat products.
         setTaxRate(billingConfig.taxRate || 12);
+        setCompany(companyData);
       } catch (error) {
-        console.error('Error loading products:', error);
+        console.error('Error loading data:', error);
         showToast('error', 'Error al cargar productos');
       } finally {
         setLoading(false);
@@ -53,14 +76,43 @@ export default function POSInterface() {
     };
 
     if (currentUser?.company_id) {
-      loadProducts();
+      loadData();
     }
   }, [currentUser, showToast]);
 
-  const filteredProducts = products.filter(p =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.code.toLowerCase().includes(searchTerm.toLowerCase())
+  // Load held sales for this store from localStorage
+  useEffect(() => {
+    if (!heldStorageKey) return;
+    try {
+      const saved = localStorage.getItem(heldStorageKey);
+      if (saved) setHeldSales(JSON.parse(saved));
+    } catch {
+      // ignore corrupted local data
+    }
+  }, [heldStorageKey]);
+
+  const persistHeldSales = (sales) => {
+    setHeldSales(sales);
+    if (heldStorageKey) {
+      try {
+        localStorage.setItem(heldStorageKey, JSON.stringify(sales));
+      } catch {
+        // storage full/unavailable - non-critical
+      }
+    }
+  };
+
+  const categories = useMemo(
+    () => ['all', ...new Set(products.map(p => p.category).filter(Boolean))],
+    [products]
   );
+
+  const filteredProducts = products.filter(p => {
+    const term = searchTerm.toLowerCase();
+    const matchesSearch = p.name.toLowerCase().includes(term) || p.code.toLowerCase().includes(term);
+    const matchesCategory = categoryFilter === 'all' || p.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
 
   const addToCart = (product) => {
     const existing = cart.find(item => item.id === product.id);
@@ -96,6 +148,11 @@ export default function POSInterface() {
     }
   };
 
+  const clearCart = () => {
+    setCart([]);
+    setDiscountPercent(0);
+  };
+
   // Calculate prices, handling both price_includes_vat cases
   const getPriceBase = (product) => {
     if (product.price_includes_vat) {
@@ -104,21 +161,92 @@ export default function POSInterface() {
     return product.sale_price;
   };
 
-  const subtotal = cart.reduce((sum, item) => {
-    const basePriceItem = getPriceBase(item) * item.quantity;
-    return sum + basePriceItem;
-  }, 0);
-
+  const subtotal = cart.reduce((sum, item) => sum + getPriceBase(item) * item.quantity, 0);
   const discount = subtotal * (discountPercent / 100);
   const taxableAmount = subtotal - discount;
   const tax = taxableAmount * (taxRate / 100);
   const total = taxableAmount + tax;
+
+  const cashReceivedNum = parseFloat(cashReceived) || 0;
+  const change = Math.max(0, cashReceivedNum - total);
+  const cashInsufficient = paymentMethod === 'cash' && cashReceivedNum < total;
+
+  const quickCashAmounts = useMemo(() => {
+    if (total <= 0) return [];
+    const amounts = new Set([Math.ceil(total * 100) / 100]);
+    [5, 10, 20, 50].forEach(denom => {
+      const rounded = Math.ceil(total / denom) * denom;
+      if (rounded > total) amounts.add(rounded);
+    });
+    return Array.from(amounts).sort((a, b) => a - b).slice(0, 4);
+  }, [total]);
+
+  // Held sales (park a cart to attend another customer, resume later)
+  const holdCurrentSale = () => {
+    if (cart.length === 0) return;
+    const held = {
+      id: `hold-${Date.now()}`,
+      cart,
+      discountPercent,
+      heldAt: new Date().toISOString()
+    };
+    persistHeldSales([...heldSales, held]);
+    clearCart();
+    showToast('success', 'Venta puesta en espera');
+  };
+
+  const resumeHeldSale = (id) => {
+    if (cart.length > 0) {
+      showToast('warning', 'Finaliza o pon en espera la venta actual antes de retomar otra');
+      return;
+    }
+    const held = heldSales.find(h => h.id === id);
+    if (!held) return;
+    setCart(held.cart);
+    setDiscountPercent(held.discountPercent || 0);
+    persistHeldSales(heldSales.filter(h => h.id !== id));
+    setShowHeldSales(false);
+  };
+
+  const discardHeldSale = (id) => {
+    persistHeldSales(heldSales.filter(h => h.id !== id));
+  };
+
+  const closeAllModals = () => {
+    setShowPayment(false);
+    setShowInvoiceType(false);
+    setShowHeldSales(false);
+    setShowReceiptModal(false);
+  };
+
+  // Keyboard shortcuts: F2 search, F4 checkout, Esc close modals
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        closeAllModals();
+        return;
+      }
+      const tag = document.activeElement?.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA';
+      if (e.key === 'F2') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === 'F4' && !isTyping) {
+        e.preventDefault();
+        handleCheckout();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart]);
 
   const handleCheckout = () => {
     if (cart.length === 0) {
       showToast('warning', 'Carrito vacío');
       return;
     }
+    setCashReceived('');
     setShowInvoiceType(true);
   };
 
@@ -128,15 +256,7 @@ export default function POSInterface() {
       setShowInvoiceType(false);
       setShowPayment(true);
     } else {
-      // Mostrar formulario para ingresar datos de factura
-      setInvoiceData({
-        identificationType: 'ruc',
-        identification: '',
-        razonSocial: '',
-        email: '',
-        phone: '',
-        address: ''
-      });
+      setInvoiceData(EMPTY_INVOICE_DATA);
     }
   };
 
@@ -151,39 +271,33 @@ export default function POSInterface() {
   };
 
   const completeSale = async () => {
+    if (cashInsufficient) {
+      showToast('error', 'El monto recibido es menor al total');
+      return;
+    }
+
     try {
       // Load billing config and company (for RUC) needed to generate the SRI access key
-      const [billingConfig, company] = await Promise.all([
+      const [billingConfig, companyData] = await Promise.all([
         getBillingConfig(currentUser.company_id),
         fetchCompanyById(currentUser.company_id)
       ]);
 
-      // Get next sequential number
       const sequential = await getNextInvoiceSequential(currentUser.company_id);
-
-      // Calculate totals
-      const subtotalAmount = subtotal;
-      const discountAmount = discount;
-      const taxAmount = tax;
-      const totalAmount = total;
 
       const establishment = billingConfig.establishment || '001';
       const pointOfSale = billingConfig.pointOfSale || '001';
-
-      // Generate SRI-compliant invoice number: Establecimiento-PuntoVenta-Secuencial
       const invoiceNumber = `${establishment.padStart(3, '0')}-${pointOfSale.padStart(3, '0')}-${String(sequential).padStart(9, '0')}`;
 
-      // Generate SRI access key (clave de acceso) - the code the store manager approves
       const accessKey = generateAccessKey({
         issueDate: new Date().toISOString(),
-        ruc: company.ruc,
+        ruc: companyData.ruc,
         environment: billingConfig.environment,
         establishment,
         pointOfSale,
         sequential
       });
 
-      // If invoicing with identification, find or create the customer record
       let customerId = null;
       if (invoiceType === 'factura') {
         customerId = await findOrCreateCustomer(currentUser.company_id, {
@@ -196,17 +310,16 @@ export default function POSInterface() {
         });
       }
 
-      // Create invoice record
       const invoice = await createInvoice({
         company_id: currentUser.company_id,
         user_id: currentUser.id,
         invoice_number: invoiceNumber,
         invoice_type: 'factura',
         access_key: accessKey,
-        subtotal_amount: subtotalAmount,
-        discount_amount: discountAmount,
-        tax_amount: taxAmount,
-        total_amount: totalAmount,
+        subtotal_amount: subtotal,
+        discount_amount: discount,
+        tax_amount: tax,
+        total_amount: total,
         payment_method: paymentMethod,
         customer_id: customerId,
         notes: invoiceType === 'factura'
@@ -214,15 +327,17 @@ export default function POSInterface() {
           : 'Consumidor Final'
       });
 
-      // Create invoice details for each cart item
+      const receiptItems = [];
+
       for (const item of cart) {
-        // Use the tax-exclusive base price (same as the on-screen totals below),
+        // Use the tax-exclusive base price (same as the on-screen totals above),
         // never the raw sale_price - if the product's price already includes VAT,
-        // taxing sale_price again here double-charges IVA on every line item.
+        // taxing sale_price again here would double-charge IVA on every line.
         const baseUnitPrice = getPriceBase(item);
         const itemDiscount = baseUnitPrice * item.quantity * (discountPercent / 100);
         const itemSubtotal = baseUnitPrice * item.quantity - itemDiscount;
         const itemTax = itemSubtotal * (billingConfig.taxRate / 100);
+        const itemTotal = itemSubtotal + itemTax;
 
         await createInvoiceDetail({
           invoice_id: invoice.id,
@@ -236,31 +351,42 @@ export default function POSInterface() {
           subtotal: itemSubtotal,
           tax_rate: billingConfig.taxRate || taxRate,
           tax_amount: itemTax,
-          total: itemSubtotal + itemTax
+          total: itemTotal
         });
+
+        receiptItems.push({ name: item.name, quantity: item.quantity, lineTotal: itemTotal });
       }
 
       setTransactionID(invoice.id);
-      setLastInvoiceInfo({ invoiceNumber, accessKey });
+      setLastCompletedSale({
+        invoiceNumber,
+        invoiceType,
+        customerName: invoiceType === 'factura' ? invoiceData.razonSocial : null,
+        items: receiptItems,
+        subtotal,
+        discount,
+        tax,
+        taxRate: billingConfig.taxRate || taxRate,
+        total,
+        paymentMethod,
+        cashReceived: paymentMethod === 'cash' ? cashReceivedNum : null,
+        change: paymentMethod === 'cash' ? change : null,
+        cashierName: currentUser?.name,
+        completedAt: new Date().toISOString(),
+        sriAuthorized: false
+      });
+
       const typeLabel = invoiceType === 'final' ? 'consumidor final' : 'factura';
       showToast('success', `${typeLabel.charAt(0).toUpperCase() + typeLabel.slice(1)} creada: ${invoiceNumber}`);
 
       setTimeout(() => {
-        setCart([]);
-        setInvoiceData({
-          identificationType: 'ruc',
-          identification: '',
-          razonSocial: '',
-          email: '',
-          phone: '',
-          address: ''
-        });
+        clearCart();
+        setInvoiceData(EMPTY_INVOICE_DATA);
         setInvoiceType(null);
         setPaymentMethod('cash');
-        setDiscountPercent(0);
+        setCashReceived('');
         setShowPayment(false);
         setTransactionID(null);
-        setLastInvoiceInfo(null);
       }, 4000);
     } catch (error) {
       console.error('Error creating invoice:', error);
@@ -268,44 +394,105 @@ export default function POSInterface() {
     }
   };
 
+  const downloadLastReceipt = () => {
+    if (!lastCompletedSale) return;
+    const doc = generateSaleReceipt({ sale: lastCompletedSale, company });
+    doc.save(`Recibo_${lastCompletedSale.invoiceNumber}.pdf`);
+  };
+
   return (
     <div className="flex h-screen bg-zinc-950">
       {/* Product Panel */}
-      <div className="flex-1 flex flex-col border-r border-zinc-800">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-4 text-white">
+      <div className="flex-1 flex flex-col border-r border-zinc-800 min-w-0">
+        {/* Top Bar */}
+        <div className="bg-zinc-900 border-b border-zinc-800 px-5 py-4">
           <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-2xl font-bold">🏪 PUNTO DE VENTA</h1>
-              <p className="text-blue-100 text-sm">{currentUser?.name}</p>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-emerald-600/15 border border-emerald-600/30 flex items-center justify-center">
+                <Store className="text-emerald-400" size={20} />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-zinc-100 leading-tight">Punto de Venta</h1>
+                <p className="text-xs text-zinc-500">{currentUser?.name}</p>
+              </div>
             </div>
-            <button
-              onClick={logout}
-              className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors font-bold"
-            >
-              <LogOut size={18} />
-              Cerrar sesión
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowHeldSales(true)}
+                className="relative bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
+                title="Ventas en espera"
+              >
+                <PauseCircle size={16} />
+                En espera
+                {heldSales.length > 0 && (
+                  <span className="bg-amber-500 text-zinc-950 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">
+                    {heldSales.length}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => lastCompletedSale ? setShowReceiptModal(true) : null}
+                disabled={!lastCompletedSale}
+                className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
+                title="Último comprobante"
+              >
+                <Printer size={16} />
+                Último comprobante
+              </button>
+              <button
+                onClick={logout}
+                className="bg-zinc-800 hover:bg-red-600/20 hover:text-red-400 text-zinc-300 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
+              >
+                <LogOut size={16} />
+                Salir
+              </button>
+            </div>
           </div>
 
           {/* Search */}
-          <div className="relative">
-            <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-100" />
+          <div className="relative mb-3">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input
+              ref={searchInputRef}
               type="text"
-              placeholder="Buscar producto por nombre o código..."
+              placeholder="Buscar producto por nombre o código...  (F2)"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white/10 border border-white/20 rounded-lg pl-10 pr-4 py-2 text-white placeholder-blue-100 focus:outline-none focus:ring-2 focus:ring-white"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-10 pr-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/50 focus:border-emerald-600"
             />
           </div>
+
+          {/* Category pills */}
+          {categories.length > 1 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <Tag size={14} className="text-zinc-600 flex-shrink-0" />
+              {categories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setCategoryFilter(cat)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
+                    categoryFilter === cat
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                  }`}
+                >
+                  {cat === 'all' ? 'Todas' : cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Products Grid */}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="animate-spin inline-block w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full" />
+              <div className="animate-spin inline-block w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full" />
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
+              No se encontraron productos
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -313,21 +500,26 @@ export default function POSInterface() {
                 <button
                   key={product.id}
                   onClick={() => addToCart(product)}
-                  className="bg-zinc-900 border border-zinc-800 hover:border-blue-500 rounded-xl p-3 transition-all hover:shadow-lg hover:shadow-blue-500/20 group cursor-pointer"
+                  disabled={product.quantity <= 0}
+                  className="text-left bg-zinc-900 border border-zinc-800 hover:border-emerald-600/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl p-3 transition-colors"
                 >
                   <div className="mb-2">
-                    <div className="text-sm font-bold text-zinc-100 line-clamp-2 group-hover:text-blue-400">
+                    <div className="text-sm font-bold text-zinc-100 line-clamp-2">
                       {product.name}
                     </div>
                     <div className="text-xs text-zinc-500 font-mono">{product.code}</div>
                   </div>
-                  <div className="space-y-1 border-t border-zinc-800 pt-2">
-                    <div className="text-lg font-bold text-emerald-400">{formatUSD(product.sale_price)}</div>
-                    <div className="text-xs text-zinc-400 mb-1">
-                      {product.price_includes_vat !== false ? 'Con IVA' : 'Sin IVA'}
+                  <div className="flex items-end justify-between border-t border-zinc-800 pt-2">
+                    <div>
+                      <div className="text-lg font-bold text-emerald-400">{formatUSD(product.sale_price)}</div>
+                      <div className="text-[10px] text-zinc-500">
+                        {product.price_includes_vat !== false ? 'IVA incl.' : 'Sin IVA'}
+                      </div>
                     </div>
-                    <div className={`text-xs font-bold ${product.quantity > 10 ? 'text-emerald-400' : product.quantity > 0 ? 'text-amber-400' : 'text-red-400'}`}>
-                      Stock: {product.quantity}
+                    <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      product.quantity > 10 ? 'bg-emerald-500/10 text-emerald-400' : product.quantity > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-red-500/10 text-red-400'
+                    }`}>
+                      {product.quantity > 0 ? `Stock: ${product.quantity}` : 'Agotado'}
                     </div>
                   </div>
                 </button>
@@ -338,66 +530,62 @@ export default function POSInterface() {
       </div>
 
       {/* Cart Panel */}
-      <div className="w-96 bg-zinc-900 border-l border-zinc-800 flex flex-col">
-        {/* Cart Header */}
-        <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 p-4 text-white">
-          <div className="flex items-center gap-2 mb-2">
-            <ShoppingCart size={24} />
-            <h2 className="text-xl font-bold">Carrito</h2>
+      <div className="w-96 bg-zinc-900 flex flex-col flex-shrink-0">
+        <div className="border-b border-zinc-800 px-5 py-4">
+          <div className="flex items-center gap-2 mb-1">
+            <ShoppingCart size={18} className="text-zinc-400" />
+            <h2 className="text-base font-bold text-zinc-100">Carrito</h2>
           </div>
-          <div className="text-sm text-emerald-100">
-            {cart.length} artículos | Total items: {cart.reduce((sum, item) => sum + item.quantity, 0)}
+          <div className="text-xs text-zinc-500">
+            {cart.length} {cart.length === 1 ? 'producto' : 'productos'} · {cart.reduce((sum, item) => sum + item.quantity, 0)} unidades
           </div>
         </div>
 
         {/* Cart Items */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {cart.length === 0 ? (
             <div className="flex items-center justify-center h-full text-center">
               <div>
-                <ShoppingCart size={48} className="text-zinc-700 mx-auto mb-2" />
-                <p className="text-zinc-500">Carrito vacío</p>
+                <ShoppingCart size={40} className="text-zinc-800 mx-auto mb-2" />
+                <p className="text-zinc-600 text-sm">Carrito vacío</p>
               </div>
             </div>
           ) : (
             cart.map(item => (
-              <div key={item.id} className="bg-zinc-950 border border-zinc-800 rounded-xl p-3 hover:border-emerald-500/30 transition-colors">
+              <div key={item.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-3">
                 <div className="flex justify-between items-start mb-2">
-                  <div>
-                    <div className="font-bold text-zinc-100 text-sm">{item.name}</div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-zinc-100 text-sm truncate">{item.name}</div>
                     <div className="text-xs text-zinc-500">{formatUSD(item.sale_price)} c/u</div>
-                    <div className="text-xs text-zinc-600">{item.price_includes_vat !== false ? '✓ Con IVA' : '✗ Sin IVA'}</div>
                   </div>
                   <button
                     onClick={() => removeFromCart(item.id)}
-                    className="text-red-500 hover:text-red-400 p-1"
+                    className="text-zinc-600 hover:text-red-400 p-1 flex-shrink-0"
                   >
-                    <Trash2 size={16} />
+                    <Trash2 size={15} />
                   </button>
                 </div>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                    className="bg-zinc-800 hover:bg-zinc-700 p-1 rounded text-zinc-300"
+                    className="bg-zinc-800 hover:bg-zinc-700 p-1.5 rounded text-zinc-300"
                   >
-                    <Minus size={14} />
+                    <Minus size={13} />
                   </button>
                   <input
                     type="number"
                     value={item.quantity}
                     onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 1)}
-                    className="w-10 bg-zinc-800 border border-zinc-700 rounded text-center text-sm text-zinc-100"
+                    className="w-10 bg-zinc-800 border border-zinc-700 rounded text-center text-sm text-zinc-100 py-1"
                   />
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    className="bg-zinc-800 hover:bg-zinc-700 p-1 rounded text-zinc-300"
+                    className="bg-zinc-800 hover:bg-zinc-700 p-1.5 rounded text-zinc-300"
                   >
-                    <Plus size={14} />
+                    <Plus size={13} />
                   </button>
-                  <div className="flex-1 text-right">
-                    <div className="font-bold text-emerald-400 text-sm">
-                      {formatUSD(getPriceBase(item) * item.quantity)}
-                    </div>
+                  <div className="flex-1 text-right font-bold text-emerald-400 text-sm">
+                    {formatUSD(getPriceBase(item) * item.quantity)}
                   </div>
                 </div>
               </div>
@@ -405,180 +593,309 @@ export default function POSInterface() {
           )}
         </div>
 
-        {/* Discount Section */}
+        {/* Discount */}
         {cart.length > 0 && (
-          <div className="border-t border-zinc-800 p-4 bg-zinc-950/50">
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Descuento %</label>
+          <div className="border-t border-zinc-800 px-4 py-3">
+            <label className="block text-[11px] font-bold text-zinc-500 mb-1.5 uppercase tracking-wide">Descuento %</label>
             <input
               type="number"
               value={discountPercent}
               onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
               min="0"
               max="100"
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white text-sm"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/50"
             />
           </div>
         )}
 
         {/* Totals */}
-        <div className="border-t border-zinc-800 p-4 space-y-3 bg-zinc-950/50">
-          <div className="space-y-2 text-sm">
+        <div className="border-t border-zinc-800 px-4 py-4 space-y-3">
+          <div className="space-y-1.5 text-sm">
             <div className="flex justify-between text-zinc-400">
-              <span>Subtotal:</span>
+              <span>Subtotal</span>
               <span>{formatUSD(subtotal)}</span>
             </div>
             {discountPercent > 0 && (
               <div className="flex justify-between text-red-400">
-                <span>Descuento ({discountPercent}%):</span>
+                <span>Descuento ({discountPercent}%)</span>
                 <span>-{formatUSD(discount)}</span>
               </div>
             )}
             <div className="flex justify-between text-zinc-400">
-              <span>IVA ({taxRate}%):</span>
+              <span>IVA ({taxRate}%)</span>
               <span>{formatUSD(tax)}</span>
             </div>
-            <div className="border-t border-zinc-800 pt-2 flex justify-between font-bold text-lg text-emerald-400">
-              <span>Total:</span>
-              <span>{formatUSD(total)}</span>
+            <div className="border-t border-zinc-800 pt-2 flex justify-between font-bold text-lg text-zinc-100">
+              <span>Total</span>
+              <span className="text-emerald-400">{formatUSD(total)}</span>
             </div>
           </div>
 
-          {/* Checkout Button */}
-          <button
-            onClick={handleCheckout}
-            disabled={cart.length === 0}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
-          >
-            <DollarSign size={20} />
-            Procesar Pago
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={holdCurrentSale}
+              disabled={cart.length === 0}
+              className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-300 font-bold py-3 px-3 rounded-lg transition-colors flex items-center justify-center"
+              title="Poner en espera"
+            >
+              <PauseCircle size={20} />
+            </button>
+            <button
+              onClick={handleCheckout}
+              disabled={cart.length === 0}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <Send size={18} />
+              Cobrar (F4)
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Held Sales Modal */}
+      {showHeldSales && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <PauseCircle size={22} className="text-amber-400" />
+                Ventas en Espera
+              </h3>
+              <button onClick={() => setShowHeldSales(false)} className="text-zinc-500 hover:text-zinc-300">
+                <X size={22} />
+              </button>
+            </div>
+
+            {heldSales.length === 0 ? (
+              <p className="text-zinc-500 text-sm text-center py-8">No hay ventas en espera</p>
+            ) : (
+              <div className="space-y-2">
+                {heldSales.map(held => {
+                  const heldTotal = held.cart.reduce((sum, item) => sum + item.sale_price * item.quantity, 0);
+                  return (
+                    <div key={held.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-zinc-100">
+                          {held.cart.length} {held.cart.length === 1 ? 'producto' : 'productos'}
+                        </div>
+                        <div className="text-xs text-zinc-500">
+                          {new Date(held.heldAt).toLocaleTimeString()} · {formatUSD(heldTotal)}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => discardHeldSale(held.id)}
+                          className="text-red-400 hover:text-red-300 p-2"
+                          title="Descartar"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => resumeHeldSale(held.id)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg"
+                        >
+                          Retomar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Last Receipt Modal */}
+      {showReceiptModal && lastCompletedSale && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <Printer size={22} className="text-blue-400" />
+                Último Comprobante
+              </h3>
+              <button onClick={() => setShowReceiptModal(false)} className="text-zinc-500 hover:text-zinc-300">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-2 mb-5">
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">No. de factura</span>
+                <span className="text-zinc-100 font-mono font-bold">{lastCompletedSale.invoiceNumber}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Cliente</span>
+                <span className="text-zinc-100">{lastCompletedSale.customerName || 'Consumidor Final'}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-500">Hora</span>
+                <span className="text-zinc-100">{new Date(lastCompletedSale.completedAt).toLocaleTimeString()}</span>
+              </div>
+              <div className="flex justify-between text-base font-bold pt-2 border-t border-zinc-800">
+                <span className="text-zinc-300">Total</span>
+                <span className="text-emerald-400">{formatUSD(lastCompletedSale.total)}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={downloadLastReceipt}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <Printer size={18} />
+              Descargar Recibo (PDF)
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Payment Modal */}
       {showPayment && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-6 lg:p-8 w-[95vw] sm:w-[90vw] md:w-full max-w-3xl max-h-[95vh] overflow-y-auto">
-            <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-4 sm:mb-6">Confirmar Pago</h3>
+            <h3 className="text-xl sm:text-2xl font-bold text-white mb-5">Confirmar Pago</h3>
 
-            <div className="space-y-4 sm:space-y-6">
+            <div className="space-y-5">
               {/* Total Display */}
-              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 p-4 sm:p-6 rounded-xl border border-emerald-500">
-                <div className="text-xs sm:text-sm text-emerald-100 mb-1">Total a cobrar</div>
-                <div className="text-4xl sm:text-5xl font-bold text-white">{formatUSD(total)}</div>
+              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5">
+                <div className="text-xs text-zinc-500 mb-1">Total a cobrar</div>
+                <div className="text-4xl sm:text-5xl font-bold text-emerald-400">{formatUSD(total)}</div>
               </div>
 
               {/* Payment Method */}
               <div>
-                <label className="block text-xs sm:text-sm font-bold text-zinc-300 mb-2 sm:mb-3">Método de Pago</label>
+                <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wide">Método de Pago</label>
                 <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                  {[
-                    { value: 'cash', label: 'Efectivo', icon: '💵' },
-                    { value: 'card', label: 'Tarjeta', icon: '💳' },
-                    { value: 'transfer', label: 'Transferencia', icon: '🏦' }
-                  ].map(method => (
-                    <button
-                      key={method.value}
-                      onClick={() => setPaymentMethod(method.value)}
-                      className={`py-2 sm:py-3 px-2 sm:px-4 rounded-lg font-bold text-xs sm:text-sm transition-all whitespace-nowrap ${
-                        paymentMethod === method.value
-                          ? 'bg-emerald-600 text-white shadow-lg'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
-                      }`}
-                    >
-                      <span className="block sm:inline">{method.icon}</span>
-                      <span className="hidden sm:inline ml-1">{method.label}</span>
-                      <span className="sm:hidden text-xs">{method.label}</span>
-                    </button>
-                  ))}
+                  {PAYMENT_METHODS.map(method => {
+                    const Icon = method.icon;
+                    return (
+                      <button
+                        key={method.value}
+                        onClick={() => { setPaymentMethod(method.value); setCashReceived(''); }}
+                        className={`py-3 px-2 rounded-lg font-bold text-xs sm:text-sm transition-colors flex flex-col items-center gap-1.5 ${
+                          paymentMethod === method.value
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                        }`}
+                      >
+                        <Icon size={20} />
+                        {method.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
+              {/* Cash received / change */}
+              {paymentMethod === 'cash' && (
+                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-zinc-400 mb-2">Monto Recibido</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={cashReceived}
+                      onChange={(e) => setCashReceived(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-lg font-bold focus:outline-none focus:ring-2 focus:ring-emerald-600/50"
+                    />
+                  </div>
+                  {quickCashAmounts.length > 0 && (
+                    <div className="flex gap-2 flex-wrap">
+                      {quickCashAmounts.map(amount => (
+                        <button
+                          key={amount}
+                          onClick={() => setCashReceived(String(amount))}
+                          className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold px-3 py-1.5 rounded"
+                        >
+                          {formatUSD(amount)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className={`flex justify-between items-center pt-2 border-t border-zinc-800 ${cashInsufficient && cashReceivedNum > 0 ? 'text-red-400' : 'text-zinc-300'}`}>
+                    <span className="text-sm font-bold">Vuelto</span>
+                    <span className="text-xl font-bold">{formatUSD(change)}</span>
+                  </div>
+                  {cashInsufficient && cashReceivedNum > 0 && (
+                    <p className="text-xs text-red-400">El monto recibido es menor al total</p>
+                  )}
+                </div>
+              )}
+
               {/* Customer Info - Show based on invoice type */}
               {invoiceType === 'final' ? (
-                <div className="border-t border-zinc-800 pt-6">
-                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-                    <h4 className="font-bold text-blue-300 mb-2">Tipo de Venta</h4>
-                    <p className="text-sm text-blue-200">👤 Consumidor Final</p>
-                  </div>
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-center gap-3">
+                  <User size={20} className="text-blue-400" />
+                  <span className="text-sm text-blue-200 font-bold">Consumidor Final</span>
                 </div>
               ) : invoiceType === 'factura' ? (
-                <div className="border-t border-zinc-800 pt-6">
-                  <h4 className="font-bold text-zinc-100 mb-4">Datos de la Factura</h4>
-                  <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 space-y-3">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                  <h4 className="font-bold text-zinc-100 flex items-center gap-2 text-sm">
+                    <FileText size={16} className="text-emerald-400" />
+                    Datos de la Factura
+                  </h4>
+                  <div>
+                    <div className="text-xs font-bold text-zinc-500">
+                      {invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}
+                    </div>
+                    <div className="text-sm text-zinc-200 font-mono">{invoiceData.identification}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-zinc-500">
+                      {invoiceData.identificationType === 'ruc' ? 'Razón Social' : 'Nombre'}
+                    </div>
+                    <div className="text-sm text-zinc-200">{invoiceData.razonSocial}</div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <div className="text-xs font-bold text-zinc-400">
-                        {invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}
-                      </div>
-                      <div className="text-sm text-emerald-300 font-mono">{invoiceData.identification}</div>
+                      <div className="text-xs font-bold text-zinc-500">Email</div>
+                      <div className="text-xs text-zinc-300">{invoiceData.email || '-'}</div>
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-zinc-400">
-                        {invoiceData.identificationType === 'ruc' ? 'Razón Social' : 'Nombre'}
-                      </div>
-                      <div className="text-sm text-emerald-300">{invoiceData.razonSocial}</div>
+                      <div className="text-xs font-bold text-zinc-500">Teléfono</div>
+                      <div className="text-xs text-zinc-300">{invoiceData.phone || '-'}</div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-xs font-bold text-zinc-400">Email</div>
-                        <div className="text-xs text-emerald-200">{invoiceData.email || '-'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-zinc-400">Teléfono</div>
-                        <div className="text-xs text-emerald-200">{invoiceData.phone || '-'}</div>
-                      </div>
-                    </div>
-                    {invoiceData.address && (
-                      <div>
-                        <div className="text-xs font-bold text-zinc-400">Dirección</div>
-                        <div className="text-xs text-emerald-200">{invoiceData.address}</div>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : null}
 
-
-              {/* Transaction ID Display */}
+              {/* Transaction Success Display */}
               {transactionID && (
                 <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 text-center">
-                  <div className="flex items-center justify-center mb-3">
-                    <span className="text-4xl">✅</span>
+                  <CheckCircle size={40} className="text-emerald-400 mx-auto mb-3" />
+                  <div className="text-base sm:text-lg text-emerald-100 mb-1 font-bold">¡Venta completada!</div>
+                  <div className="text-xs sm:text-sm text-emerald-300 mb-4">
+                    {invoiceType === 'final' ? 'Consumidor Final' : invoiceData.razonSocial}
                   </div>
-                  <div className="text-base sm:text-lg text-emerald-100 mb-2 font-bold">¡Venta completada exitosamente!</div>
-                  <div className="text-xs sm:text-sm text-emerald-200 mb-4">
-                    {invoiceType === 'final' ? 'Consumidor Final' : `${invoiceData.razonSocial}`}
+                  <div className="bg-emerald-950/50 rounded p-3">
+                    <div className="text-xs text-emerald-400 mb-1">Número de Factura</div>
+                    <div className="text-base font-bold text-emerald-300 font-mono break-all">{lastCompletedSale?.invoiceNumber}</div>
                   </div>
-                  <div className="bg-emerald-950/50 rounded p-3 mb-3">
-                    <div className="text-xs text-emerald-300 mb-1">Número de Factura</div>
-                    <div className="text-base sm:text-lg font-bold text-emerald-300 font-mono break-all">{lastInvoiceInfo?.invoiceNumber}</div>
-                  </div>
-                  {lastInvoiceInfo?.accessKey && (
-                    <div className="bg-emerald-950/50 rounded p-3 mb-3">
-                      <div className="text-xs text-emerald-300 mb-1">Clave de Acceso SRI</div>
-                      <div className="text-[10px] sm:text-xs font-bold text-emerald-300 font-mono break-all">{lastInvoiceInfo.accessKey}</div>
-                    </div>
-                  )}
-                  <div className="text-xs text-emerald-300">Pendiente de aprobación por el gerente</div>
+                  <div className="text-xs text-emerald-400 mt-3">Pendiente de aprobación por el gerente</div>
                 </div>
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-2 sm:gap-3 pt-4 sm:pt-6 border-t border-zinc-800 flex-col sm:flex-row">
-                <button
-                  onClick={() => setShowPayment(false)}
-                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 sm:py-3 rounded-lg transition-colors text-sm sm:text-base"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={completeSale}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 sm:py-3 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
-                >
-                  <Send size={16} className="sm:w-[18px] sm:h-[18px]" />
-                  Confirmar Pago
-                </button>
-              </div>
+              {!transactionID && (
+                <div className="flex gap-3 pt-2 border-t border-zinc-800 flex-col sm:flex-row">
+                  <button
+                    onClick={() => setShowPayment(false)}
+                    className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={completeSale}
+                    disabled={cashInsufficient}
+                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Send size={18} />
+                    Confirmar Pago
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -587,43 +904,41 @@ export default function POSInterface() {
       {/* Invoice Type Selection Modal */}
       {showInvoiceType && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 w-full max-w-2xl">
-            <h3 className="text-2xl font-bold text-white mb-6">Tipo de Venta</h3>
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 w-full max-w-2xl">
+            <h3 className="text-xl sm:text-2xl font-bold text-white mb-6">Tipo de Venta</h3>
 
             {invoiceType === null ? (
               <div className="space-y-4">
-                <p className="text-zinc-300 mb-6">¿Cómo deseas procesar esta venta?</p>
+                <p className="text-zinc-400 text-sm mb-6">¿Cómo deseas procesar esta venta?</p>
 
                 <div className="grid grid-cols-2 gap-4">
-                  {/* Consumidor Final */}
                   <button
                     onClick={() => handleSelectInvoiceType('final')}
-                    className="bg-blue-600/20 border-2 border-blue-500 hover:bg-blue-600/30 rounded-xl p-6 transition-all"
+                    className="bg-zinc-950 border-2 border-zinc-800 hover:border-blue-600 rounded-xl p-6 transition-colors text-left"
                   >
-                    <div className="text-2xl mb-2">👤</div>
-                    <h4 className="font-bold text-blue-300 mb-2">Consumidor Final</h4>
-                    <p className="text-xs text-blue-200">Sin factura formal, venta simple</p>
+                    <User className="text-blue-400 mb-3" size={28} />
+                    <h4 className="font-bold text-zinc-100 mb-1">Consumidor Final</h4>
+                    <p className="text-xs text-zinc-500">Sin factura formal, venta simple</p>
                   </button>
 
-                  {/* Con Factura */}
                   <button
                     onClick={() => handleSelectInvoiceType('factura')}
-                    className="bg-emerald-600/20 border-2 border-emerald-500 hover:bg-emerald-600/30 rounded-xl p-6 transition-all"
+                    className="bg-zinc-950 border-2 border-zinc-800 hover:border-emerald-600 rounded-xl p-6 transition-colors text-left"
                   >
-                    <div className="text-2xl mb-2">📋</div>
-                    <h4 className="font-bold text-emerald-300 mb-2">Con Factura</h4>
-                    <p className="text-xs text-emerald-200">Factura formal con RUC</p>
+                    <FileText className="text-emerald-400 mb-3" size={28} />
+                    <h4 className="font-bold text-zinc-100 mb-1">Con Factura</h4>
+                    <p className="text-xs text-zinc-500">Factura formal con RUC o Cédula</p>
                   </button>
                 </div>
               </div>
-            ) : invoiceType === 'factura' ? (
+            ) : (
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-zinc-400 mb-2">Tipo de Identificación *</label>
                   <div className="flex gap-3 mb-3">
                     <button
                       onClick={() => setInvoiceData({...invoiceData, identificationType: 'ruc', identification: ''})}
-                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-all ${
+                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-colors ${
                         invoiceData.identificationType === 'ruc'
                           ? 'bg-emerald-600 text-white'
                           : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
@@ -633,7 +948,7 @@ export default function POSInterface() {
                     </button>
                     <button
                       onClick={() => setInvoiceData({...invoiceData, identificationType: 'cedula', identification: ''})}
-                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-all ${
+                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-colors ${
                         invoiceData.identificationType === 'cedula'
                           ? 'bg-emerald-600 text-white'
                           : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
@@ -719,7 +1034,7 @@ export default function POSInterface() {
                   </button>
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
         </div>
       )}
