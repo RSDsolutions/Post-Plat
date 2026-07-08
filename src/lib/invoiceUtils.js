@@ -15,34 +15,61 @@ export function generateInvoiceNumber(config, sequential) {
 }
 
 /**
- * Calculate check digit for RUC (Ecuador)
- * Required for SRI compliance
+ * Calculate check digit for RUC (Ecuador) - SRI Algorithm
+ * Algoritmo oficial del SRI Ecuador
  */
 export function calculateRUCCheckDigit(ruc) {
-  const rucWithoutCheck = ruc.substring(0, 12);
-  const weights = [3, 2, 7, 6, 5, 4, 3, 2, 7, 6, 5, 4];
+  // Usar los primeros 10 dígitos para el cálculo
+  const baseNumber = ruc.substring(0, 10);
+
+  // Pesos según algoritmo SRI
+  const weights = [3, 2, 7, 6, 5, 4, 3, 2, 7, 6];
 
   let sum = 0;
-  for (let i = 0; i < 12; i++) {
-    sum += parseInt(rucWithoutCheck[i]) * weights[i];
+  for (let i = 0; i < 10; i++) {
+    const digit = parseInt(baseNumber[i]);
+    sum += digit * weights[i];
   }
 
-  const remainder = sum % 11;
-  const checkDigit = 11 - remainder;
+  // Obtener residuo de la división por 11
+  const residue = sum % 11;
 
-  return checkDigit === 11 ? 0 : checkDigit === 10 ? 1 : checkDigit;
+  // Calcular dígito verificador
+  let checkDigit = 11 - residue;
+
+  // Aplicar reglas SRI
+  if (checkDigit === 11) {
+    checkDigit = 0;
+  } else if (checkDigit === 10) {
+    checkDigit = 1;
+  }
+
+  return checkDigit;
 }
 
 /**
- * Validate RUC format
+ * Validate RUC format (Ecuador)
+ * RUC estructura: XXYYYYYYYYZCC
+ * XX: tipo contribuyente (10-99)
+ * YYYYYYYY: número base (8 dígitos)
+ * Z: dígito verificador
+ * CC: debe ser 01 para RUC (01 = RUC, 02 = Cédula extranjería, etc)
  */
 export function validateRUC(ruc) {
   if (!ruc || ruc.length !== 13) return false;
 
-  const calculatedDigit = calculateRUCCheckDigit(ruc);
-  const lastDigit = parseInt(ruc[12]);
+  // Validar que sean solo números
+  if (!/^\d{13}$/.test(ruc)) return false;
 
-  return calculatedDigit === lastDigit;
+  // Los últimos 2 dígitos deben ser "01" para RUC estándar
+  const lastTwoDigits = ruc.substring(11, 13);
+  if (lastTwoDigits !== '01') return false;
+
+  // Calcular el dígito verificador esperado (posición 11, índice 10)
+  const expectedCheckDigit = calculateRUCCheckDigit(ruc);
+  const actualCheckDigit = parseInt(ruc[10]);
+
+  return expectedCheckDigit === actualCheckDigit;
 }
 
 /**
