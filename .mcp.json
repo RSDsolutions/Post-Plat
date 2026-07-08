@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "supabase": {
+      "command": "node",
+      "args": ["src/mcp-server.js"],
+      "env": {
+        "VITE_SUPABASE_URL": "${VITE_SUPABASE_URL}",
+        "VITE_SUPABASE_ANON_KEY": "${VITE_SUPABASE_ANON_KEY}"
+      }
+    }
+  }
+}
