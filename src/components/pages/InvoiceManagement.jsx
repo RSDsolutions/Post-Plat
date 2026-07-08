@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, CheckCircle, XCircle, X, Copy, Loader } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig } from '../../lib/supabaseHelpers.js';
+import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig, fetchCompanyById } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Badge from '../ui/Badge.jsx';
 import { formatUSD } from '../../lib/format.js';
+import { generateRidePdf } from '../../lib/rideGenerator.js';
 
 const STATUS_LABELS = {
   borrador: 'Pendiente',
@@ -23,6 +24,8 @@ export default function InvoiceManagement() {
   const [submittingId, setSubmittingId] = useState(null);
   const [sriEnvironment, setSriEnvironment] = useState(null);
   const [lastError, setLastError] = useState(null);
+  const [company, setCompany] = useState(null);
+  const [downloadingRideId, setDownloadingRideId] = useState(null);
 
   const loadInvoices = async () => {
     try {
@@ -40,6 +43,7 @@ export default function InvoiceManagement() {
     if (currentUser?.company_id) {
       loadInvoices();
       getBillingConfig(currentUser.company_id).then(cfg => setSriEnvironment(cfg.environment)).catch(() => {});
+      fetchCompanyById(currentUser.company_id).then(setCompany).catch(() => {});
     }
   }, [currentUser?.company_id]);
 
@@ -53,6 +57,24 @@ export default function InvoiceManagement() {
       showToast('error', 'Error al cargar detalles de la factura');
     } finally {
       setLoadingDetails(false);
+    }
+  };
+
+  const handleDownloadRide = async (invoice, e) => {
+    e?.stopPropagation();
+    if (!company) {
+      showToast('error', 'Cargando datos de la empresa, intenta de nuevo en un momento');
+      return;
+    }
+    setDownloadingRideId(invoice.id);
+    try {
+      const details = await fetchInvoiceDetails(invoice.id);
+      generateRidePdf({ invoice, details, company, sriEnvironment });
+    } catch (error) {
+      console.error('Error generating RIDE:', error);
+      showToast('error', error.message || 'Error al generar el RIDE');
+    } finally {
+      setDownloadingRideId(null);
     }
   };
 
@@ -182,6 +204,19 @@ export default function InvoiceManagement() {
                         </button>
                       </div>
                     )
+                  )}
+                  {inv.status === 'autorizada' && (
+                    <button
+                      onClick={(e) => handleDownloadRide(inv, e)}
+                      disabled={downloadingRideId === inv.id}
+                      className="text-xs font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {downloadingRideId === inv.id ? (
+                        <><Loader size={14} className="animate-spin" /> Generando...</>
+                      ) : (
+                        <><Download size={14} /> Descargar RIDE</>
+                      )}
+                    </button>
                   )}
                 </td>
               </tr>
@@ -315,6 +350,22 @@ export default function InvoiceManagement() {
                       <><Loader size={18} className="animate-spin" /> Enviando al SRI...</>
                     ) : (
                       <><CheckCircle size={18} /> Aprobar y Enviar al SRI</>
+                    )}
+                  </button>
+                </div>
+              )}
+
+              {selectedInvoice.status === 'autorizada' && (
+                <div className="pt-4 border-t border-zinc-800">
+                  <button
+                    onClick={() => handleDownloadRide(selectedInvoice)}
+                    disabled={downloadingRideId === selectedInvoice.id}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    {downloadingRideId === selectedInvoice.id ? (
+                      <><Loader size={18} className="animate-spin" /> Generando RIDE...</>
+                    ) : (
+                      <><Download size={18} /> Descargar RIDE (PDF)</>
                     )}
                   </button>
                 </div>
