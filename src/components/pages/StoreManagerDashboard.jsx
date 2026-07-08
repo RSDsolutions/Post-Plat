@@ -94,17 +94,18 @@ export default function StoreManagerDashboard() {
     <div className="min-h-screen bg-zinc-950">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-bold">🏪 Dashboard de Tienda</h1>
-            <p className="text-blue-100 mt-1">Gerente: {currentUser?.name}</p>
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-3xl md:text-4xl font-bold truncate">🏪 Dashboard de Tienda</h1>
+            <p className="text-blue-100 mt-1 truncate">Gerente: {currentUser?.name}</p>
           </div>
           <button
             onClick={logout}
-            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg flex items-center gap-2 font-bold transition-colors"
+            className="bg-red-600 hover:bg-red-700 text-white px-4 md:px-6 py-2 md:py-3 rounded-lg flex items-center justify-center gap-2 font-bold transition-colors whitespace-nowrap"
           >
             <LogOut size={20} />
-            Cerrar sesión
+            <span className="hidden sm:inline">Cerrar sesión</span>
+            <span className="sm:hidden">Salir</span>
           </button>
         </div>
       </div>
