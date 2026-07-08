@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { signXml } from './xadesSign.js';
 
 const SRI_URLS = {
   test: {
@@ -48,13 +49,16 @@ export default async function handler(req, res) {
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  let generateInvoice, generateInvoiceXml, signXml, documentReception, documentAuthorization;
+  // signXml is our own local implementation (see xadesSign.js) - open-factura's version
+  // uses `import * as forge from "node-forge"`, which under native Node.js ESM/CJS interop
+  // leaves forge.util/forge.pki/etc. undefined (only works when bundled by esbuild/webpack).
+  let generateInvoice, generateInvoiceXml, documentReception, documentAuthorization;
   try {
     // open-factura's "main" (CJS) entry does require('node-fetch'), but node-fetch v3
     // is ESM-only, which throws ERR_REQUIRE_ESM. Import the package's .mjs build directly
     // to bypass Node's CJS "main" resolution (Node ignores the "module" field).
     const openFactura = await import('open-factura/dist/index.mjs');
-    ({ generateInvoice, generateInvoiceXml, signXml, documentReception, documentAuthorization } = openFactura);
+    ({ generateInvoice, generateInvoiceXml, documentReception, documentAuthorization } = openFactura);
   } catch (importError) {
     console.error('Failed to load open-factura:', importError);
     return res.status(500).json({
