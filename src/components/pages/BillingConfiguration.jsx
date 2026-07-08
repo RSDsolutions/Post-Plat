@@ -82,7 +82,7 @@ export default function BillingConfiguration() {
       }
 
       if (!validateRUC(config.ruc)) {
-        showToast('error', 'RUC inválido (verificar dígito verificador)');
+        showToast('error', 'RUC inválido (debe ser 13 dígitos, ej: 1706111505001)');
         return;
       }
 
@@ -409,11 +409,13 @@ export default function BillingConfiguration() {
       <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
         <h3 className="font-bold text-blue-400 mb-2">¿Necesitas Ayuda?</h3>
         <ul className="text-xs text-blue-300 space-y-1">
-          <li>• El RUC debe tener exactamente 13 dígitos</li>
+          <li>• El RUC debe tener exactamente 13 dígitos (ej: 1706111505001)</li>
+          <li>• El SRI es quien valida finalmente el RUC cuando envíes facturas</li>
           <li>• Los datos aquí configurados aparecerán en todas las facturas</li>
           <li>• Puedes cambiar la configuración en cualquier momento</li>
           <li>• En ambiente de pruebas, las facturas NO se envían al SRI</li>
           <li>• El secuencial se incrementa automáticamente con cada factura</li>
+          <li>• Copia tu RUC directamente desde la consulta del SRI para evitar errores</li>
         </ul>
       </div>
     </div>

@@ -15,61 +15,44 @@ export function generateInvoiceNumber(config, sequential) {
 }
 
 /**
- * Calculate check digit for RUC (Ecuador) - SRI Algorithm
- * Algoritmo oficial del SRI Ecuador
- */
-export function calculateRUCCheckDigit(ruc) {
-  // Usar los primeros 10 dígitos para el cálculo
-  const baseNumber = ruc.substring(0, 10);
-
-  // Pesos según algoritmo SRI
-  const weights = [3, 2, 7, 6, 5, 4, 3, 2, 7, 6];
-
-  let sum = 0;
-  for (let i = 0; i < 10; i++) {
-    const digit = parseInt(baseNumber[i]);
-    sum += digit * weights[i];
-  }
-
-  // Obtener residuo de la división por 11
-  const residue = sum % 11;
-
-  // Calcular dígito verificador
-  let checkDigit = 11 - residue;
-
-  // Aplicar reglas SRI
-  if (checkDigit === 11) {
-    checkDigit = 0;
-  } else if (checkDigit === 10) {
-    checkDigit = 1;
-  }
-
-  return checkDigit;
-}
-
-/**
  * Validate RUC format (Ecuador)
- * RUC estructura: XXYYYYYYYYZCC
- * XX: tipo contribuyente (10-99)
- * YYYYYYYY: número base (8 dígitos)
- * Z: dígito verificador
- * CC: debe ser 01 para RUC (01 = RUC, 02 = Cédula extranjería, etc)
+ * NOTA: Validación básica de formato. El SRI es la fuente de verdad.
+ *
+ * RUC estructura: CCNNNNNNNNVDD
+ * CC: tipo contribuyente (10-99)
+ * NNNNNNNN: número de identificación (8 dígitos)
+ * V: dígito verificador (calculado por SRI)
+ * DD: tipo de contribuyente (01 = RUC estándar)
+ *
+ * El dígito verificador será validado por el SRI al enviar facturas.
+ * Aquí solo validamos el formato básico.
  */
 export function validateRUC(ruc) {
-  if (!ruc || ruc.length !== 13) return false;
+  if (!ruc || ruc.length !== 13) {
+    return false;
+  }
 
   // Validar que sean solo números
-  if (!/^\d{13}$/.test(ruc)) return false;
+  if (!/^\d{13}$/.test(ruc)) {
+    return false;
+  }
 
-  // Los últimos 2 dígitos deben ser "01" para RUC estándar
-  const lastTwoDigits = ruc.substring(11, 13);
-  if (lastTwoDigits !== '01') return false;
+  // Validar que los primeros 2 dígitos sean un tipo contribuyente válido (10-99)
+  const tipoContribuyente = parseInt(ruc.substring(0, 2));
+  if (tipoContribuyente < 10 || tipoContribuyente > 99) {
+    return false;
+  }
 
-  // Calcular el dígito verificador esperado (posición 11, índice 10)
-  const expectedCheckDigit = calculateRUCCheckDigit(ruc);
-  const actualCheckDigit = parseInt(ruc[10]);
+  // Validar que los últimos 2 dígitos sean válidos
+  // 01 = RUC, 02 = Extranjería, 03 = Pasaporte, etc.
+  const ultimosDos = ruc.substring(11, 13);
+  if (ultimosDos === '00') {
+    return false; // '00' no es válido
+  }
 
-  return expectedCheckDigit === actualCheckDigit;
+  // Si llegó aquí, el formato es básicamente válido
+  // El SRI validará el dígito verificador cuando envíes la factura
+  return true;
 }
 
 /**
