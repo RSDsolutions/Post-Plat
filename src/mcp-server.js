@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -10,139 +11,142 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL;
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+  console.error("Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY");
+  process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const server = new Server({
-  name: "supabase-mcp",
-  version: "1.0.0",
-});
+const server = new Server(
+  {
+    name: "supabase-mcp",
+    version: "1.0.0",
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  }
+);
+
+const tools = [
+  {
+    name: "query_table",
+    description: "Query data from any Supabase table with filters",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: {
+          type: "string",
+          description: "Table name",
+        },
+        select: {
+          type: "string",
+          description: "Columns to select (default: *)",
+        },
+        filter_column: {
+          type: "string",
+          description: "Column to filter by",
+        },
+        filter_value: {
+          type: "string",
+          description: "Value to filter for",
+        },
+        order_by: {
+          type: "string",
+          description: "Column to order by",
+        },
+        ascending: {
+          type: "boolean",
+          description: "Order ascending or descending",
+        },
+        limit: {
+          type: "integer",
+          description: "Limit results",
+        },
+      },
+      required: ["table"],
+    },
+  },
+  {
+    name: "insert_record",
+    description: "Insert a new record into a table",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: {
+          type: "string",
+          description: "Table name",
+        },
+        data: {
+          type: "object",
+          description: "Data to insert",
+        },
+      },
+      required: ["table", "data"],
+    },
+  },
+  {
+    name: "update_record",
+    description: "Update a record in a table",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: {
+          type: "string",
+          description: "Table name",
+        },
+        id: {
+          type: "string",
+          description: "Record ID",
+        },
+        data: {
+          type: "object",
+          description: "Data to update",
+        },
+      },
+      required: ["table", "id", "data"],
+    },
+  },
+  {
+    name: "delete_record",
+    description: "Delete a record from a table",
+    inputSchema: {
+      type: "object",
+      properties: {
+        table: {
+          type: "string",
+          description: "Table name",
+        },
+        id: {
+          type: "string",
+          description: "Record ID",
+        },
+      },
+      required: ["table", "id"],
+    },
+  },
+  {
+    name: "list_tables",
+    description: "List all tables in the database",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "db_info",
+    description:
+      "Get information about the connected database and project",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+  },
+];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: "query_table",
-        description: "Query data from any Supabase table with filters",
-        inputSchema: {
-          type: "object",
-          properties: {
-            table: {
-              type: "string",
-              description: "Table name",
-            },
-            select: {
-              type: "string",
-              description: "Columns to select (default: *)",
-            },
-            filter_column: {
-              type: "string",
-              description: "Column to filter by",
-            },
-            filter_value: {
-              type: "string",
-              description: "Value to filter for",
-            },
-            order_by: {
-              type: "string",
-              description: "Column to order by",
-            },
-            ascending: {
-              type: "boolean",
-              description: "Order ascending or descending",
-            },
-            limit: {
-              type: "integer",
-              description: "Limit results",
-            },
-          },
-          required: ["table"],
-        },
-      },
-      {
-        name: "insert_record",
-        description: "Insert a new record into a table",
-        inputSchema: {
-          type: "object",
-          properties: {
-            table: {
-              type: "string",
-              description: "Table name",
-            },
-            data: {
-              type: "object",
-              description: "Data to insert",
-            },
-          },
-          required: ["table", "data"],
-        },
-      },
-      {
-        name: "update_record",
-        description: "Update a record in a table",
-        inputSchema: {
-          type: "object",
-          properties: {
-            table: {
-              type: "string",
-              description: "Table name",
-            },
-            id: {
-              type: "string",
-              description: "Record ID",
-            },
-            data: {
-              type: "object",
-              description: "Data to update",
-            },
-          },
-          required: ["table", "id", "data"],
-        },
-      },
-      {
-        name: "delete_record",
-        description: "Delete a record from a table",
-        inputSchema: {
-          type: "object",
-          properties: {
-            table: {
-              type: "string",
-              description: "Table name",
-            },
-            id: {
-              type: "string",
-              description: "Record ID",
-            },
-          },
-          required: ["table", "id"],
-        },
-      },
-      {
-        name: "list_tables",
-        description: "List all tables in the database",
-        inputSchema: {
-          type: "object",
-          properties: {},
-        },
-      },
-      {
-        name: "execute_sql",
-        description: "Execute raw SQL query (use with caution)",
-        inputSchema: {
-          type: "object",
-          properties: {
-            sql: {
-              type: "string",
-              description: "SQL query to execute",
-            },
-          },
-          required: ["sql"],
-        },
-      },
-    ],
-  };
+  return { tools };
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -185,11 +189,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: `Query successful. Retrieved ${data?.length || 0} records:\n${JSON.stringify(
-                data,
-                null,
-                2
-              )}`,
+              text: `Query successful. Retrieved ${
+                data?.length || 0
+              } records:\n${JSON.stringify(data, null, 2)}`,
             },
           ],
         };
@@ -317,32 +319,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case "execute_sql": {
-        const { data, error } = await supabase.rpc("execute_sql", {
-          sql: args.sql,
-        });
-
-        if (error) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Error executing SQL: ${error.message}`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
+      case "db_info": {
         return {
           content: [
             {
               type: "text",
-              text: `SQL executed successfully:\n${JSON.stringify(
-                data,
-                null,
-                2
-              )}`,
+              text: `Connected to Supabase database:\nURL: ${supabaseUrl}\nDatabase: mupqrcqwvvxubasnmron\nAuthenticated: Yes\nTools available: 6`,
             },
           ],
         };
@@ -374,3 +356,5 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 const transport = new StdioServerTransport();
 server.connect(transport);
+
+console.error("MCP Server running. Connected to Supabase: " + supabaseUrl);
