@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save } from 'lucide-react';
+import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { fetchData } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
@@ -12,6 +12,7 @@ export default function InventoryManagement() {
   const [filterCategory, setFilterCategory] = useState('all');
   const [editingProduct, setEditingProduct] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [taxRate, setTaxRate] = useState(12);
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -20,6 +21,12 @@ export default function InventoryManagement() {
           filter: { column: 'company_id', value: currentUser.company_id }
         });
         setProducts(data || []);
+
+        // Load tax rate configured by store manager
+        const savedTaxRate = localStorage.getItem(`store_tax_${currentUser?.company_id}`);
+        if (savedTaxRate) {
+          setTaxRate(parseFloat(savedTaxRate));
+        }
       } catch (error) {
         console.error('Error:', error);
         showToast('error', 'Error al cargar inventario');
@@ -40,6 +47,7 @@ export default function InventoryManagement() {
     setEditingProduct(product);
     setEditForm({
       salePrice: product.sale_price,
+      priceIncludesVat: product.price_includes_vat !== false,
       discount: product.discount || 0,
       promotion: product.promotion || '',
       quantity: product.quantity,
@@ -47,14 +55,30 @@ export default function InventoryManagement() {
     });
   };
 
+  const getPriceWithoutVat = (price, includesVat) => {
+    if (!includesVat) return price;
+    return price / (1 + taxRate / 100);
+  };
+
+  const getPriceWithVat = (price, includesVat) => {
+    if (includesVat) return price;
+    return price * (1 + taxRate / 100);
+  };
+
   const handleSaveEdit = () => {
     if (!editingProduct) return;
+
+    const basePrice = parseFloat(editForm.salePrice);
+    const priceToStore = editForm.priceIncludesVat
+      ? basePrice
+      : basePrice;
 
     const updatedProducts = products.map(p =>
       p.id === editingProduct.id
         ? {
             ...p,
-            sale_price: parseFloat(editForm.salePrice),
+            sale_price: priceToStore,
+            price_includes_vat: editForm.priceIncludesVat,
             discount: parseFloat(editForm.discount),
             promotion: editForm.promotion,
             quantity: parseInt(editForm.quantity),
@@ -245,8 +269,46 @@ export default function InventoryManagement() {
               {/* Pricing */}
               <div className="space-y-3">
                 <h3 className="font-bold text-zinc-300">Precio</h3>
+
+                {/* Price Includes VAT Toggle */}
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Info size={16} className="text-blue-400" />
+                    <label className="text-xs font-bold text-blue-400">¿El precio incluye IVA?</label>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setEditForm({...editForm, priceIncludesVat: true})}
+                      className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
+                        editForm.priceIncludesVat
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      Sí, incluye IVA
+                    </button>
+                    <button
+                      onClick={() => setEditForm({...editForm, priceIncludesVat: false})}
+                      className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
+                        !editForm.priceIncludesVat
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      No, sin IVA
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-300 mt-2">
+                    {editForm.priceIncludesVat
+                      ? `El precio ingresado ya contiene el IVA del ${taxRate}%`
+                      : `El IVA del ${taxRate}% se agregará al precio ingresado`}
+                  </p>
+                </div>
+
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Precio de Venta ($)</label>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">
+                    {editForm.priceIncludesVat ? 'Precio Final (con IVA)' : 'Precio Base (sin IVA)'} ($)
+                  </label>
                   <input
                     type="number"
                     min="0"
@@ -255,6 +317,22 @@ export default function InventoryManagement() {
                     onChange={(e) => setEditForm({...editForm, salePrice: e.target.value})}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
                   />
+                </div>
+
+                {/* Price Preview */}
+                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-950/50 rounded border border-zinc-800">
+                  <div>
+                    <div className="text-xs text-zinc-500 font-bold">Precio sin IVA</div>
+                    <div className="text-lg font-bold text-zinc-100">
+                      {formatUSD(getPriceWithoutVat(parseFloat(editForm.salePrice) || 0, editForm.priceIncludesVat))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-zinc-500 font-bold">Precio con IVA ({taxRate}%)</div>
+                    <div className="text-lg font-bold text-emerald-400">
+                      {formatUSD(getPriceWithVat(parseFloat(editForm.salePrice) || 0, editForm.priceIncludesVat))}
+                    </div>
+                  </div>
                 </div>
               </div>
 

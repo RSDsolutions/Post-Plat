@@ -83,7 +83,19 @@ export default function POSInterface() {
     }
   };
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.sale_price * item.quantity), 0);
+  // Calculate prices, handling both price_includes_vat cases
+  const getPriceBase = (product) => {
+    if (product.price_includes_vat) {
+      return product.sale_price / (1 + taxRate / 100);
+    }
+    return product.sale_price;
+  };
+
+  const subtotal = cart.reduce((sum, item) => {
+    const basePriceItem = getPriceBase(item) * item.quantity;
+    return sum + basePriceItem;
+  }, 0);
+
   const discount = subtotal * (discountPercent / 100);
   const taxableAmount = subtotal - discount;
   const tax = taxableAmount * (taxRate / 100);
@@ -172,6 +184,9 @@ export default function POSInterface() {
                   </div>
                   <div className="space-y-1 border-t border-zinc-800 pt-2">
                     <div className="text-lg font-bold text-emerald-400">{formatUSD(product.sale_price)}</div>
+                    <div className="text-xs text-zinc-400 mb-1">
+                      {product.price_includes_vat !== false ? 'Con IVA' : 'Sin IVA'}
+                    </div>
                     <div className={`text-xs font-bold ${product.quantity > 10 ? 'text-emerald-400' : product.quantity > 0 ? 'text-amber-400' : 'text-red-400'}`}>
                       Stock: {product.quantity}
                     </div>
@@ -212,6 +227,7 @@ export default function POSInterface() {
                   <div>
                     <div className="font-bold text-zinc-100 text-sm">{item.name}</div>
                     <div className="text-xs text-zinc-500">{formatUSD(item.sale_price)} c/u</div>
+                    <div className="text-xs text-zinc-600">{item.price_includes_vat !== false ? '✓ Con IVA' : '✗ Sin IVA'}</div>
                   </div>
                   <button
                     onClick={() => removeFromCart(item.id)}
@@ -241,7 +257,7 @@ export default function POSInterface() {
                   </button>
                   <div className="flex-1 text-right">
                     <div className="font-bold text-emerald-400 text-sm">
-                      {formatUSD(item.sale_price * item.quantity)}
+                      {formatUSD(getPriceBase(item) * item.quantity)}
                     </div>
                   </div>
                 </div>
