@@ -81,6 +81,19 @@ CREATE TABLE IF NOT EXISTS activity_log (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Tabla: admin_users (Usuarios Administradores)
+CREATE TABLE IF NOT EXISTS admin_users (
+  id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  name VARCHAR(255) DEFAULT 'Administrador',
+  role VARCHAR(50) DEFAULT 'admin',
+  is_active BOOLEAN DEFAULT TRUE,
+  last_login TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Índices para mejor performance
 CREATE INDEX IF NOT EXISTS idx_companies_plan_id ON companies(plan_id);
 CREATE INDEX IF NOT EXISTS idx_companies_subscription_status ON companies(subscription_status);
@@ -108,6 +121,12 @@ CREATE POLICY "Enable read access for all" ON payments FOR SELECT USING (TRUE);
 CREATE POLICY "Enable read access for all" ON activity_log FOR SELECT USING (TRUE);
 CREATE POLICY "Enable read access for all" ON plans FOR SELECT USING (TRUE);
 
+-- Insertar usuario administrador
+INSERT INTO admin_users (email, password, name, role)
+VALUES
+  ('admin@postplat.com', '123456', 'Administrador', 'admin')
+ON CONFLICT (email) DO NOTHING;
+
 -- Insertar planes de ejemplo
 INSERT INTO plans (name, description, price, features, max_users, max_branches, environment_type)
 VALUES
@@ -116,8 +135,17 @@ VALUES
   ('Empresarial', 'Plan empresarial con todas las características', 299.99, '["Ilimitado POS", "Reportes premium", "Soporte 24/7", "Integraciones", "API access"]'::jsonb, 50, 10, 'Producción')
 ON CONFLICT (name) DO NOTHING;
 
+-- Índices para admin_users
+CREATE INDEX IF NOT EXISTS idx_admin_users_email ON admin_users(email);
+
+-- RLS para admin_users
+ALTER TABLE admin_users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Enable read for authenticated" ON admin_users FOR SELECT USING (TRUE);
+
+-- Permisos
 GRANT SELECT ON plans TO anon;
 GRANT SELECT ON companies TO anon;
 GRANT SELECT ON point_of_sales TO anon;
 GRANT SELECT ON payments TO anon;
 GRANT SELECT ON activity_log TO anon;
+GRANT SELECT ON admin_users TO anon;

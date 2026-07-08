@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/useStore.js';
-import { signIn } from '../../lib/supabaseHelpers.js';
+import { validateAdminCredentials, updateAdminLastLogin } from '../../lib/supabaseHelpers.js';
 import { Lock, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function Login() {
@@ -23,44 +23,39 @@ export default function Login() {
         return;
       }
 
-      const { data, error: signInError } = await signIn(email, password);
+      // Validate credentials against Supabase
+      const user = await validateAdminCredentials(email, password);
 
-      if (signInError || !data?.user) {
-        setError('Credenciales inválidas. Intenta con admin@postplat.com');
-        setIsLoading(false);
-        return;
-      }
+      // Update last login timestamp
+      await updateAdminLastLogin(email);
 
       // Successful login
-      setCurrentUser(
-        {
-          id: data.user.id,
-          email: data.user.email,
-          name: 'Administrador',
-        },
-        'admin'
-      );
-
-      showToast('success', `¡Bienvenido Administrador!`);
+      setCurrentUser(user, 'admin');
+      showToast('success', `¡Bienvenido ${user.name}!`);
     } catch (err) {
-      setError('Error al conectar. Intenta nuevamente.');
+      setError(err.message || 'Error al conectar. Intenta nuevamente.');
       console.error('Login error:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDemoLogin = () => {
-    // For development: login without password
-    setCurrentUser(
-      {
-        id: 'demo-admin',
-        email: 'admin@postplat.com',
-        name: 'Administrador',
-      },
-      'admin'
-    );
-    showToast('success', '¡Modo Demo - Acceso como Administrador!');
+  const handleDemoLogin = async () => {
+    // For development: login with default credentials
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const user = await validateAdminCredentials('admin@postplat.com', '123456');
+      await updateAdminLastLogin('admin@postplat.com');
+      setCurrentUser(user, 'admin');
+      showToast('success', `¡Modo Demo - Acceso como ${user.name}!`);
+    } catch (err) {
+      setError(err.message || 'Error al conectar.');
+      console.error('Demo login error:', err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -130,7 +125,7 @@ export default function Login() {
               disabled={isLoading}
             />
             <p className="text-xs text-zinc-500 mt-1">
-              Para pruebas, puedes usar cualquier contraseña
+              Contraseña: <span className="text-emerald-400 font-semibold">123456</span>
             </p>
           </div>
 

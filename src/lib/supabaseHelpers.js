@@ -202,6 +202,51 @@ export async function getCurrentUser() {
   return user;
 }
 
+// Admin Authentication
+export async function validateAdminCredentials(email, password) {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('id, email, password, name, role')
+    .eq('email', email)
+    .eq('is_active', true)
+    .single();
+
+  if (error || !data) {
+    throw new Error('Email o contraseña inválidos');
+  }
+
+  if (data.password !== password) {
+    throw new Error('Email o contraseña inválidos');
+  }
+
+  return {
+    id: data.id,
+    email: data.email,
+    name: data.name,
+    role: data.role
+  };
+}
+
+export async function getAdminUser(email) {
+  const { data, error } = await supabase
+    .from('admin_users')
+    .select('id, email, name, role, is_active')
+    .eq('email', email)
+    .single();
+
+  if (error) throw new Error(`Error fetching admin user: ${error.message}`);
+  return data;
+}
+
+export async function updateAdminLastLogin(email) {
+  const { error } = await supabase
+    .from('admin_users')
+    .update({ last_login: new Date().toISOString() })
+    .eq('email', email);
+
+  if (error) throw new Error(`Error updating last login: ${error.message}`);
+}
+
 // Generic functions
 export async function fetchData(table, options = {}) {
   let query = supabase.from(table).select(options.select || '*');
