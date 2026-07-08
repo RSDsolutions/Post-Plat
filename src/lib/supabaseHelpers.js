@@ -202,9 +202,9 @@ export async function getCurrentUser() {
   return user;
 }
 
-// Admin Authentication
+// User Authentication (from users table)
 export async function validateAdminCredentials(email, password) {
-  const { data, error } = await supabase.rpc('verify_admin_password', {
+  const { data, error } = await supabase.rpc('verify_user_password', {
     p_email: email,
     p_password: password
   });
@@ -217,7 +217,8 @@ export async function validateAdminCredentials(email, password) {
     id: data[0].id,
     email: data[0].email,
     name: data[0].name,
-    role: data[0].role
+    role: data[0].role,
+    company_id: data[0].company_id
   };
 }
 
@@ -234,7 +235,7 @@ export async function getAdminUser(email) {
 
 export async function updateAdminLastLogin(email) {
   const { error } = await supabase
-    .from('admin_users')
+    .from('users')
     .update({ last_login: new Date().toISOString() })
     .eq('email', email);
 
