@@ -31,16 +31,19 @@ export default function POSInterface() {
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const data = await fetchData('products', {
-          filter: { column: 'company_id', value: currentUser.company_id }
-        });
+        const [data, billingConfig] = await Promise.all([
+          fetchData('products', {
+            filter: { column: 'company_id', value: currentUser.company_id }
+          }),
+          getBillingConfig(currentUser.company_id)
+        ]);
         setProducts(data || []);
 
-        // Load tax rate configured by store manager
-        const savedTaxRate = localStorage.getItem(`store_tax_${currentUser?.company_id}`);
-        if (savedTaxRate) {
-          setTaxRate(parseFloat(savedTaxRate));
-        }
+        // Tax rate must come from billing_configs - it's the same rate actually
+        // submitted to the SRI (see api/sri/submit-invoice.js). A separate
+        // localStorage-cached rate (StoreSettings) could drift out of sync and
+        // corrupt the VAT extraction for price_includes_vat products.
+        setTaxRate(billingConfig.taxRate || 12);
       } catch (error) {
         console.error('Error loading products:', error);
         showToast('error', 'Error al cargar productos');
@@ -213,8 +216,12 @@ export default function POSInterface() {
 
       // Create invoice details for each cart item
       for (const item of cart) {
-        const itemDiscount = item.sale_price * item.quantity * (discountPercent / 100);
-        const itemSubtotal = item.sale_price * item.quantity - itemDiscount;
+        // Use the tax-exclusive base price (same as the on-screen totals below),
+        // never the raw sale_price - if the product's price already includes VAT,
+        // taxing sale_price again here double-charges IVA on every line item.
+        const baseUnitPrice = getPriceBase(item);
+        const itemDiscount = baseUnitPrice * item.quantity * (discountPercent / 100);
+        const itemSubtotal = baseUnitPrice * item.quantity - itemDiscount;
         const itemTax = itemSubtotal * (billingConfig.taxRate / 100);
 
         await createInvoiceDetail({
@@ -223,7 +230,7 @@ export default function POSInterface() {
           product_code: item.code,
           product_name: item.name,
           quantity: item.quantity,
-          unit_price: item.sale_price,
+          unit_price: baseUnitPrice,
           discount_percent: discountPercent,
           discount_amount: itemDiscount,
           subtotal: itemSubtotal,
