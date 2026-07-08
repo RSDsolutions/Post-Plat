@@ -4,6 +4,8 @@ import { fetchCompanies, fetchPlans, fetchActivityLog } from './lib/supabaseHelp
 import { applyBrandColors } from './lib/brand.js';
 import Layout from './components/layout/Layout.jsx';
 import StoreLayout from './components/layout/StoreLayout.jsx';
+import StoreManagerLayout from './components/layout/StoreManagerLayout.jsx';
+import POSLayout from './components/layout/POSLayout.jsx';
 import Login from './components/pages/Login.jsx';
 
 const transformCompany = (dbCompany) => ({
@@ -95,6 +97,16 @@ export default function App() {
     return <Login />;
   }
 
-  // Show StoreLayout for store/vendedor users, AdminLayout for admin
-  return userRole === 'vendedor' ? <StoreLayout /> : <Layout />;
+  // Show correct layout based on user role
+  switch (userRole) {
+    case 'admin':
+      return <Layout />;
+    case 'gerente':
+      return <StoreManagerLayout />;
+    case 'operario':
+    case 'vendedor':
+      return <POSLayout />;
+    default:
+      return <StoreLayout />;
+  }
 }
