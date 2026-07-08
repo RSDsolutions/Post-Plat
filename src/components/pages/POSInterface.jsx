@@ -454,12 +454,26 @@ export default function POSInterface() {
       let totalProductSavings = 0;
 
       for (const item of cart) {
-        // Use the tax-exclusive base price (same as the on-screen totals above),
-        // never the raw sale_price - if the product's price already includes VAT,
-        // taxing sale_price again here would double-charge IVA on every line.
-        const baseUnitPrice = getPriceBase(item);
-        const itemDiscount = baseUnitPrice * item.quantity * (discountPercent / 100);
-        const itemSubtotal = baseUnitPrice * item.quantity - itemDiscount;
+        // The invoice line (and therefore the SRI XML) must show the TRUE
+        // regular price and the TRUE discount, not a silently pre-discounted
+        // unit_price with discount_percent=0 - that made a product on promo
+        // look like it simply cost less, with no visible discount anywhere in
+        // the invoice or the SRI record. So unit_price here is the ORIGINAL
+        // tax-exclusive sticker price (no discount applied), and
+        // discount_percent is the combined product-promo + cashier discount
+        // expressed as one equivalent percentage off that original price -
+        // this nets out to exactly the same subtotal/tax/total as before,
+        // just decomposed in a way that's actually visible.
+        const regularUnitPrice = item.price_includes_vat
+          ? item.sale_price / (1 + taxRate / 100)
+          : item.sale_price;
+        const productDiscountPercent = item.discount || 0;
+        const combinedDiscountFraction = 1 - (1 - productDiscountPercent / 100) * (1 - discountPercent / 100);
+        const combinedDiscountPercent = combinedDiscountFraction * 100;
+
+        const grossLineAmount = regularUnitPrice * item.quantity;
+        const itemDiscount = grossLineAmount * combinedDiscountFraction;
+        const itemSubtotal = grossLineAmount - itemDiscount;
         const itemTax = itemSubtotal * (billingConfig.taxRate / 100);
         const itemTotal = itemSubtotal + itemTax;
 
@@ -469,8 +483,8 @@ export default function POSInterface() {
           product_code: item.code,
           product_name: item.name,
           quantity: item.quantity,
-          unit_price: baseUnitPrice,
-          discount_percent: discountPercent,
+          unit_price: regularUnitPrice,
+          discount_percent: combinedDiscountPercent,
           discount_amount: itemDiscount,
           subtotal: itemSubtotal,
           tax_rate: billingConfig.taxRate || taxRate,
@@ -481,7 +495,6 @@ export default function POSInterface() {
         // Product's own promotional discount (set in Inventario) - what the
         // customer actually saved on this line vs. the regular sticker price,
         // separate from any additional discount the cashier applies at checkout.
-        const productDiscountPercent = item.discount || 0;
         const itemSavings = productDiscountPercent > 0
           ? (item.sale_price - getDiscountedPrice(item)) * item.quantity
           : 0;
