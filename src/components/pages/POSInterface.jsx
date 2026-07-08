@@ -572,9 +572,9 @@ export default function POSInterface() {
     }
   };
 
-  const downloadLastReceipt = () => {
+  const downloadLastReceipt = async () => {
     if (!lastCompletedSale) return;
-    const doc = generateSaleReceipt({ sale: lastCompletedSale, company });
+    const doc = await generateSaleReceipt({ sale: lastCompletedSale, company });
     doc.save(`Recibo_${lastCompletedSale.invoiceNumber}.pdf`);
   };
 

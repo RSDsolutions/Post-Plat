@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Save, AlertCircle, CheckCircle, Loader, Upload, ShieldCheck } from 'lucide-react';
+import { FileText, Save, AlertCircle, CheckCircle, Loader, Upload, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { saveBillingConfig, getBillingConfig, getPaymentMethods, fetchCompanyById, uploadSriCertificate } from '../../lib/supabaseHelpers.js';
+import { saveBillingConfig, getBillingConfig, getPaymentMethods, fetchCompanyById, uploadSriCertificate, uploadCompanyLogo } from '../../lib/supabaseHelpers.js';
 import { validateRUC } from '../../lib/invoiceUtils.js';
 import { validateP12Certificate } from '../../lib/certValidation.js';
 
@@ -37,6 +37,9 @@ export default function BillingConfiguration() {
   const [certFile, setCertFile] = useState(null);
   const [certPassword, setCertPassword] = useState('');
   const [uploadingCert, setUploadingCert] = useState(false);
+
+  const [logoPreview, setLogoPreview] = useState(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -192,6 +195,30 @@ export default function BillingConfiguration() {
     }
   };
 
+  const handleLogoSelect = (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      showToast('error', 'El archivo debe ser una imagen');
+      return;
+    }
+    setLogoPreview(URL.createObjectURL(file));
+    handleUploadLogo(file);
+  };
+
+  const handleUploadLogo = async (file) => {
+    try {
+      setUploadingLogo(true);
+      const logoUrl = await uploadCompanyLogo(currentUser.company_id, file);
+      setCompany(prev => ({ ...prev, logo_url: logoUrl }));
+      showToast('success', 'Logo actualizado - aparecerá en las próximas facturas');
+    } catch (error) {
+      console.error('Error uploading logo:', error);
+      showToast('error', error.message || 'Error al subir el logo');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -215,6 +242,40 @@ export default function BillingConfiguration() {
           <p className="text-sm text-amber-300 mt-1">
             Los datos aquí configurados deben ser precisos y válidos ante el SRI. Cualquier error puede causar rechazo de facturas.
           </p>
+        </div>
+      </div>
+
+      {/* Company Logo */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
+        <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+          <ImageIcon size={24} className="text-blue-500" />
+          Logo de la Empresa
+        </h2>
+        <p className="text-xs text-zinc-500">
+          Aparecerá en el encabezado de las facturas (RIDE) y recibos generados. Recomendado: imagen cuadrada o rectangular, fondo transparente o blanco, máx. 2MB.
+        </p>
+
+        <div className="flex items-center gap-5">
+          <div className="w-24 h-24 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
+            {(logoPreview || company?.logo_url) ? (
+              <img src={logoPreview || company.logo_url} alt="Logo" className="w-full h-full object-contain" />
+            ) : (
+              <ImageIcon size={28} className="text-zinc-700" />
+            )}
+          </div>
+          <div className="flex-1">
+            <label className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors">
+              {uploadingLogo ? <Loader size={16} className="animate-spin" /> : <Upload size={16} />}
+              {uploadingLogo ? 'Subiendo...' : company?.logo_url ? 'Cambiar Logo' : 'Subir Logo'}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                onChange={(e) => handleLogoSelect(e.target.files?.[0])}
+                disabled={uploadingLogo}
+                className="hidden"
+              />
+            </label>
+          </div>
         </div>
       </div>
 

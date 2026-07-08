@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { formatUSD } from './format.js';
+import { loadImageAsDataUrl } from './pdfImage.js';
 
 const PAYMENT_LABELS = {
   cash: 'Efectivo',
@@ -14,12 +15,22 @@ const PAYMENT_LABELS = {
 // SRI authorizes it, so this is what the cashier can hand to the customer/print
 // immediately, distinct from rideGenerator.js (which requires a real SRI
 // authorization number and is generated later from Facturas).
-export function generateSaleReceipt({ sale, company }) {
+export async function generateSaleReceipt({ sale, company }) {
   const width = 80;
   const doc = new jsPDF({ unit: 'mm', format: [width, 250] });
   const margin = 4;
   const contentWidth = width - margin * 2;
   let y = 8;
+
+  const logo = await loadImageAsDataUrl(company?.logo_url);
+  if (logo) {
+    const maxW = 30, maxH = 16;
+    const ratio = Math.min(maxW / logo.width, maxH / logo.height, 1);
+    const w = logo.width * ratio;
+    const h = logo.height * ratio;
+    doc.addImage(logo.dataUrl, 'PNG', (width - w) / 2, y, w, h);
+    y += h + 3;
+  }
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);

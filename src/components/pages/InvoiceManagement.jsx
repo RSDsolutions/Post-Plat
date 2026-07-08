@@ -69,7 +69,7 @@ export default function InvoiceManagement() {
     setDownloadingRideId(invoice.id);
     try {
       const details = await fetchInvoiceDetails(invoice.id);
-      generateRidePdf({ invoice, details, company, sriEnvironment });
+      await generateRidePdf({ invoice, details, company, sriEnvironment });
     } catch (error) {
       console.error('Error generating RIDE:', error);
       showToast('error', error.message || 'Error al generar el RIDE');

@@ -850,6 +850,42 @@ export async function uploadSriCertificate(companyId, file, certPassword) {
   }
 }
 
+export async function uploadCompanyLogo(companyId, file) {
+  try {
+    if (!file) throw new Error('Selecciona una imagen para el logo');
+    if (!file.type.startsWith('image/')) throw new Error('El archivo debe ser una imagen (PNG, JPG, SVG)');
+    if (file.size > 2 * 1024 * 1024) throw new Error('La imagen no debe superar 2MB');
+
+    const ext = file.name.split('.').pop().toLowerCase();
+    const storagePath = `${companyId}/logo.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('company-logos')
+      .upload(storagePath, file, { upsert: true, cacheControl: '3600' });
+
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { data: urlData } = supabase.storage
+      .from('company-logos')
+      .getPublicUrl(storagePath);
+
+    // Cache-bust so a replaced logo shows immediately instead of a stale
+    // cached version at the same URL
+    const logoUrl = `${urlData.publicUrl}?v=${Date.now()}`;
+
+    const { error: updateError } = await supabase
+      .from('companies')
+      .update({ logo_url: logoUrl })
+      .eq('id', companyId);
+
+    if (updateError) throw new Error(updateError.message);
+
+    return logoUrl;
+  } catch (error) {
+    throw new Error(`Error uploading logo: ${error.message}`);
+  }
+}
+
 export async function getPaymentMethods() {
   try {
     const { data, error } = await supabase
