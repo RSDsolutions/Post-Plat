@@ -15,7 +15,8 @@ const transformCompany = (dbCompany) => ({
   email: dbCompany.email,
   phone: dbCompany.phone,
   planId: dbCompany.plan_id,
-  subscriptionStatus: dbCompany.subscription_status === 'activa' ? 'Activa' : dbCompany.subscription_status,
+  subscriptionStatus: dbCompany.subscription_status === 'activa' ? 'Activa' :
+                     dbCompany.subscription_status === 'suspendida' ? 'Suspendida' : 'Activa',
   subscriptionStart: new Date(dbCompany.subscription_start),
   subscriptionRenewal: new Date(dbCompany.subscription_renewal),
   monthlyComprobantes: 0,
@@ -23,18 +24,30 @@ const transformCompany = (dbCompany) => ({
   activeUsers: 0,
   branches: 0,
   paymentStatus: 'Al día',
+  paymentHistory: [],
+  suspensionInfo: null,
+  internalNotes: '',
   cert: null,
   createdAt: new Date(dbCompany.created_at),
-  adminEmail: dbCompany.admin_email
+  adminEmail: dbCompany.admin_email,
+  // Campos opcionales para compatibilidad
+  regimen: 'General',
+  llevaContabilidad: false,
+  environment: 'Producción',
+  establishment: '001',
+  pointOfSale: '001'
 });
 
 const transformPlan = (dbPlan) => ({
   id: dbPlan.id,
   name: dbPlan.name,
   price: dbPlan.price,
-  comprobantesLimit: dbPlan.comprobantes_limit,
+  comprobantesLimit: dbPlan.comprobantes_limit || 100,
   description: dbPlan.description,
-  features: []
+  features: [],
+  usersLimit: 10,
+  includesProduction: true,
+  includesLots: true
 });
 
 export default function App() {
