@@ -385,11 +385,27 @@ export async function fetchProductsByCompany(companyId) {
 // Invoices & Billing
 export async function createInvoice(invoiceData) {
   try {
+    // Get first POS for this company
+    const { data: posData, error: posError } = await supabase
+      .from('point_of_sales')
+      .select('id')
+      .eq('company_id', invoiceData.company_id)
+      .eq('is_active', true)
+      .limit(1)
+      .single();
+
+    if (!posData && !posError) {
+      throw new Error('No hay punto de venta activo para esta tienda');
+    }
+
+    const posId = posData?.id;
+
     const { data, error } = await supabase
       .from('invoices')
       .insert([{
         company_id: invoiceData.company_id,
         user_id: invoiceData.user_id,
+        pos_id: posId,
         customer_id: invoiceData.customer_id || null,
         invoice_type: invoiceData.invoice_type || 'factura',
         invoice_number: invoiceData.invoice_number,

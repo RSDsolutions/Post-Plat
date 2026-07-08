@@ -21,7 +21,8 @@ export default function POSInterface() {
   const [showInvoiceType, setShowInvoiceType] = useState(false);
   const [invoiceType, setInvoiceType] = useState(null); // 'final' o 'factura'
   const [invoiceData, setInvoiceData] = useState({
-    ruc: '',
+    identificationType: 'ruc', // 'ruc' o 'cedula'
+    identification: '',
     razonSocial: '',
     email: '',
     phone: '',
@@ -127,7 +128,8 @@ export default function POSInterface() {
     } else {
       // Mostrar formulario para ingresar datos de factura
       setInvoiceData({
-        ruc: '',
+        identificationType: 'ruc',
+        identification: '',
         razonSocial: '',
         email: '',
         phone: '',
@@ -137,8 +139,9 @@ export default function POSInterface() {
   };
 
   const handleConfirmInvoiceData = () => {
-    if (!invoiceData.ruc || !invoiceData.razonSocial) {
-      showToast('error', 'RUC y Razón Social son requeridos');
+    if (!invoiceData.identification || !invoiceData.razonSocial) {
+      const idType = invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula';
+      showToast('error', `${idType} y Razón Social son requeridos`);
       return;
     }
     setShowInvoiceType(false);
@@ -177,7 +180,9 @@ export default function POSInterface() {
         total_amount: totalAmount,
         payment_method: paymentMethod,
         customer_id: null,
-        notes: invoiceType === 'factura' ? `RUC: ${invoiceData.ruc}` : ''
+        notes: invoiceType === 'factura'
+          ? `${invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}: ${invoiceData.identification}`
+          : ''
       });
 
       // Create invoice details for each cart item
@@ -209,7 +214,14 @@ export default function POSInterface() {
       setTimeout(() => {
         setCart([]);
         setCustomerData({ name: '', email: '', phone: '' });
-        setInvoiceData({ ruc: '', razonSocial: '', email: '', phone: '', address: '' });
+        setInvoiceData({
+          identificationType: 'ruc',
+          identification: '',
+          razonSocial: '',
+          email: '',
+          phone: '',
+          address: ''
+        });
         setInvoiceType(null);
         setPaymentMethod('cash');
         setDiscountPercent(0);
@@ -461,11 +473,15 @@ export default function POSInterface() {
                   <h4 className="font-bold text-zinc-100 mb-4">Datos de la Factura</h4>
                   <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 space-y-3">
                     <div>
-                      <div className="text-xs font-bold text-zinc-400">RUC</div>
-                      <div className="text-sm text-emerald-300 font-mono">{invoiceData.ruc}</div>
+                      <div className="text-xs font-bold text-zinc-400">
+                        {invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}
+                      </div>
+                      <div className="text-sm text-emerald-300 font-mono">{invoiceData.identification}</div>
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-zinc-400">Razón Social</div>
+                      <div className="text-xs font-bold text-zinc-400">
+                        {invoiceData.identificationType === 'ruc' ? 'Razón Social' : 'Nombre'}
+                      </div>
                       <div className="text-sm text-emerald-300">{invoiceData.razonSocial}</div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
@@ -478,10 +494,12 @@ export default function POSInterface() {
                         <div className="text-xs text-emerald-200">{invoiceData.phone || '-'}</div>
                       </div>
                     </div>
-                    <div>
-                      <div className="text-xs font-bold text-zinc-400">Dirección</div>
-                      <div className="text-xs text-emerald-200">{invoiceData.address || '-'}</div>
-                    </div>
+                    {invoiceData.address && (
+                      <div>
+                        <div className="text-xs font-bold text-zinc-400">Dirección</div>
+                        <div className="text-xs text-emerald-200">{invoiceData.address}</div>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -564,22 +582,50 @@ export default function POSInterface() {
             ) : invoiceType === 'factura' ? (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">RUC *</label>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Tipo de Identificación *</label>
+                  <div className="flex gap-3 mb-3">
+                    <button
+                      onClick={() => setInvoiceData({...invoiceData, identificationType: 'ruc', identification: ''})}
+                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-all ${
+                        invoiceData.identificationType === 'ruc'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      RUC
+                    </button>
+                    <button
+                      onClick={() => setInvoiceData({...invoiceData, identificationType: 'cedula', identification: ''})}
+                      className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-all ${
+                        invoiceData.identificationType === 'cedula'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      }`}
+                    >
+                      Cédula
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">
+                    {invoiceData.identificationType === 'ruc' ? 'RUC (13 dígitos)' : 'Cédula (10 dígitos)'} *
+                  </label>
                   <input
                     type="text"
-                    maxLength="13"
-                    placeholder="1706111505001"
-                    value={invoiceData.ruc}
-                    onChange={(e) => setInvoiceData({...invoiceData, ruc: e.target.value})}
+                    maxLength={invoiceData.identificationType === 'ruc' ? '13' : '10'}
+                    placeholder={invoiceData.identificationType === 'ruc' ? '1706111505001' : '1234567890'}
+                    value={invoiceData.identification}
+                    onChange={(e) => setInvoiceData({...invoiceData, identification: e.target.value})}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Razón Social *</label>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Razón Social / Nombre *</label>
                   <input
                     type="text"
-                    placeholder="Nombre de la empresa"
+                    placeholder={invoiceData.identificationType === 'ruc' ? 'Nombre de la empresa' : 'Nombre completo'}
                     value={invoiceData.razonSocial}
                     onChange={(e) => setInvoiceData({...invoiceData, razonSocial: e.target.value})}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
