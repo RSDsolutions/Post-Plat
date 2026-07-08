@@ -108,6 +108,23 @@ export default function BillingConfiguration() {
       await saveBillingConfig(currentUser.company_id, config);
 
       showToast('success', 'Configuración de facturación guardada correctamente');
+
+      // Recargar datos desde la BD para asegurar consistencia
+      const updatedCompany = await fetchCompanyById(currentUser.company_id);
+      const updatedBillingConfig = await getBillingConfig(currentUser.company_id);
+
+      setCompany(updatedCompany);
+      setConfig(prev => ({
+        ...prev,
+        ...updatedBillingConfig,
+        ruc: updatedCompany.ruc || '',
+        razonSocial: updatedCompany.razon_social || '',
+        nombreComercial: updatedCompany.nombre_comercial || '',
+        llevaContabilidad: updatedCompany.lleva_contabilidad || false,
+        phone: updatedBillingConfig.phone || updatedCompany.phone || '',
+        email: updatedBillingConfig.email || updatedCompany.email || '',
+        address: updatedBillingConfig.address || updatedCompany.address || ''
+      }));
     } catch (error) {
       console.error('Error saving:', error);
       showToast('error', error.message || 'Error al guardar configuración');
