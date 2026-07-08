@@ -243,13 +243,32 @@ export default async function handler(req, res) {
       sequential: invoiceInput.infoTributaria.secuencial
     });
 
+    // The SRI XSD requires infoTributaria's children in this exact sequence -
+    // claveAcceso must sit between ruc and codDoc, not appended at the end
+    // (xmlbuilder2 renders object keys in insertion order as XML element order)
+    const { ambiente: amb, tipoEmision, razonSocial, nombreComercial, ruc, codDoc, estab: estabField, ptoEmi: ptoEmiField, secuencial, dirMatriz, ...regimenTail } = invoiceInput.infoTributaria;
+    const infoTributariaOrdered = {
+      ambiente: amb,
+      tipoEmision,
+      razonSocial,
+      nombreComercial,
+      ruc,
+      claveAcceso: accessKey,
+      codDoc,
+      estab: estabField,
+      ptoEmi: ptoEmiField,
+      secuencial,
+      dirMatriz,
+      ...regimenTail
+    };
+
     const builtInvoice = {
       factura: {
         '@xmlns:ds': 'http://www.w3.org/2000/09/xmldsig#',
         '@xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
         '@id': 'comprobante',
         '@version': '1.0.0',
-        infoTributaria: { ...invoiceInput.infoTributaria, claveAcceso: accessKey },
+        infoTributaria: infoTributariaOrdered,
         infoFactura: invoiceInput.infoFactura,
         detalles: invoiceInput.detalles
       }
