@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { FileText, Save, AlertCircle, CheckCircle, Loader } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { saveBillingConfig, getBillingConfig, getPaymentMethods, fetchCompanyById } from '../../lib/supabaseHelpers.js';
@@ -10,6 +10,7 @@ export default function BillingConfiguration() {
   const [saving, setSaving] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [company, setCompany] = useState(null);
+  const loadedCompanyIdRef = useRef(null);
 
   const [config, setConfig] = useState({
     establishment: '001',
@@ -43,21 +44,36 @@ export default function BillingConfiguration() {
 
         // Load billing config
         const billingConfig = await getBillingConfig(currentUser.company_id);
-        setConfig(prev => ({
-          ...prev,
-          ...billingConfig,
+
+        // Merge: company data has priority for identification fields
+        // billing_config provides SRI/POS-specific settings
+        setConfig({
           ruc: companyData.ruc || '',
           razonSocial: companyData.razon_social || '',
           nombreComercial: companyData.nombre_comercial || '',
           llevaContabilidad: companyData.lleva_contabilidad || false,
-          phone: billingConfig.phone || companyData.phone || '',
-          email: billingConfig.email || companyData.email || '',
-          address: billingConfig.address || companyData.address || ''
-        }));
+          phone: companyData.telefono_facturacion || companyData.phone || billingConfig.phone || '',
+          email: companyData.email_facturacion || companyData.email || billingConfig.email || '',
+          address: companyData.direccion || companyData.address || billingConfig.address || '',
+          establishment: billingConfig.establishment || '001',
+          pointOfSale: billingConfig.pointOfSale || '001',
+          environment: billingConfig.environment || 'production',
+          sriUsername: billingConfig.sriUsername || '',
+          sriPassword: billingConfig.sriPassword || '',
+          sriTestMode: billingConfig.sriTestMode !== false,
+          currentSequential: billingConfig.currentSequential || 1,
+          accountingRegime: billingConfig.accountingRegime || 'general',
+          taxRate: billingConfig.taxRate || 12.00,
+          receiptFooterText: billingConfig.receiptFooterText || '',
+          autoSendSRI: billingConfig.autoSendSRI || false
+        });
 
         // Load payment methods
         const methods = await getPaymentMethods();
         setPaymentMethods(methods);
+
+        // Mark company as loaded to avoid re-loading
+        loadedCompanyIdRef.current = currentUser.company_id;
       } catch (error) {
         console.error('Error loading data:', error);
         showToast('error', 'Error al cargar configuración');
@@ -66,10 +82,11 @@ export default function BillingConfiguration() {
       }
     };
 
-    if (currentUser?.company_id) {
+    // Only load if company_id changed
+    if (currentUser?.company_id && loadedCompanyIdRef.current !== currentUser.company_id) {
       loadData();
     }
-  }, [currentUser, showToast]);
+  }, [currentUser?.company_id, showToast]);
 
   const handleSave = async () => {
     try {
@@ -114,17 +131,26 @@ export default function BillingConfiguration() {
       const updatedBillingConfig = await getBillingConfig(currentUser.company_id);
 
       setCompany(updatedCompany);
-      setConfig(prev => ({
-        ...prev,
-        ...updatedBillingConfig,
+      setConfig({
         ruc: updatedCompany.ruc || '',
         razonSocial: updatedCompany.razon_social || '',
         nombreComercial: updatedCompany.nombre_comercial || '',
         llevaContabilidad: updatedCompany.lleva_contabilidad || false,
-        phone: updatedBillingConfig.phone || updatedCompany.phone || '',
-        email: updatedBillingConfig.email || updatedCompany.email || '',
-        address: updatedBillingConfig.address || updatedCompany.address || ''
-      }));
+        phone: updatedCompany.telefono_facturacion || updatedCompany.phone || updatedBillingConfig.phone || '',
+        email: updatedCompany.email_facturacion || updatedCompany.email || updatedBillingConfig.email || '',
+        address: updatedCompany.direccion || updatedCompany.address || updatedBillingConfig.address || '',
+        establishment: updatedBillingConfig.establishment || '001',
+        pointOfSale: updatedBillingConfig.pointOfSale || '001',
+        environment: updatedBillingConfig.environment || 'production',
+        sriUsername: updatedBillingConfig.sriUsername || '',
+        sriPassword: updatedBillingConfig.sriPassword || '',
+        sriTestMode: updatedBillingConfig.sriTestMode !== false,
+        currentSequential: updatedBillingConfig.currentSequential || 1,
+        accountingRegime: updatedBillingConfig.accountingRegime || 'general',
+        taxRate: updatedBillingConfig.taxRate || 12.00,
+        receiptFooterText: updatedBillingConfig.receiptFooterText || '',
+        autoSendSRI: updatedBillingConfig.autoSendSRI || false
+      });
     } catch (error) {
       console.error('Error saving:', error);
       showToast('error', error.message || 'Error al guardar configuración');

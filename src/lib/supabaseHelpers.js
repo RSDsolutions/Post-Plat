@@ -557,7 +557,7 @@ export async function saveBillingConfig(companyId, config) {
       accounting_regime: config.accountingRegime || 'general',
       tax_rate: parseFloat(config.taxRate) || 12.00,
       receipt_footer_text: config.receiptFooterText || '',
-      auto_send_sri: config.autoSendSRI !== true,
+      auto_send_sri: config.autoSendSRI || false,
       store_phone: config.phone || '',
       store_email: config.email || '',
       store_address: config.address || ''
