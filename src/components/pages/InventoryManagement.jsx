@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus, Trash2, Loader, MapPin } from 'lucide-react';
+import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus, Trash2, Loader, MapPin, Lock } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { createProduct, updateProduct, deleteProduct, getBillingConfig, fetchBranches, fetchProductStock, fetchProductStockAllBranches, upsertProductStock } from '../../lib/supabaseHelpers.js';
+import { createProduct, updateProduct, deleteProduct, getBillingConfig, fetchBranches, fetchProductStock, fetchProductStockAllBranches, upsertProductStock, fetchCompanyFeatureOverrides } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import { formatUSD } from '../../lib/format.js';
+import { checkLimit, limitReachedMessage, hasFeature } from '../../lib/planLimits.js';
 
 const ALL_BRANCHES = 'all';
 
 export default function InventoryManagement() {
-  const { currentUser, showToast } = useStore();
+  const { currentUser, showToast, companies, plans } = useStore();
+  const company = companies.find(c => c.id === currentUser?.company_id);
+  const plan = plans.find(p => p.id === company?.planId);
+  const [featureOverrides, setFeatureOverrides] = useState([]);
+  const multiSucursalEnabled = hasFeature(plan, featureOverrides, 'inventario');
   const [products, setProducts] = useState([]);
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState(null);
@@ -68,6 +73,12 @@ export default function InventoryManagement() {
   }, [currentUser]);
 
   useEffect(() => {
+    if (currentUser?.company_id) {
+      fetchCompanyFeatureOverrides(currentUser.company_id).then(setFeatureOverrides).catch(() => {});
+    }
+  }, [currentUser?.company_id]);
+
+  useEffect(() => {
     const load = async () => {
       if (!selectedBranchId) return;
       setLoading(true);
@@ -118,6 +129,11 @@ export default function InventoryManagement() {
 
     if (parseFloat(newProduct.salePrice) <= 0) {
       showToast('error', 'El precio debe ser mayor a 0');
+      return;
+    }
+    const limitCheck = checkLimit('products', plan, products.length);
+    if (!limitCheck.ok) {
+      showToast('error', limitReachedMessage(limitCheck, plan?.name));
       return;
     }
 
@@ -214,12 +230,13 @@ export default function InventoryManagement() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-wrap items-center gap-2">
         <MapPin size={16} className="text-zinc-500 flex-shrink-0" />
         <button
-          onClick={() => setSelectedBranchId(ALL_BRANCHES)}
+          onClick={() => multiSucursalEnabled ? setSelectedBranchId(ALL_BRANCHES) : showToast('warning', 'La vista de inventario multi-sucursal no está incluida en tu plan')}
+          title={multiSucursalEnabled ? '' : 'No incluido en tu plan'}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
-            isAllBranches ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+            isAllBranches ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : multiSucursalEnabled ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent' : 'text-zinc-600 border border-transparent cursor-not-allowed'
           }`}
         >
-          Todas las sucursales
+          Todas las sucursales {!multiSucursalEnabled && <Lock size={11} className="inline ml-1 -mt-0.5" />}
         </button>
         {branches.map(b => (
           <button

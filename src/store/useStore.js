@@ -5,7 +5,8 @@ import { formatUSD } from '../lib/format.js';
 import { transformCompany } from '../lib/transforms.js';
 import {
   createCompany, updateCompany, createBranch, createPointOfSale,
-  createCompanyGerente, logActivity, updatePlan as updatePlanInDb
+  createCompanyGerente, logActivity, updatePlan as updatePlanInDb,
+  fetchCompanyGerente, createPaymentRecord
 } from '../lib/supabaseHelpers.js';
 
 function generateTempPassword() {
@@ -25,6 +26,11 @@ export const useStore = create((set, get) => ({
   currentUser: null,
   userRole: null,
   isAuthenticating: false,
+  // Set while an admin is impersonating a company's gerente ("ver como
+  // cliente") - holds who to restore on exitImpersonation. Deliberately
+  // never written to localStorage (see impersonateCompany), so a hard
+  // refresh mid-impersonation falls back to the real admin session.
+  impersonating: null,
 
   activePage: 'dashboard',
   sidebarCollapsed: false,
@@ -76,6 +82,44 @@ export const useStore = create((set, get) => ({
     return false;
   },
 
+  // "Ver como cliente" - lets an admin drop into a company's gerente view
+  // for support, without knowing/resetting their password. Logs who did it
+  // to activity_log before switching identity (addActivityEvent reads
+  // currentUser at call time, so it must run while currentUser is still
+  // the admin).
+  impersonateCompany: async (companyId) => {
+    const { showToast, currentUser, userRole, companies, addActivityEvent } = get();
+    const comp = companies.find(c => c.id === companyId);
+    try {
+      const gerente = await fetchCompanyGerente(companyId);
+      if (!gerente) {
+        showToast('error', 'Esta empresa no tiene un usuario gerente activo');
+        return;
+      }
+      await addActivityEvent('Admin ingresó como soporte', companyId, comp?.nombreComercial, `Impersonando a ${gerente.name} (${gerente.email})`);
+      set({
+        impersonating: { adminUser: currentUser, adminRole: userRole },
+        currentUser: gerente,
+        userRole: gerente.role,
+        activePage: 'dashboard',
+        selectedCompanyId: null
+      });
+    } catch (error) {
+      console.error('Error impersonating company:', error);
+      showToast('error', error.message || 'Error al entrar como soporte');
+    }
+  },
+  exitImpersonation: () => {
+    const { impersonating } = get();
+    if (!impersonating) return;
+    set({
+      currentUser: impersonating.adminUser,
+      userRole: impersonating.adminRole,
+      impersonating: null,
+      activePage: 'companies'
+    });
+  },
+
   setBrand: (name, color) => set((state) => ({ brand: { ...state.brand, name, color } })),
   setActivePage: (activePage) => set({ activePage, selectedCompanyId: null, mobileMenuOpen: false }),
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -90,7 +134,7 @@ export const useStore = create((set, get) => ({
   setWizardData: (data) => set((state) => ({ wizardData: { ...state.wizardData, ...data } })),
 
   submitWizard: async () => {
-    const { wizardData, plans, addActivityEvent, recalculateAlerts, showToast, openConfirm } = get();
+    const { wizardData, plans, addActivityEvent, recalculateAlerts, showToast, openConfirm, currentUser } = get();
     const selectedPlan = plans.find(p => p.id === wizardData.planId) || plans[0];
     const isAnnual = wizardData.billingCycle === 'anual';
     const renewalDays = isAnnual ? 365 : 30;
@@ -146,7 +190,8 @@ export const useStore = create((set, get) => ({
         companyId: dbCompany.id,
         email: wizardData.adminEmail,
         password: tempPassword,
-        name: `Gerente ${wizardData.nombreComercial}`
+        name: `Gerente ${wizardData.nombreComercial}`,
+        adminId: currentUser?.id
       });
 
       set((state) => ({
@@ -256,14 +301,15 @@ export const useStore = create((set, get) => ({
     }
   },
 
-  // No dedicated payment-ledger table exists yet, so this persists the real
-  // subscription/status fields (what actually gates access) - the itemized
-  // paymentHistory list shown in CompanyDetail stays session-local until
-  // there's a real table to back it.
-  registerPayment: async (companyId) => {
+  // Persists the real subscription/status fields (what actually gates
+  // access) and, since this session, a real row in the payments ledger too
+  // - registerPayment used to only touch companies, so CompanyDetail's
+  // itemized history was session-local and vanished on refresh.
+  registerPayment: async (companyId, { method = 'Transferencia bancaria', reference = null } = {}) => {
     const { showToast, addActivityEvent, recalculateAlerts, companies, plans } = get();
     const comp = companies.find(c => c.id === companyId);
     const plan = plans.find(p => p.id === comp.planId);
+    const amount = comp.customPrice ?? (plan ? plan.price : 0);
     const renewal = addDays(new Date(), 30);
     try {
       await updateCompany(companyId, {
@@ -271,22 +317,13 @@ export const useStore = create((set, get) => ({
         subscription_status: 'activa',
         payment_status: 'Al día'
       });
+      await createPaymentRecord({ companyId, amount, method, reference });
       set((state) => ({
-        companies: state.companies.map(c => {
-          if (c.id !== companyId) return c;
-          return {
-            ...c,
-            subscriptionRenewal: renewal,
-            subscriptionStatus: 'Activa',
-            paymentStatus: 'Al día',
-            paymentHistory: [
-              { date: new Date(), amount: plan ? plan.price : 0, method: 'Transferencia bancaria', status: 'Pagado' },
-              ...c.paymentHistory
-            ]
-          };
-        })
+        companies: state.companies.map(c => c.id === companyId
+          ? { ...c, subscriptionRenewal: renewal, subscriptionStatus: 'Activa', paymentStatus: 'Al día' }
+          : c)
       }));
-      await addActivityEvent('Pago registrado', companyId, comp.nombreComercial, `${formatUSD(plan ? plan.price : 0)} — transferencia bancaria`);
+      await addActivityEvent('Pago registrado', companyId, comp.nombreComercial, `${formatUSD(amount)} — ${method}`);
       recalculateAlerts();
       showToast('success', 'Pago registrado. Suscripción renovada.');
     } catch (error) {
@@ -340,6 +377,36 @@ export const useStore = create((set, get) => ({
     } catch (error) {
       console.error('Error saving notes:', error);
       showToast('error', error.message || 'Error al guardar las notas');
+    }
+  },
+
+  updateCompanyCustomPrice: async (companyId, customPrice) => {
+    const { showToast, addActivityEvent, companies } = get();
+    const comp = companies.find(c => c.id === companyId);
+    try {
+      await updateCompany(companyId, { custom_price: customPrice });
+      set((state) => ({
+        companies: state.companies.map(c => c.id === companyId ? { ...c, customPrice } : c)
+      }));
+      await addActivityEvent('Precio especial actualizado', companyId, comp?.nombreComercial, customPrice != null ? formatUSD(customPrice) : 'Precio de lista restaurado');
+      showToast('success', 'Precio actualizado.');
+    } catch (error) {
+      console.error('Error updating custom price:', error);
+      showToast('error', error.message || 'Error al actualizar el precio');
+    }
+  },
+
+  updateCompanyTrialEndsAt: async (companyId, trialEndsAt) => {
+    const { showToast, companies } = get();
+    try {
+      await updateCompany(companyId, { trial_ends_at: trialEndsAt ? trialEndsAt.toISOString() : null });
+      set((state) => ({
+        companies: state.companies.map(c => c.id === companyId ? { ...c, trialEndsAt } : c)
+      }));
+      showToast('success', 'Período de prueba actualizado.');
+    } catch (error) {
+      console.error('Error updating trial:', error);
+      showToast('error', error.message || 'Error al actualizar el período de prueba');
     }
   },
 

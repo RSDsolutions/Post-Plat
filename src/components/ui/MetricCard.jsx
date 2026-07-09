@@ -7,13 +7,13 @@ export default function MetricCard({ icon: Icon, label, value, color }) {
     amber: 'bg-amber-500/20 text-amber-400',
     red: 'bg-red-500/20 text-red-400'
   };
-  const iconClass = colorStyles[color] || 'bg-zinc-800 text-zinc-400';
+  const iconClass = colorStyles[color] || 'bg-[var(--surface-2)] text-[var(--text-faint)]';
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 flex flex-col justify-between h-full">
-      <div className="text-zinc-500 text-xs font-bold uppercase tracking-wider mb-2">{label}</div>
+    <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-3xl p-5 flex flex-col justify-between h-full">
+      <div className="text-[var(--text-muted)] text-xs font-bold uppercase tracking-wider mb-2">{label}</div>
       <div className="flex items-end justify-between">
-        <div className="text-3xl font-bold text-zinc-100">{value}</div>
+        <div className="text-3xl font-bold text-[var(--text-primary)]">{value}</div>
         <div className={`p-2 rounded-xl flex items-center justify-center ${iconClass}`}>
           <Icon size={20} />
         </div>

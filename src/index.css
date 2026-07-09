@@ -8,6 +8,29 @@
   --brand:      #10b981;
   --brand-dark: #059669;
   --brand-soft: rgba(16, 185, 129, 0.1);
+
+  /* Surface/text/border tokens - default values match the app's existing
+     dark (near-black) palette exactly, so introducing these is a no-op
+     everywhere except inside .admin-theme below. Lets the admin panel use a
+     lighter charcoal palette without touching gerente/POS, which keep using
+     the zinc-950/900 classes directly. */
+  --surface-0: #09090b;      /* zinc-950 */
+  --surface-1: #18181b;      /* zinc-900 */
+  --surface-2: #27272a;      /* zinc-800 */
+  --border-subtle: #27272a;  /* zinc-800 */
+  --text-primary: #f4f4f5;   /* zinc-100 */
+  --text-muted: #71717a;     /* zinc-500 */
+  --text-faint: #52525b;     /* zinc-600 */
+}
+
+.admin-theme {
+  --surface-0: #27272a;      /* zinc-800 */
+  --surface-1: #3f3f46;      /* zinc-700 */
+  --surface-2: #52525b;      /* zinc-600 */
+  --border-subtle: #52525b;  /* zinc-600 */
+  --text-primary: #f4f4f5;   /* zinc-100 */
+  --text-muted: #d4d4d8;     /* zinc-300 - stays legible on the lighter gray */
+  --text-faint: #a1a1aa;     /* zinc-400 */
 }
 
 body {

@@ -7,7 +7,8 @@ export function formatMRR(companies, plans) {
   for (const c of companies) {
     if (c.subscriptionStatus === 'Activa') {
       const plan = plans.find(p => p.id === c.planId);
-      if (plan) sum += plan.price;
+      const price = c.customPrice ?? plan?.price;
+      if (price) sum += price;
     }
   }
   return sum;

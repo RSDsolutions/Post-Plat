@@ -8,6 +8,7 @@ import CompanyDetail from '../pages/CompanyDetail.jsx';
 import Subscriptions from '../pages/Subscriptions.jsx';
 import Activity from '../pages/Activity.jsx';
 import BrandConfig from '../pages/BrandConfig.jsx';
+import Metrics from '../pages/Metrics.jsx';
 import Toast from '../ui/Toast.jsx';
 import ConfirmDialog from '../ui/ConfirmDialog.jsx';
 import CompanyWizard from '../pages/CompanyWizard.jsx';
@@ -21,13 +22,14 @@ export default function Layout() {
     case 'dashboard': Content = Dashboard; break;
     case 'companies': Content = selectedCompanyId ? CompanyDetail : Companies; break;
     case 'subscriptions': Content = Subscriptions; break;
+    case 'metrics': Content = Metrics; break;
     case 'activity': Content = Activity; break;
     case 'brand': Content = BrandConfig; break;
     default: Content = Dashboard;
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans p-6 gap-4">
+    <div className="admin-theme flex h-screen overflow-hidden bg-[var(--surface-0)] text-[var(--text-primary)] font-sans p-6 gap-4">
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden w-full relative">
         <TopBar />

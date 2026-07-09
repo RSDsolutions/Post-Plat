@@ -28,10 +28,6 @@ export const transformCompany = (dbCompany) => ({
   activeUsers: dbCompany.active_users || 0,
   branches: dbCompany.branches || 0,
   paymentStatus: dbCompany.payment_status || 'Al día',
-  // No dedicated payment-ledger table exists yet - registerPayment() persists
-  // the real subscription/status fields, but the itemized history shown in
-  // CompanyDetail is session-local until that table exists.
-  paymentHistory: [],
   suspensionInfo: dbCompany.suspension_info || null,
   internalNotes: dbCompany.internal_notes || '',
   // The real cert (path + upload date) lives on billing_configs, uploaded by
@@ -45,7 +41,10 @@ export const transformCompany = (dbCompany) => ({
   regimen: dbCompany.regimen || 'General',
   llevaContabilidad: dbCompany.lleva_contabilidad || false,
   environment: dbCompany.environment_type === 'produccion' ? 'Producción' : 'Pruebas',
-  logoUrl: dbCompany.logo_url || null
+  logoUrl: dbCompany.logo_url || null,
+  customPrice: dbCompany.custom_price != null ? Number(dbCompany.custom_price) : null,
+  trialEndsAt: dbCompany.trial_ends_at ? new Date(dbCompany.trial_ends_at) : null,
+  comprobantesPeriodStart: dbCompany.comprobantes_period_start || null
 });
 
 export const transformActivityEvent = (dbEvent) => ({
@@ -65,6 +64,7 @@ export const transformPlan = (dbPlan) => ({
   usersLimit: dbPlan.max_users ?? null,
   branchesLimit: dbPlan.max_branches ?? null,
   productsLimit: dbPlan.max_products ?? null,
+  posLimit: dbPlan.max_pos ?? null,
   description: dbPlan.description || '',
   features: Array.isArray(dbPlan.features) ? dbPlan.features : [],
   color: 'emerald'

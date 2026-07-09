@@ -9,12 +9,33 @@ import StoreManagerLayout from './components/layout/StoreManagerLayout.jsx';
 import POSLayout from './components/layout/POSLayout.jsx';
 import Login from './components/pages/Login.jsx';
 
+function ImpersonationBanner() {
+  const impersonating = useStore(state => state.impersonating);
+  const exitImpersonation = useStore(state => state.exitImpersonation);
+  const currentUser = useStore(state => state.currentUser);
+
+  if (!impersonating) return null;
+
+  return (
+    <div className="fixed top-0 inset-x-0 z-[100] bg-amber-500 text-zinc-950 px-4 py-2 flex items-center justify-center gap-3 text-sm font-bold shadow-lg">
+      <span>Viendo como {currentUser?.name || 'cliente'} — modo soporte</span>
+      <button
+        onClick={exitImpersonation}
+        className="bg-zinc-950 text-amber-400 px-3 py-1 rounded-lg text-xs uppercase tracking-wider hover:bg-zinc-800 transition-colors"
+      >
+        Volver al panel admin
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const isAuthenticated = useStore(state => state.isAuthenticated);
   const userRole = useStore(state => state.userRole);
   const initData = useStore(state => state.initData);
   const brand = useStore(state => state.brand);
   const restoreAuth = useStore(state => state.restoreAuth);
+  const impersonating = useStore(state => state.impersonating);
 
   useEffect(() => {
     // Restore authentication from localStorage
@@ -52,15 +73,26 @@ export default function App() {
   }
 
   // Show correct layout based on user role
+  let ActiveLayout;
   switch (userRole) {
     case 'admin':
-      return <Layout />;
+      ActiveLayout = Layout;
+      break;
     case 'gerente':
-      return <StoreManagerLayout />;
+      ActiveLayout = StoreManagerLayout;
+      break;
     case 'operario':
     case 'vendedor':
-      return <POSLayout />;
+      ActiveLayout = POSLayout;
+      break;
     default:
-      return <StoreLayout />;
+      ActiveLayout = StoreLayout;
   }
+
+  return (
+    <>
+      {impersonating && <ImpersonationBanner />}
+      <ActiveLayout />
+    </>
+  );
 }

@@ -64,8 +64,7 @@ export default async function handler(req, res) {
     console.error('Failed to load open-factura:', importError);
     return res.status(500).json({
       error: 'No se pudo cargar el módulo de firma electrónica en el servidor',
-      detail: importError.message,
-      stack: importError.stack
+      detail: importError.message
     });
   }
 
@@ -107,13 +106,34 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'La factura no tiene productos' });
     }
 
-    // Empresa
+    // Empresa (con el límite mensual de comprobantes de su plan, si tiene uno)
     const { data: company, error: companyError } = await supabase
       .from('companies')
-      .select('*')
+      .select('*, plans(max_invoices_monthly)')
       .eq('id', companyId)
       .single();
     if (companyError || !company) throw new Error('Empresa no encontrada');
+
+    // Reset perezoso del contador mensual: no hay infraestructura de cron en
+    // este proyecto, así que el "mes nuevo" se detecta acá, en el momento en
+    // que la empresa intenta emitir su primer comprobante del mes.
+    const today = new Date();
+    const periodStart = company.comprobantes_period_start ? new Date(company.comprobantes_period_start) : today;
+    const periodChanged = today.getUTCFullYear() !== periodStart.getUTCFullYear() || today.getUTCMonth() !== periodStart.getUTCMonth();
+    let monthlyComprobantes = company.monthly_comprobantes || 0;
+    if (periodChanged) {
+      await supabase.from('companies').update({
+        prev_month_comprobantes: monthlyComprobantes,
+        monthly_comprobantes: 0,
+        comprobantes_period_start: today.toISOString().slice(0, 10)
+      }).eq('id', companyId);
+      monthlyComprobantes = 0;
+    }
+
+    const maxInvoicesMonthly = company.plans?.max_invoices_monthly;
+    if (maxInvoicesMonthly != null && monthlyComprobantes >= maxInvoicesMonthly) {
+      return res.status(400).json({ error: `Alcanzaste el límite de ${maxInvoicesMonthly} facturas mensuales de tu plan. Actualiza tu plan para seguir facturando este mes.` });
+    }
 
     // Configuración de facturación (certificado, ambiente, tasa IVA)
     const { data: billingConfig, error: billingError } = await supabase
@@ -317,6 +337,10 @@ export default async function handler(req, res) {
         sri_response_message: 'Autorizado por el SRI'
       }).eq('id', invoiceId);
 
+      // Solo se cuenta contra el límite del plan lo que el SRI efectivamente
+      // autorizó, no los borradores ni lo que el SRI rechazó.
+      await supabase.from('companies').update({ monthly_comprobantes: monthlyComprobantes + 1 }).eq('id', companyId);
+
       return res.status(200).json({ success: true, status: 'autorizada', accessKey });
     }
 
@@ -330,8 +354,7 @@ export default async function handler(req, res) {
   } catch (error) {
     console.error('SRI submission error:', error);
     return res.status(500).json({
-      error: error.message || 'Error al enviar la factura al SRI',
-      stack: error.stack
+      error: error.message || 'Error al enviar la factura al SRI'
     });
   }
 }

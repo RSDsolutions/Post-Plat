@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Building2, CreditCard, Activity, Palette, Menu, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, Building2, CreditCard, Activity, Palette, Menu, ChevronLeft, BarChart3 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 
 export default function Sidebar() {
@@ -11,12 +11,13 @@ export default function Sidebar() {
     { id: 'dashboard', label: 'Inicio', icon: LayoutDashboard },
     { id: 'companies', label: 'Empresas', icon: Building2 },
     { id: 'subscriptions', label: 'Suscripciones y planes', icon: CreditCard },
+    { id: 'metrics', label: 'Métricas', icon: BarChart3 },
     { id: 'activity', label: 'Actividad y alertas', icon: Activity, badge: unreadAlerts },
     { id: 'brand', label: 'Mi marca', icon: Palette },
   ];
 
   return (
-    <div className={`bg-zinc-900 border border-zinc-800 rounded-3xl flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-20' : 'w-64'} hidden md:flex`}>
+    <div className={`bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-3xl flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-20' : 'w-64'} hidden md:flex`}>
       <div className="flex-1 py-6 overflow-y-auto pr-2">
         <nav className="space-y-1">
           {navItems.map((item) => {
@@ -27,8 +28,8 @@ export default function Sidebar() {
                 onClick={() => setActivePage(item.id)}
                 className={`w-full flex items-center px-6 py-3 relative transition-colors ${
                   active 
-                    ? 'bg-zinc-800/50 text-[var(--brand)] font-bold' 
-                    : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 font-medium'
+                    ? 'bg-[var(--surface-2)]/50 text-[var(--brand)] font-bold' 
+                    : 'text-[var(--text-muted)] hover:bg-[var(--surface-2)] hover:text-zinc-300 font-medium'
                 }`}
               >
                 {active && <div className="absolute left-0 top-0 bottom-0 w-1 bg-[var(--brand)]" />}
@@ -49,10 +50,10 @@ export default function Sidebar() {
           })}
         </nav>
       </div>
-      <div className="p-4 border-t border-zinc-800 flex justify-end">
+      <div className="p-4 border-t border-[var(--border-subtle)] flex justify-end">
         <button 
           onClick={toggleSidebar}
-          className="p-2 text-zinc-500 hover:bg-zinc-800 rounded-lg"
+          className="p-2 text-[var(--text-muted)] hover:bg-[var(--surface-2)] rounded-lg"
         >
           {sidebarCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
         </button>

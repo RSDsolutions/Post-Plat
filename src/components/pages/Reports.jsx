@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   TrendingUp, Package, Users, Building2, Boxes, Receipt, LayoutGrid,
-  Loader, FileSpreadsheet, FileText, MapPin
+  Loader, FileSpreadsheet, FileText, MapPin, Lock
 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, fetchInvoicesForReports, fetchCompanyById, fetchCompanyUsers, fetchBranches, fetchProductStock, fetchProductStockAllBranches } from '../../lib/supabaseHelpers.js';
+import { fetchData, fetchInvoicesForReports, fetchCompanyById, fetchCompanyUsers, fetchBranches, fetchProductStock, fetchProductStockAllBranches, fetchCompanyFeatureOverrides } from '../../lib/supabaseHelpers.js';
 import {
   DATE_PRESETS, computeDateRange, formatDateRangeLabel,
   buildReportDataset, buildReport, formatCellValue, REPORT_TABS
@@ -12,6 +12,8 @@ import {
 import { downloadReportCsv } from '../../lib/csvExport.js';
 import { generateReportPdf } from '../../lib/reportPdfGenerator.js';
 import { TrendLineChart, DonutChart, BarList } from '../ui/ReportCharts.jsx';
+import { hasFeature } from '../../lib/planLimits.js';
+import EmptyState from '../ui/EmptyState.jsx';
 
 const TAB_ICONS = { overview: LayoutGrid, sales: TrendingUp, products: Package, customers: Users, cashiers: Building2, inventory: Boxes, tax: Receipt };
 const CHART_HEADINGS = {
@@ -27,7 +29,7 @@ const BAR_ACCENTS = { products: 'blue', customers: 'pink', cashiers: 'purple' };
 const KPI_TEXT_CLASSES = { emerald: 'text-emerald-400', blue: 'text-blue-400', amber: 'text-amber-400', purple: 'text-purple-400', pink: 'text-pink-400', red: 'text-red-400' };
 
 export default function Reports() {
-  const { currentUser, showToast } = useStore();
+  const { currentUser, showToast, companies, plans } = useStore();
   const [datePreset, setDatePreset] = useState('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -38,6 +40,17 @@ export default function Reports() {
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('all');
   const [rawData, setRawData] = useState({ invoices: [], products: [], users: [], stockRows: [] });
+  const [featureOverrides, setFeatureOverrides] = useState([]);
+
+  const ownCompany = companies.find(c => c.id === currentUser?.company_id);
+  const plan = plans.find(p => p.id === ownCompany?.planId);
+  const reportsEnabled = hasFeature(plan, featureOverrides, 'reportes');
+
+  useEffect(() => {
+    if (currentUser?.company_id) {
+      fetchCompanyFeatureOverrides(currentUser.company_id).then(setFeatureOverrides).catch(() => {});
+    }
+  }, [currentUser?.company_id]);
 
   const { start, end } = useMemo(() => computeDateRange(datePreset, customStart, customEnd), [datePreset, customStart, customEnd]);
   const dateRangeLabel = useMemo(() => formatDateRangeLabel(start, end), [start, end]);
@@ -104,6 +117,18 @@ export default function Reports() {
       setExportingPdf(false);
     }
   };
+
+  if (!loading && !reportsEnabled) {
+    return (
+      <div className="max-w-7xl mx-auto">
+        <EmptyState
+          icon={Lock}
+          title="Reportes no incluido en tu plan"
+          description="Actualiza tu plan para acceder a reportes avanzados con gráficos y exportación a PDF/CSV."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">

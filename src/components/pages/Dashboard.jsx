@@ -20,7 +20,7 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <h1 className="text-4xl font-bold tracking-tighter uppercase text-zinc-100">Inicio</h1>
+      <h1 className="text-4xl font-bold tracking-tighter uppercase text-[var(--text-primary)]">Inicio</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard icon={Building2} label="Empresas activas" value={activeCompanies} color="brand" />
@@ -31,12 +31,12 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
-          <h2 className="font-bold text-lg text-zinc-100 mb-2">Requiere Atención</h2>
+          <h2 className="font-bold text-lg text-[var(--text-primary)] mb-2">Requiere Atención</h2>
           {topAlerts.length > 0 ? (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden p-2">
-              <ul className="divide-y divide-zinc-800">
+            <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-3xl overflow-hidden p-2">
+              <ul className="divide-y divide-[var(--border-subtle)]">
                 {topAlerts.map(alert => (
-                  <li key={alert.id} className="p-4 hover:bg-zinc-800/50 transition-colors rounded-2xl">
+                  <li key={alert.id} className="p-4 hover:bg-[var(--surface-2)]/50 transition-colors rounded-2xl">
                     <div className="flex items-start justify-between">
                       <div className="flex items-start space-x-3">
                         <div className="mt-0.5">
@@ -49,11 +49,11 @@ export default function Dashboard() {
                         <div>
                           <button 
                             onClick={() => selectCompany(alert.companyId)}
-                            className="text-sm font-bold text-zinc-100 hover:text-[var(--brand)] transition-colors"
+                            className="text-sm font-bold text-[var(--text-primary)] hover:text-[var(--brand)] transition-colors"
                           >
                             {alert.companyName}
                           </button>
-                          <p className="text-xs text-zinc-500 mt-0.5">{alert.message}</p>
+                          <p className="text-xs text-[var(--text-muted)] mt-0.5">{alert.message}</p>
                         </div>
                       </div>
                       <button 
@@ -74,32 +74,32 @@ export default function Dashboard() {
 
         <div className="space-y-4">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="font-bold text-lg text-zinc-100">Últimas Empresas</h2>
+            <h2 className="font-bold text-lg text-[var(--text-primary)]">Últimas Empresas</h2>
             <button 
               onClick={() => setActivePage('companies')}
-              className="text-xs font-bold text-zinc-500 hover:text-[var(--brand)] uppercase tracking-widest transition-colors"
+              className="text-xs font-bold text-[var(--text-muted)] hover:text-[var(--brand)] uppercase tracking-widest transition-colors"
             >
               Ver todas
             </button>
           </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden p-2">
-            <ul className="divide-y divide-zinc-800">
+          <div className="bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-3xl overflow-hidden p-2">
+            <ul className="divide-y divide-[var(--border-subtle)]">
               {recentCompanies.map(company => {
                 const plan = plans.find(p => p.id === company.planId);
                 return (
                   <li key={company.id} className="p-2">
-                    <div className="flex justify-between items-start hover:bg-zinc-800/50 p-2 rounded-2xl transition-colors">
+                    <div className="flex justify-between items-start hover:bg-[var(--surface-2)]/50 p-2 rounded-2xl transition-colors">
                       <div>
                         <button 
                           onClick={() => selectCompany(company.id)}
-                          className="text-sm font-bold text-zinc-100 hover:text-[var(--brand)] block text-left transition-colors"
+                          className="text-sm font-bold text-[var(--text-primary)] hover:text-[var(--brand)] block text-left transition-colors"
                         >
                           {company.nombreComercial}
                         </button>
                         <div className="flex items-center space-x-2 mt-1">
-                          <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">{plan?.name}</span>
+                          <span className="text-[10px] uppercase font-bold text-[var(--text-muted)] tracking-wider">{plan?.name}</span>
                           <span className="text-zinc-700">•</span>
-                          <span className="text-[10px] text-zinc-600">{formatDateRelative(company.createdAt)}</span>
+                          <span className="text-[10px] text-[var(--text-faint)]">{formatDateRelative(company.createdAt)}</span>
                         </div>
                       </div>
                       <Badge status={company.subscriptionStatus} />

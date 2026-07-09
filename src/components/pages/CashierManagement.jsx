@@ -2,14 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { Users, Plus, X, Key, Loader, MapPin } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { fetchCompanyUsers, createCashierUser, resetCashierPassword, fetchBranches, updateUserBranch } from '../../lib/supabaseHelpers.js';
+import { checkLimit, limitReachedMessage } from '../../lib/planLimits.js';
 
 const EMPTY_NEW_CASHIER = { name: '', email: '', phone: '', role: 'vendedor', branchId: '', password: '', confirmPassword: '' };
 
 export default function CashierManagement() {
-  const { currentUser, showToast } = useStore();
+  const { currentUser, showToast, companies, plans } = useStore();
   const [cashiers, setCashiers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const company = companies.find(c => c.id === currentUser?.company_id);
+  const plan = plans.find(p => p.id === company?.planId);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCashier, setNewCashier] = useState(EMPTY_NEW_CASHIER);
@@ -28,6 +32,7 @@ export default function CashierManagement() {
         fetchBranches(currentUser.company_id)
       ]);
       setCashiers(users.filter(u => u.role === 'operario' || u.role === 'vendedor'));
+      setAllUsers(users);
       setBranches(branchList);
     } catch (error) {
       console.error('Error loading cashiers:', error);
@@ -62,6 +67,12 @@ export default function CashierManagement() {
     }
     if (newCashier.password !== newCashier.confirmPassword) {
       showToast('error', 'Las contraseñas no coinciden');
+      return;
+    }
+    const activeUserCount = allUsers.filter(u => u.is_active).length;
+    const limitCheck = checkLimit('users', plan, activeUserCount);
+    if (!limitCheck.ok) {
+      showToast('error', limitReachedMessage(limitCheck, plan?.name));
       return;
     }
 
