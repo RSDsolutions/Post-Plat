@@ -4,7 +4,7 @@ import StoreManagerSidebar from './StoreManagerSidebar.jsx';
 import StoreManagerTopBar from './StoreManagerTopBar.jsx';
 import StoreManagerDashboard from '../pages/StoreManagerDashboard.jsx';
 import InventoryManagement from '../pages/InventoryManagement.jsx';
-import SalesAnalytics from '../pages/SalesAnalytics.jsx';
+import Reports from '../pages/Reports.jsx';
 import InvoiceManagement from '../pages/InvoiceManagement.jsx';
 import CashierManagement from '../pages/CashierManagement.jsx';
 import CustomerManagement from '../pages/CustomerManagement.jsx';
@@ -20,7 +20,7 @@ export default function StoreManagerLayout() {
   switch (activePage) {
     case 'dashboard': Content = StoreManagerDashboard; break;
     case 'inventory': Content = InventoryManagement; break;
-    case 'sales': Content = SalesAnalytics; break;
+    case 'reports': Content = Reports; break;
     case 'invoices': Content = InvoiceManagement; break;
     case 'cashiers': Content = CashierManagement; break;
     case 'customers': Content = CustomerManagement; break;

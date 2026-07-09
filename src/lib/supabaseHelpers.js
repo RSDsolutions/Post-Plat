@@ -552,6 +552,28 @@ export async function fetchInvoicesByCompany(companyId) {
   }
 }
 
+// Fetches invoices with their customer and line items embedded in one round
+// trip, scoped to a date range - the base dataset the Reportes view builds
+// every report tab from (see reportsHelpers.js).
+export async function fetchInvoicesForReports(companyId, startISO, endISO) {
+  try {
+    let query = supabase
+      .from('invoices')
+      .select('*, customers(name, identification_type, identification_number), invoice_details(*)')
+      .eq('company_id', companyId)
+      .order('issue_date', { ascending: false });
+
+    if (startISO) query = query.gte('issue_date', startISO);
+    if (endISO) query = query.lte('issue_date', endISO);
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+    return data || [];
+  } catch (error) {
+    throw new Error(`Error fetching report data: ${error.message}`);
+  }
+}
+
 export async function fetchInvoiceDetails(invoiceId) {
   try {
     const { data, error } = await supabase

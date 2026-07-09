@@ -226,7 +226,7 @@ export default function StoreManagerDashboard() {
             </button>
 
             <button
-              onClick={() => setActivePage('sales')}
+              onClick={() => setActivePage('reports')}
               className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold py-3 rounded-xl transition-all text-sm"
             >
               📊 Reportes & Análisis
