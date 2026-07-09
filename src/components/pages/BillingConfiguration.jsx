@@ -231,7 +231,7 @@ export default function BillingConfiguration() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3 mb-8">
         <FileText className="text-emerald-500" size={32} />
-        <h1 className="text-4xl font-bold text-zinc-100">Configuración de Facturación Electrónica</h1>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Configuración de Facturación Electrónica</h1>
       </div>
 
       {/* Warning */}
@@ -286,7 +286,7 @@ export default function BillingConfiguration() {
           Identificación Tributaria
         </h2>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">RUC (13 dígitos) *</label>
             <input
@@ -316,7 +316,7 @@ export default function BillingConfiguration() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">Razón Social *</label>
             <input
@@ -350,7 +350,7 @@ export default function BillingConfiguration() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono *</label>
             <input
@@ -391,7 +391,7 @@ export default function BillingConfiguration() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
         <h2 className="text-xl font-bold text-zinc-100">Punto de Venta</h2>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">Establecimiento (3 dígitos)</label>
             <input
@@ -509,7 +509,7 @@ export default function BillingConfiguration() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">Archivo del certificado (.p12 / .pfx)</label>
             <input

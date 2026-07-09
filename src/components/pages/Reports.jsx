@@ -91,7 +91,7 @@ export default function Reports() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div>
-        <h1 className="text-4xl font-bold tracking-tighter uppercase text-zinc-100">Reportes</h1>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tighter uppercase text-zinc-100">Reportes</h1>
         <p className="text-zinc-500 mt-1">Análisis completo de ventas, productos, clientes, cajeros e inventario</p>
       </div>
 

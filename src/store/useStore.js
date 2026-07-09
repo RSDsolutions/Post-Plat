@@ -19,6 +19,7 @@ export const useStore = create((set, get) => ({
 
   activePage: 'dashboard',
   sidebarCollapsed: false,
+  mobileMenuOpen: false,
   companies: [],
   plans: [],
   activityLog: [],
@@ -67,8 +68,10 @@ export const useStore = create((set, get) => ({
   },
 
   setBrand: (name, color) => set((state) => ({ brand: { ...state.brand, name, color } })),
-  setActivePage: (activePage) => set({ activePage, selectedCompanyId: null }),
+  setActivePage: (activePage) => set({ activePage, selectedCompanyId: null, mobileMenuOpen: false }),
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+  toggleMobileMenu: () => set((state) => ({ mobileMenuOpen: !state.mobileMenuOpen })),
+  closeMobileMenu: () => set({ mobileMenuOpen: false }),
   selectCompany: (id) => set({ selectedCompanyId: id, activePage: 'companies', companyDetailTab: 'resumen' }),
   setCompanyDetailTab: (tab) => set({ companyDetailTab: tab }),
 

@@ -178,7 +178,7 @@ export default function InventoryManagement() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <h1 className="text-4xl font-bold text-zinc-100">Gestión de Inventario</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Gestión de Inventario</h1>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -323,7 +323,7 @@ export default function InventoryManagement() {
             <div className="space-y-4 mb-6">
               {/* Product Info */}
               <div className="p-4 bg-zinc-950/50 rounded-lg border border-zinc-800">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <div className="text-xs font-bold text-zinc-500 mb-1">Nombre</div>
                     <div className="font-bold text-zinc-100">{editingProduct.name}</div>
@@ -338,7 +338,7 @@ export default function InventoryManagement() {
               {/* Stock Management */}
               <div className="space-y-3">
                 <h3 className="font-bold text-zinc-300">Stock</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-zinc-400 mb-2">Cantidad Actual</label>
                     <input
@@ -429,7 +429,7 @@ export default function InventoryManagement() {
                 </div>
 
                 {/* Price Preview */}
-                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-950/50 rounded border border-zinc-800">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-zinc-950/50 rounded border border-zinc-800">
                   <div>
                     <div className="text-xs text-zinc-500 font-bold">Precio sin IVA</div>
                     <div className="text-lg font-bold text-zinc-100">
@@ -528,7 +528,7 @@ export default function InventoryManagement() {
               {/* Basic Info */}
               <div className="space-y-3">
                 <h3 className="font-bold text-zinc-300">Información Básica</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-zinc-400 mb-2">Código (Requerido)</label>
                     <input
@@ -565,7 +565,7 @@ export default function InventoryManagement() {
               {/* Stock Management */}
               <div className="space-y-3">
                 <h3 className="font-bold text-zinc-300">Stock</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-zinc-400 mb-2">Cantidad Inicial</label>
                     <input
@@ -656,7 +656,7 @@ export default function InventoryManagement() {
                 </div>
 
                 {/* Price Preview */}
-                <div className="grid grid-cols-2 gap-2 p-3 bg-zinc-950/50 rounded border border-zinc-800">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-zinc-950/50 rounded border border-zinc-800">
                   <div>
                     <div className="text-xs text-zinc-500 font-bold">Precio sin IVA</div>
                     <div className="text-lg font-bold text-zinc-100">

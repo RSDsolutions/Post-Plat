@@ -94,7 +94,7 @@ export default function StoreSettings() {
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3 mb-8">
         <Settings className="text-blue-500" size={32} />
-        <h1 className="text-4xl font-bold text-zinc-100">Configuración de Tienda</h1>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Configuración de Tienda</h1>
       </div>
 
       {/* Tax Rate Configuration */}
@@ -147,7 +147,7 @@ export default function StoreSettings() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">RUC (13 dígitos)</label>
             <input
@@ -193,7 +193,7 @@ export default function StoreSettings() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">Establecimiento</label>
             <input
@@ -218,7 +218,7 @@ export default function StoreSettings() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">Email</label>
             <input
@@ -241,7 +241,7 @@ export default function StoreSettings() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-2">Ambiente</label>
             <select

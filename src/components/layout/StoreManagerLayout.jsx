@@ -30,11 +30,11 @@ export default function StoreManagerLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans p-6 gap-4">
+    <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans p-3 sm:p-4 lg:p-6 lg:gap-4">
       <StoreManagerSidebar />
-      <div className="flex flex-col flex-1 overflow-hidden w-full relative">
+      <div className="flex flex-col flex-1 overflow-hidden w-full min-w-0 relative">
         <StoreManagerTopBar />
-        <main className="flex-1 overflow-y-auto pt-6 pb-24 pr-2">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden pt-4 lg:pt-6 pb-24 lg:pr-2">
           <Content />
         </main>
       </div>

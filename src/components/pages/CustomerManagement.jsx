@@ -22,7 +22,7 @@ export default function CustomerManagement() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <h1 className="text-4xl font-bold text-zinc-100">Clientes</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Clientes</h1>
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
         <Table
           columns={['Nombre', 'Email', 'Teléfono', 'Crédito Límite', 'Saldo', 'Estado']}

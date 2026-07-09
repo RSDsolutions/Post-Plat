@@ -131,8 +131,8 @@ export default function InvoiceManagement() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-4xl font-bold text-zinc-100">Gestión de Facturas</h1>
+      <div className="flex flex-wrap items-center gap-3">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Gestión de Facturas</h1>
         {sriEnvironment && (
           <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
             sriEnvironment === 'production'

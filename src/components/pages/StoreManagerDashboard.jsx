@@ -93,10 +93,10 @@ export default function StoreManagerDashboard() {
   return (
     <div className="min-h-screen bg-zinc-950">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 shadow-lg">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sm:p-6 shadow-lg">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex-1 min-w-0">
-            <h1 className="text-3xl md:text-4xl font-bold truncate">🏪 Dashboard de Tienda</h1>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold truncate">🏪 Dashboard de Tienda</h1>
             <p className="text-blue-100 mt-1 truncate">Gerente: {currentUser?.name}</p>
           </div>
           <button
@@ -110,7 +110,7 @@ export default function StoreManagerDashboard() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
         {/* Alerts */}
         {stats.alerts.length > 0 && (
           <div className="space-y-3">
@@ -298,7 +298,7 @@ export default function StoreManagerDashboard() {
             {/* Top Operators & Users */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
               <h2 className="text-lg font-bold text-zinc-100 mb-4">Personal de Tienda</h2>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {stats.userList.length > 0 ? (
                   stats.userList.map((user, idx) => (
                     <div key={idx} className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-lg p-3">
