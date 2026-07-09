@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore.js';
 import StoreManagerSidebar from './StoreManagerSidebar.jsx';
 import StoreManagerTopBar from './StoreManagerTopBar.jsx';
 import StoreManagerDashboard from '../pages/StoreManagerDashboard.jsx';
+import Branches from '../pages/Branches.jsx';
 import InventoryManagement from '../pages/InventoryManagement.jsx';
 import Reports from '../pages/Reports.jsx';
 import InvoiceManagement from '../pages/InvoiceManagement.jsx';
@@ -19,6 +20,7 @@ export default function StoreManagerLayout() {
   let Content;
   switch (activePage) {
     case 'dashboard': Content = StoreManagerDashboard; break;
+    case 'branches': Content = Branches; break;
     case 'inventory': Content = InventoryManagement; break;
     case 'reports': Content = Reports; break;
     case 'invoices': Content = InvoiceManagement; break;

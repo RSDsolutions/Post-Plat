@@ -90,6 +90,238 @@ export async function updatePointOfSale(id, updates) {
   return data;
 }
 
+// Branches (Sucursales)
+export async function fetchBranches(companyId) {
+  const { data, error } = await supabase
+    .from('branches')
+    .select('*, point_of_sales(*)')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw new Error(`Error fetching branches: ${error.message}`);
+  return data || [];
+}
+
+export async function createBranch(branchData) {
+  const { data, error } = await supabase
+    .from('branches')
+    .insert([{
+      company_id: branchData.companyId,
+      name: branchData.name,
+      code: branchData.code,
+      address: branchData.address || null,
+      city: branchData.city || null,
+      phone: branchData.phone || null,
+      establishment: branchData.establishment,
+      is_active: true
+    }])
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error creating branch: ${error.message}`);
+  return data;
+}
+
+export async function updateBranch(branchId, updates) {
+  const updateData = {};
+  if (updates.name !== undefined) updateData.name = updates.name;
+  if (updates.code !== undefined) updateData.code = updates.code;
+  if (updates.address !== undefined) updateData.address = updates.address;
+  if (updates.city !== undefined) updateData.city = updates.city;
+  if (updates.phone !== undefined) updateData.phone = updates.phone;
+  if (updates.establishment !== undefined) updateData.establishment = updates.establishment;
+  if (updates.isActive !== undefined) updateData.is_active = updates.isActive;
+
+  const { data, error } = await supabase
+    .from('branches')
+    .update(updateData)
+    .eq('id', branchId)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error updating branch: ${error.message}`);
+  return data;
+}
+
+// Resolves which branch + active point of sale a cashier should sell
+// through, based on their assigned branch (users.branch_id). Cashiers with
+// no branch, or whose branch has no active point of sale, have no valid
+// establecimiento/punto de venta to put on an invoice - returns null so the
+// POS can block selling with a clear message instead of guessing one.
+export async function resolveCashierPointOfSale(userId) {
+  const { data: user, error: userError } = await supabase
+    .from('users')
+    .select('id, branch_id')
+    .eq('id', userId)
+    .single();
+
+  if (userError) throw new Error(`Error resolving cashier: ${userError.message}`);
+  if (!user.branch_id) return null;
+
+  const { data: branch, error: branchError } = await supabase
+    .from('branches')
+    .select('id, name, establishment')
+    .eq('id', user.branch_id)
+    .eq('is_active', true)
+    .single();
+
+  if (branchError) return null;
+
+  const { data: posRows, error: posError } = await supabase
+    .from('point_of_sales')
+    .select('id, nombre, numero_establecimiento, numero_pos, sequential_current')
+    .eq('branch_id', user.branch_id)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  if (posError) throw new Error(`Error fetching point of sale: ${posError.message}`);
+  if (!posRows || posRows.length === 0) return null;
+
+  return { branch, pointOfSale: posRows[0] };
+}
+
+// Mirrors getNextInvoiceSequential's read-then-write pattern, scoped to a
+// single point of sale instead of the whole company - each POS now owns its
+// own SRI sequential counter.
+export async function getNextPosSequential(posId) {
+  try {
+    const { data: pos, error: fetchError } = await supabase
+      .from('point_of_sales')
+      .select('id, sequential_current')
+      .eq('id', posId)
+      .single();
+
+    if (fetchError) throw new Error(fetchError.message);
+
+    const sequential = pos?.sequential_current || 1;
+
+    const { error: updateError } = await supabase
+      .from('point_of_sales')
+      .update({ sequential_current: sequential + 1 })
+      .eq('id', posId);
+
+    if (updateError) throw new Error(updateError.message);
+
+    return sequential;
+  } catch (error) {
+    throw new Error(`Error getting next sequential: ${error.message}`);
+  }
+}
+
+// Per-branch inventory. products stays the shared catalog (code/name/price/
+// tax/category); product_stock is the source of truth for quantities, one
+// row per (product, branch). A product with no row yet for a given branch
+// simply has 0 stock there - callers don't need to pre-seed anything, a
+// missing row is a valid "no stock here" state, not an error.
+export async function fetchProductStock(companyId, branchId) {
+  const { data: products, error: productsError } = await supabase
+    .from('products')
+    .select('id, code, name, category, sale_price, cost_price, tax_percentage, price_includes_vat, discount, promotion, is_active')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false });
+
+  if (productsError) throw new Error(`Error fetching products: ${productsError.message}`);
+
+  const { data: stockRows, error: stockError } = await supabase
+    .from('product_stock')
+    .select('id, product_id, quantity, min_stock')
+    .eq('branch_id', branchId);
+
+  if (stockError) throw new Error(`Error fetching stock: ${stockError.message}`);
+
+  const stockByProduct = new Map((stockRows || []).map(s => [s.product_id, s]));
+
+  return (products || []).map(p => {
+    const stock = stockByProduct.get(p.id);
+    return {
+      ...p,
+      product_id: p.id,
+      stock_id: stock?.id || null,
+      quantity: stock?.quantity ?? 0,
+      min_stock: stock?.min_stock ?? 0
+    };
+  });
+}
+
+// Same shape as fetchProductStock, but summed across every branch of the
+// company - backs the "Todas las sucursales" aggregated view.
+export async function fetchProductStockAllBranches(companyId) {
+  const { data: products, error: productsError } = await supabase
+    .from('products')
+    .select('id, code, name, category, sale_price, cost_price, tax_percentage, price_includes_vat, discount, promotion, is_active')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false });
+
+  if (productsError) throw new Error(`Error fetching products: ${productsError.message}`);
+
+  const { data: stockRows, error: stockError } = await supabase
+    .from('product_stock')
+    .select('product_id, branch_id, quantity, min_stock, branches!inner(company_id, name)')
+    .eq('branches.company_id', companyId);
+
+  if (stockError) throw new Error(`Error fetching stock: ${stockError.message}`);
+
+  const byProduct = new Map();
+  (stockRows || []).forEach(s => {
+    const list = byProduct.get(s.product_id) || [];
+    list.push({ branchId: s.branch_id, branchName: s.branches?.name, quantity: s.quantity, minStock: s.min_stock });
+    byProduct.set(s.product_id, list);
+  });
+
+  return (products || []).map(p => {
+    const branchStock = byProduct.get(p.id) || [];
+    return {
+      ...p,
+      product_id: p.id,
+      quantity: branchStock.reduce((sum, b) => sum + (b.quantity || 0), 0),
+      min_stock: branchStock.reduce((sum, b) => sum + (b.minStock || 0), 0),
+      branchStock
+    };
+  });
+}
+
+export async function upsertProductStock({ productId, branchId, quantity, minStock }) {
+  const { data, error } = await supabase
+    .from('product_stock')
+    .upsert([{
+      product_id: productId,
+      branch_id: branchId,
+      quantity: parseInt(quantity) || 0,
+      min_stock: parseInt(minStock) || 0,
+      updated_at: new Date().toISOString()
+    }], { onConflict: 'product_id,branch_id' })
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error updating stock: ${error.message}`);
+  return data;
+}
+
+// Deducts sold quantity from a branch's stock at sale time (read-then-write,
+// same pattern as getNextInvoiceSequential/getNextPosSequential - this app
+// has no atomic counters anywhere, so this isn't a new risk class). Floors
+// at 0 instead of going negative if stock was already short.
+export async function decrementProductStock(productId, branchId, amount) {
+  const { data: current, error: fetchError } = await supabase
+    .from('product_stock')
+    .select('quantity')
+    .eq('product_id', productId)
+    .eq('branch_id', branchId)
+    .maybeSingle();
+
+  if (fetchError) throw new Error(fetchError.message);
+
+  const newQuantity = Math.max(0, (current?.quantity || 0) - amount);
+
+  const { error } = await supabase
+    .from('product_stock')
+    .upsert([{ product_id: productId, branch_id: branchId, quantity: newQuantity, updated_at: new Date().toISOString() }], { onConflict: 'product_id,branch_id' });
+
+  if (error) throw new Error(`Error updating stock: ${error.message}`);
+  return newQuantity;
+}
+
 // Subscriptions & Plans
 export async function fetchPlans() {
   const { data, error } = await supabase
@@ -248,7 +480,7 @@ export async function updateAdminLastLogin(email) {
 export async function fetchCompanyUsers(companyId) {
   const { data, error } = await supabase
     .from('users')
-    .select('id, company_id, email, name, phone, role, is_active, last_login, created_at')
+    .select('id, company_id, email, name, phone, role, is_active, last_login, created_at, branch_id')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false });
 
@@ -261,14 +493,29 @@ export async function fetchCompanyUsers(companyId) {
 // (pgcrypto), so this can't be a plain insert from the client. The RPC also
 // re-validates the role server-side, so this can't be used to create a
 // gerente/admin account even if the client request were tampered with.
-export async function createCashierUser({ companyId, email, password, name, role, phone }) {
+export async function createCashierUser({ companyId, email, password, name, role, phone, branchId }) {
   const { data, error } = await supabase.rpc('create_company_user', {
     p_company_id: companyId,
     p_email: email,
     p_password: password,
     p_name: name,
     p_role: role,
-    p_phone: phone || null
+    p_phone: phone || null,
+    p_branch_id: branchId
+  });
+
+  if (error) throw new Error(error.message);
+  return data?.[0];
+}
+
+// Reassigns an existing cashier to a different branch (or unassigns with
+// branchId=null). Scoped server-side to the target's own company and to
+// cashier-level roles, same guard pattern as resetCashierPassword.
+export async function updateUserBranch({ companyId, userId, branchId }) {
+  const { data, error } = await supabase.rpc('update_user_branch', {
+    p_company_id: companyId,
+    p_user_id: userId,
+    p_branch_id: branchId
   });
 
   if (error) throw new Error(error.message);
@@ -345,6 +592,10 @@ export async function deleteData(table, id) {
 }
 
 // Products - Complete CRUD
+// Stock (quantity/min_stock) is no longer written here - it lives per-branch
+// in product_stock now. Every branch of the company gets seeded so the
+// product shows up everywhere immediately; the branch the gerente was
+// actively managing gets the entered starting quantity, the rest start at 0.
 export async function createProduct(productData) {
   try {
     const { data, error } = await supabase
@@ -354,8 +605,6 @@ export async function createProduct(productData) {
         name: productData.name,
         category: productData.category,
         company_id: productData.company_id,
-        quantity: parseInt(productData.quantity) || 0,
-        min_stock: parseInt(productData.minStock) || 10,
         cost_price: parseFloat(productData.costPrice) || 0,
         sale_price: parseFloat(productData.salePrice),
         price_includes_vat: productData.priceIncludesVat !== false,
@@ -367,24 +616,35 @@ export async function createProduct(productData) {
       .single();
 
     if (error) throw new Error(error.message);
+
+    // Seed stock only for the branch the gerente was actively managing -
+    // other branches implicitly show 0 until they get their own
+    // product_stock row (fetchProductStock treats a missing row as 0).
+    if (productData.branchId) {
+      const { error: stockError } = await supabase.from('product_stock').insert([{
+        product_id: data.id,
+        branch_id: productData.branchId,
+        quantity: parseInt(productData.quantity) || 0,
+        min_stock: parseInt(productData.minStock) || 10
+      }]);
+      if (stockError) throw new Error(stockError.message);
+    }
+
     return data;
   } catch (error) {
     throw new Error(`Error creating product: ${error.message}`);
   }
 }
 
+// Catalog fields only (price/discount/promotion/etc, shared across
+// branches) - quantity/min_stock are edited per-branch via
+// upsertProductStock instead. Build the payload from scratch with only real
+// column names rather than spreading `updates` - a previous version spread
+// the raw camelCase object first and Supabase/PostgREST rejected the whole
+// request over the unknown keys.
 export async function updateProduct(productId, updates) {
   try {
-    // Build the update payload from scratch with only real column names - a
-    // previous version spread the raw `updates` object first (camelCase keys
-    // like minStock/salePrice/costPrice/priceIncludesVat) and then added the
-    // correctly-named snake_case overrides, but the leftover camelCase keys
-    // stayed in the object too (spread + explicit key only overrides matching
-    // names). Supabase/PostgREST rejects UPDATE payloads referencing unknown
-    // columns, so any edit that touched those fields failed outright.
     const updateData = {};
-    if (updates.quantity !== undefined) updateData.quantity = parseInt(updates.quantity);
-    if (updates.minStock !== undefined) updateData.min_stock = parseInt(updates.minStock);
     if (updates.costPrice !== undefined) updateData.cost_price = parseFloat(updates.costPrice);
     if (updates.salePrice !== undefined) updateData.sale_price = parseFloat(updates.salePrice);
     if (updates.discount !== undefined) updateData.discount = parseFloat(updates.discount);
@@ -512,29 +772,22 @@ export async function updateCustomer(customerId, customerData) {
 }
 
 // Invoices & Billing
+// pos_id must be resolved by the caller (the cashier's assigned branch's
+// active point of sale - see resolveCashierPointOfSale) rather than guessed
+// here, since which POS a sale belongs to determines its real establecimiento
+// / punto de venta / secuencial for the SRI.
 export async function createInvoice(invoiceData) {
   try {
-    // Get first active POS for this company
-    const { data: posList, error: posError } = await supabase
-      .from('point_of_sales')
-      .select('id')
-      .eq('company_id', invoiceData.company_id)
-      .eq('is_active', true)
-      .limit(1);
-
-    if (posError) throw new Error(`Error buscando punto de venta: ${posError.message}`);
-    if (!posList || posList.length === 0) {
-      throw new Error('No hay punto de venta activo configurado para esta tienda');
+    if (!invoiceData.pos_id) {
+      throw new Error('No se pudo determinar el punto de venta de esta factura');
     }
-
-    const posId = posList[0].id;
 
     const { data, error } = await supabase
       .from('invoices')
       .insert([{
         company_id: invoiceData.company_id,
         user_id: invoiceData.user_id,
-        pos_id: posId,
+        pos_id: invoiceData.pos_id,
         customer_id: invoiceData.customer_id || null,
         invoice_type: invoiceData.invoice_type || 'factura',
         invoice_number: invoiceData.invoice_number,
@@ -589,7 +842,7 @@ export async function fetchInvoicesByCompany(companyId) {
   try {
     const { data, error } = await supabase
       .from('invoices')
-      .select('*, customers(name, identification_type, identification_number, email, phone)')
+      .select('*, customers(name, identification_type, identification_number, email, phone), point_of_sales(id, nombre, branch_id, numero_establecimiento, numero_pos, branches(name))')
       .eq('company_id', companyId)
       .order('issue_date', { ascending: false });
 
@@ -607,7 +860,7 @@ export async function fetchInvoicesForReports(companyId, startISO, endISO) {
   try {
     let query = supabase
       .from('invoices')
-      .select('*, customers(name, identification_type, identification_number), invoice_details(*)')
+      .select('*, customers(name, identification_type, identification_number), invoice_details(*), point_of_sales(id, nombre, branch_id, numero_establecimiento, numero_pos)')
       .eq('company_id', companyId)
       .order('issue_date', { ascending: false });
 

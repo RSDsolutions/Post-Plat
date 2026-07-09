@@ -129,11 +129,11 @@ function sum(arr, fn) {
 // One fetch (invoices + nested customer/line items, plus products & users)
 // feeds every report tab below via client-side aggregation - the data
 // volumes for a single-store POS don't justify a query per tab.
-export function buildReportDataset({ invoices, products, users }) {
+export function buildReportDataset({ invoices, products, users, stockRows }) {
   const productMap = new Map(products.map(p => [p.id, p]));
   const userMap = new Map(users.map(u => [u.id, u]));
   const activeInvoices = invoices.filter(inv => inv.status !== 'anulada');
-  return { invoices, activeInvoices, productMap, userMap };
+  return { invoices, activeInvoices, productMap, userMap, stockRows: stockRows || [] };
 }
 
 export const REPORT_TABS = [
@@ -400,8 +400,8 @@ function buildCashiersReport(dataset) {
 }
 
 function buildInventoryReport(dataset) {
-  const { productMap } = dataset;
-  const products = Array.from(productMap.values()).filter(p => p.is_active !== false);
+  const { stockRows } = dataset;
+  const products = stockRows.filter(p => p.is_active !== false);
 
   const rows = products.map(p => {
     const stock = Number(p.quantity) || 0;

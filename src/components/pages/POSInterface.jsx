@@ -5,7 +5,7 @@ import {
   PauseCircle, Printer, X, Tag, Loader2, UserCheck
 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, createInvoice, createInvoiceDetail, getBillingConfig, getNextInvoiceSequential, fetchCompanyById, findOrCreateCustomer, findCustomerByIdentification, updateCustomer } from '../../lib/supabaseHelpers.js';
+import { createInvoice, createInvoiceDetail, getBillingConfig, fetchCompanyById, findOrCreateCustomer, findCustomerByIdentification, updateCustomer, resolveCashierPointOfSale, getNextPosSequential, fetchProductStock, decrementProductStock } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
 import { generateAccessKey } from '../../lib/invoiceUtils.js';
 import { generateSaleReceipt } from '../../lib/receiptGenerator.js';
@@ -52,6 +52,8 @@ export default function POSInterface() {
   const [showHeldSales, setShowHeldSales] = useState(false);
   const [lastCompletedSale, setLastCompletedSale] = useState(null);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [posContext, setPosContext] = useState(null); // { branch, pointOfSale } | null
+  const [posContextChecked, setPosContextChecked] = useState(false);
 
   const searchInputRef = useRef(null);
   const heldStorageKey = currentUser?.company_id ? `pos_held_${currentUser.company_id}` : null;
@@ -59,14 +61,26 @@ export default function POSInterface() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [productData, billingConfig, companyData] = await Promise.all([
-          fetchData('products', {
-            filter: { column: 'company_id', value: currentUser.company_id }
-          }),
+        // Which branch/point of sale this cashier sells through - resolved
+        // from their user record, not chosen in the UI. No branch or no
+        // active POS means there's no valid establecimiento/punto de venta
+        // to put on an invoice, so selling stays blocked until a gerente
+        // assigns one (see the blocking screen below).
+        const context = await resolveCashierPointOfSale(currentUser.id);
+        setPosContext(context);
+        setPosContextChecked(true);
+
+        if (!context) {
+          setLoading(false);
+          return;
+        }
+
+        const [stockData, billingConfig, companyData] = await Promise.all([
+          fetchProductStock(currentUser.company_id, context.branch.id),
           getBillingConfig(currentUser.company_id),
           fetchCompanyById(currentUser.company_id)
         ]);
-        setProducts(productData || []);
+        setProducts(stockData || []);
         // Tax rate must come from billing_configs - it's the same rate actually
         // submitted to the SRI (api/sri/submit-invoice.js). A previously separate
         // localStorage-cached rate could drift out of sync and corrupt VAT
@@ -398,6 +412,10 @@ export default function POSInterface() {
       showToast('error', 'El monto recibido es menor al total');
       return;
     }
+    if (!posContext) {
+      showToast('error', 'No tienes una sucursal o caja asignada. Contacta a tu gerente.');
+      return;
+    }
 
     try {
       // Load billing config and company (for RUC) needed to generate the SRI access key
@@ -406,18 +424,21 @@ export default function POSInterface() {
         fetchCompanyById(currentUser.company_id)
       ]);
 
-      const sequential = await getNextInvoiceSequential(currentUser.company_id);
-
-      const establishment = billingConfig.establishment || '001';
-      const pointOfSale = billingConfig.pointOfSale || '001';
-      const invoiceNumber = `${establishment.padStart(3, '0')}-${pointOfSale.padStart(3, '0')}-${String(sequential).padStart(9, '0')}`;
+      // Establecimiento/punto de venta/secuencial now come from the cashier's
+      // assigned point of sale, not a single company-wide config - each POS
+      // owns its own SRI sequential so different branches (or terminals
+      // within one) can share or differ in establecimiento/punto de venta.
+      const sequential = await getNextPosSequential(posContext.pointOfSale.id);
+      const establishmentCode = posContext.pointOfSale.numero_establecimiento;
+      const posCode = posContext.pointOfSale.numero_pos;
+      const invoiceNumber = `${establishmentCode.padStart(3, '0')}-${posCode.padStart(3, '0')}-${String(sequential).padStart(9, '0')}`;
 
       const accessKey = generateAccessKey({
         issueDate: new Date().toISOString(),
         ruc: companyData.ruc,
         environment: billingConfig.environment,
-        establishment,
-        pointOfSale,
+        establishment: establishmentCode,
+        pointOfSale: posCode,
         sequential
       });
 
@@ -485,6 +506,7 @@ export default function POSInterface() {
       const invoice = await createInvoice({
         company_id: currentUser.company_id,
         user_id: currentUser.id,
+        pos_id: posContext.pointOfSale.id,
         invoice_number: invoiceNumber,
         invoice_type: 'factura',
         access_key: accessKey,
@@ -517,6 +539,8 @@ export default function POSInterface() {
           total: itemTotal
         });
 
+        await decrementProductStock(item.id, posContext.branch.id, item.quantity);
+
         receiptItems.push({
           name: item.name,
           quantity: item.quantity,
@@ -526,6 +550,13 @@ export default function POSInterface() {
           lineTotal: itemTotal
         });
       }
+
+      // Reflect the stock just deducted without waiting for a full reload -
+      // decrementProductStock already persisted this server-side per item.
+      setProducts(prev => prev.map(p => {
+        const cartItem = cart.find(c => c.id === p.id);
+        return cartItem ? { ...p, quantity: Math.max(0, p.quantity - cartItem.quantity) } : p;
+      }));
 
       setTransactionID(invoice.id);
       setLastCompletedSale({
@@ -577,6 +608,31 @@ export default function POSInterface() {
     const doc = await generateSaleReceipt({ sale: lastCompletedSale, company });
     doc.save(`Recibo_${lastCompletedSale.invoiceNumber}.pdf`);
   };
+
+  // No branch/active point of sale resolved for this cashier - there's no
+  // valid establecimiento/punto de venta to put on an invoice, so selling
+  // stays blocked instead of guessing one.
+  if (!loading && posContextChecked && !posContext) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-zinc-950 p-4">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto mb-4">
+            <Store className="text-amber-400" size={28} />
+          </div>
+          <h2 className="text-xl font-bold text-zinc-100 mb-2">Sin sucursal asignada</h2>
+          <p className="text-zinc-400 text-sm mb-6">
+            Tu usuario no tiene una sucursal o caja activa asignada, así que no puedes facturar todavía. Contacta a tu gerente para que te asigne una desde "Gestión de Cajas".
+          </p>
+          <button
+            onClick={logout}
+            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-2 px-6 rounded-lg transition-colors"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-zinc-950">

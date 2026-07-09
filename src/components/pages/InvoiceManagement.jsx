@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig, fetchCompanyById } from '../../lib/supabaseHelpers.js';
+import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig, fetchCompanyById, fetchBranches } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Badge from '../ui/Badge.jsx';
 import { formatUSD } from '../../lib/format.js';
@@ -26,6 +26,8 @@ export default function InvoiceManagement() {
   const [lastError, setLastError] = useState(null);
   const [company, setCompany] = useState(null);
   const [downloadingRideId, setDownloadingRideId] = useState(null);
+  const [branches, setBranches] = useState([]);
+  const [selectedBranchId, setSelectedBranchId] = useState('all');
 
   const loadInvoices = async () => {
     try {
@@ -44,8 +46,14 @@ export default function InvoiceManagement() {
       loadInvoices();
       getBillingConfig(currentUser.company_id).then(cfg => setSriEnvironment(cfg.environment)).catch(() => {});
       fetchCompanyById(currentUser.company_id).then(setCompany).catch(() => {});
+      fetchBranches(currentUser.company_id).then(setBranches).catch(() => {});
     }
   }, [currentUser?.company_id]);
+
+  const filteredInvoices = useMemo(() => {
+    if (selectedBranchId === 'all') return invoices;
+    return invoices.filter(inv => inv.point_of_sales?.branch_id === selectedBranchId);
+  }, [invoices, selectedBranchId]);
 
   const openInvoiceDetail = async (invoice) => {
     setSelectedInvoice(invoice);
@@ -144,6 +152,31 @@ export default function InvoiceManagement() {
         )}
       </div>
 
+      {branches.length > 1 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-wrap items-center gap-2">
+          <MapPin size={16} className="text-zinc-500 flex-shrink-0" />
+          <button
+            onClick={() => setSelectedBranchId('all')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              selectedBranchId === 'all' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+            }`}
+          >
+            Todas las sucursales
+          </button>
+          {branches.map(b => (
+            <button
+              key={b.id}
+              onClick={() => setSelectedBranchId(b.id)}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+                selectedBranchId === b.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+              }`}
+            >
+              {b.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {lastError && (
         <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 space-y-2">
           <div className="flex items-center justify-between">
@@ -167,15 +200,16 @@ export default function InvoiceManagement() {
       <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-zinc-500">Cargando facturas...</div>
-        ) : invoices.length === 0 ? (
+        ) : filteredInvoices.length === 0 ? (
           <div className="p-8 text-center text-zinc-500">No hay facturas registradas</div>
         ) : (
           <Table
-            columns={['Factura', 'Cliente', 'Fecha', 'Total', 'Estado', 'Acciones']}
-            data={invoices}
+            columns={['Factura', 'Sucursal', 'Cliente', 'Fecha', 'Total', 'Estado', 'Acciones']}
+            data={filteredInvoices}
             renderRow={(inv) => (
               <tr key={inv.id} className="hover:bg-zinc-800/50 cursor-pointer" onClick={() => openInvoiceDetail(inv)}>
                 <td className="px-4 py-3 font-bold text-zinc-100 font-mono">{inv.invoice_number}</td>
+                <td className="px-4 py-3 text-zinc-400 text-sm">{inv.point_of_sales?.branches?.name || '-'}</td>
                 <td className="px-4 py-3 text-zinc-300">
                   {inv.customers?.name || 'Consumidor Final'}
                 </td>
@@ -244,6 +278,11 @@ export default function InvoiceManagement() {
                 <div>
                   <div className="text-xs text-zinc-500">Número de Factura</div>
                   <div className="text-lg font-bold text-zinc-100 font-mono">{selectedInvoice.invoice_number}</div>
+                  {selectedInvoice.point_of_sales?.branches?.name && (
+                    <div className="text-xs text-zinc-500 flex items-center gap-1 mt-1">
+                      <MapPin size={11} /> {selectedInvoice.point_of_sales.branches.name} · {selectedInvoice.point_of_sales.nombre}
+                    </div>
+                  )}
                 </div>
                 <Badge status={STATUS_LABELS[selectedInvoice.status] || selectedInvoice.status} />
               </div>

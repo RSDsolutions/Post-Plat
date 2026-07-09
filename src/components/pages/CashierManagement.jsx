@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, X, Key, Loader } from 'lucide-react';
+import { Users, Plus, X, Key, Loader, MapPin } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchCompanyUsers, createCashierUser, resetCashierPassword } from '../../lib/supabaseHelpers.js';
+import { fetchCompanyUsers, createCashierUser, resetCashierPassword, fetchBranches, updateUserBranch } from '../../lib/supabaseHelpers.js';
 
-const EMPTY_NEW_CASHIER = { name: '', email: '', phone: '', role: 'vendedor', password: '', confirmPassword: '' };
+const EMPTY_NEW_CASHIER = { name: '', email: '', phone: '', role: 'vendedor', branchId: '', password: '', confirmPassword: '' };
 
 export default function CashierManagement() {
   const { currentUser, showToast } = useStore();
   const [cashiers, setCashiers] = useState([]);
+  const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -18,10 +19,16 @@ export default function CashierManagement() {
   const [resetForm, setResetForm] = useState({ newPassword: '', confirmPassword: '' });
   const [resetting, setResetting] = useState(false);
 
-  const loadCashiers = async () => {
+  const [reassigningId, setReassigningId] = useState(null);
+
+  const loadData = async () => {
     try {
-      const data = await fetchCompanyUsers(currentUser.company_id);
-      setCashiers(data.filter(u => u.role === 'operario' || u.role === 'vendedor'));
+      const [users, branchList] = await Promise.all([
+        fetchCompanyUsers(currentUser.company_id),
+        fetchBranches(currentUser.company_id)
+      ]);
+      setCashiers(users.filter(u => u.role === 'operario' || u.role === 'vendedor'));
+      setBranches(branchList);
     } catch (error) {
       console.error('Error loading cashiers:', error);
       showToast('error', 'Error al cargar cajeros');
@@ -31,7 +38,7 @@ export default function CashierManagement() {
   };
 
   useEffect(() => {
-    if (currentUser?.company_id) loadCashiers();
+    if (currentUser?.company_id) loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
@@ -43,6 +50,10 @@ export default function CashierManagement() {
   const handleAddCashier = async () => {
     if (!newCashier.name.trim() || !newCashier.email.trim()) {
       showToast('error', 'Nombre y correo son requeridos');
+      return;
+    }
+    if (!newCashier.branchId) {
+      showToast('error', 'Selecciona la sucursal donde trabajará este cajero');
       return;
     }
     if (newCashier.password.length < 6) {
@@ -62,16 +73,31 @@ export default function CashierManagement() {
         password: newCashier.password,
         name: newCashier.name.trim(),
         role: newCashier.role,
-        phone: newCashier.phone.trim()
+        phone: newCashier.phone.trim(),
+        branchId: newCashier.branchId
       });
       showToast('success', `Cajero "${newCashier.name}" creado. Comparte sus credenciales de forma segura.`);
       closeAddModal();
-      await loadCashiers();
+      await loadData();
     } catch (error) {
       console.error('Error creating cashier:', error);
       showToast('error', error.message || 'Error al crear el cajero');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleReassignBranch = async (cashier, branchId) => {
+    setReassigningId(cashier.id);
+    try {
+      await updateUserBranch({ companyId: currentUser.company_id, userId: cashier.id, branchId: branchId || null });
+      showToast('success', `Sucursal de "${cashier.name}" actualizada`);
+      await loadData();
+    } catch (error) {
+      console.error('Error reassigning branch:', error);
+      showToast('error', error.message || 'Error al reasignar la sucursal');
+    } finally {
+      setReassigningId(null);
     }
   };
 
@@ -120,6 +146,12 @@ export default function CashierManagement() {
         </button>
       </div>
 
+      {!loading && branches.length === 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+          <p className="text-sm text-amber-400">Crea primero una sucursal en "Sucursales" antes de agregar cajeros - cada cajero necesita una sucursal asignada para poder facturar.</p>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center text-zinc-500 py-12">Cargando...</div>
       ) : cashiers.length === 0 ? (
@@ -142,6 +174,25 @@ export default function CashierManagement() {
                   {c.is_active ? 'Activo' : 'Inactivo'}
                 </span>
               </div>
+
+              <div className="mt-3">
+                <label className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase mb-1">
+                  <MapPin size={11} /> Sucursal
+                </label>
+                <select
+                  value={c.branch_id || ''}
+                  onChange={(e) => handleReassignBranch(c, e.target.value)}
+                  disabled={reassigningId === c.id}
+                  className={`w-full bg-zinc-800 border rounded px-2 py-1.5 text-sm ${c.branch_id ? 'text-zinc-200 border-zinc-700' : 'text-amber-400 border-amber-500/40'}`}
+                >
+                  <option value="">Sin asignar</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+                {!c.branch_id && <p className="text-[10px] text-amber-400 mt-1">No podrá facturar hasta que se le asigne una sucursal</p>}
+              </div>
+
               <button
                 onClick={() => openResetPassword(c)}
                 className="mt-3 w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold py-2 rounded-lg transition-colors"
@@ -187,6 +238,21 @@ export default function CashierManagement() {
                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
                 />
                 <p className="text-xs text-zinc-500 mt-1">Será su usuario para entrar al POS</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-400 mb-2">Sucursal *</label>
+                <select
+                  value={newCashier.branchId}
+                  onChange={(e) => setNewCashier({ ...newCashier, branchId: e.target.value })}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                >
+                  <option value="">Selecciona una sucursal</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-zinc-500 mt-1">Define desde qué punto de venta facturará este cajero</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

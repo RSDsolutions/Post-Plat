@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   TrendingUp, Package, Users, Building2, Boxes, Receipt, LayoutGrid,
-  Loader, FileSpreadsheet, FileText
+  Loader, FileSpreadsheet, FileText, MapPin
 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, fetchInvoicesForReports, fetchCompanyById, fetchCompanyUsers } from '../../lib/supabaseHelpers.js';
+import { fetchData, fetchInvoicesForReports, fetchCompanyById, fetchCompanyUsers, fetchBranches, fetchProductStock, fetchProductStockAllBranches } from '../../lib/supabaseHelpers.js';
 import {
   DATE_PRESETS, computeDateRange, formatDateRangeLabel,
   buildReportDataset, buildReport, formatCellValue, REPORT_TABS
@@ -35,10 +35,18 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [company, setCompany] = useState(null);
-  const [rawData, setRawData] = useState({ invoices: [], products: [], users: [] });
+  const [branches, setBranches] = useState([]);
+  const [selectedBranchId, setSelectedBranchId] = useState('all');
+  const [rawData, setRawData] = useState({ invoices: [], products: [], users: [], stockRows: [] });
 
   const { start, end } = useMemo(() => computeDateRange(datePreset, customStart, customEnd), [datePreset, customStart, customEnd]);
   const dateRangeLabel = useMemo(() => formatDateRangeLabel(start, end), [start, end]);
+
+  useEffect(() => {
+    if (currentUser?.company_id) {
+      fetchBranches(currentUser.company_id).then(setBranches).catch(() => {});
+    }
+  }, [currentUser?.company_id]);
 
   useEffect(() => {
     if (!currentUser?.company_id) return;
@@ -48,10 +56,19 @@ export default function Reports() {
       fetchInvoicesForReports(currentUser.company_id, start ? start.toISOString() : null, end ? end.toISOString() : null),
       fetchData('products', { filter: { column: 'company_id', value: currentUser.company_id } }),
       fetchCompanyUsers(currentUser.company_id),
-      fetchCompanyById(currentUser.company_id)
-    ]).then(([invoices, products, users, companyData]) => {
+      fetchCompanyById(currentUser.company_id),
+      selectedBranchId === 'all'
+        ? fetchProductStockAllBranches(currentUser.company_id)
+        : fetchProductStock(currentUser.company_id, selectedBranchId)
+    ]).then(([invoices, products, users, companyData, stockRows]) => {
       if (cancelled) return;
-      setRawData({ invoices, products: products || [], users: users || [] });
+      // point_of_sales is embedded on each invoice (see fetchInvoicesForReports) -
+      // filter by branch client-side, consistent with how every other report
+      // filter in this view already works (fetch once, derive many).
+      const scopedInvoices = selectedBranchId === 'all'
+        ? invoices
+        : invoices.filter(inv => inv.point_of_sales?.branch_id === selectedBranchId);
+      setRawData({ invoices: scopedInvoices, products: products || [], users: users || [], stockRows: stockRows || [] });
       setCompany(companyData);
     }).catch(error => {
       console.error('Error loading reports data:', error);
@@ -61,7 +78,7 @@ export default function Reports() {
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser?.company_id, start?.getTime(), end?.getTime()]);
+  }, [currentUser?.company_id, start?.getTime(), end?.getTime(), selectedBranchId]);
 
   const dataset = useMemo(() => buildReportDataset(rawData), [rawData]);
   const report = useMemo(() => buildReport(activeTab, dataset), [activeTab, dataset]);
@@ -130,6 +147,32 @@ export default function Reports() {
         <div className="ml-auto text-xs text-zinc-500 font-medium">{dateRangeLabel}</div>
       </div>
 
+      {/* Branch filter */}
+      {branches.length > 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-wrap items-center gap-2">
+          <MapPin size={16} className="text-zinc-500 flex-shrink-0" />
+          <button
+            onClick={() => setSelectedBranchId('all')}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              selectedBranchId === 'all' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+            }`}
+          >
+            Todas las sucursales
+          </button>
+          {branches.map(b => (
+            <button
+              key={b.id}
+              onClick={() => setSelectedBranchId(b.id)}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+                selectedBranchId === b.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+              }`}
+            >
+              {b.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b border-zinc-800">
         {REPORT_TABS.map(tab => {
@@ -153,7 +196,7 @@ export default function Reports() {
       {activeTab === 'inventory' && (
         <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
           <p className="text-sm text-blue-400">
-            Este reporte muestra el inventario actual y no depende del rango de fechas seleccionado.
+            Este reporte muestra el inventario actual de la sucursal seleccionada arriba y no depende del rango de fechas.
           </p>
         </div>
       )}

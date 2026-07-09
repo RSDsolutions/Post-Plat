@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus, Trash2, Loader } from 'lucide-react';
+import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus, Trash2, Loader, MapPin } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, createProduct, updateProduct, deleteProduct, fetchProductsByCompany, getBillingConfig } from '../../lib/supabaseHelpers.js';
+import { createProduct, updateProduct, deleteProduct, getBillingConfig, fetchBranches, fetchProductStock, fetchProductStockAllBranches, upsertProductStock } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import { formatUSD } from '../../lib/format.js';
+
+const ALL_BRANCHES = 'all';
 
 export default function InventoryManagement() {
   const { currentUser, showToast } = useStore();
   const [products, setProducts] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [selectedBranchId, setSelectedBranchId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState('all');
   const [editingProduct, setEditingProduct] = useState(null);
@@ -27,27 +31,52 @@ export default function InventoryManagement() {
   });
   const [taxRate, setTaxRate] = useState(12);
 
+  const isAllBranches = selectedBranchId === ALL_BRANCHES;
+
+  const loadProducts = async (branchId) => {
+    try {
+      const data = branchId === ALL_BRANCHES
+        ? await fetchProductStockAllBranches(currentUser.company_id)
+        : await fetchProductStock(currentUser.company_id, branchId);
+      setProducts(data || []);
+    } catch (error) {
+      console.error('Error:', error);
+      showToast('error', 'Error al cargar inventario');
+    }
+  };
+
   useEffect(() => {
-    const loadProducts = async () => {
+    const loadInitial = async () => {
       try {
-        const [data, billingConfig] = await Promise.all([
-          fetchProductsByCompany(currentUser.company_id),
+        const [branchList, billingConfig] = await Promise.all([
+          fetchBranches(currentUser.company_id),
           getBillingConfig(currentUser.company_id)
         ]);
-        setProducts(data || []);
+        setBranches(branchList);
         // Tax rate must match billing_configs - it's the same rate actually
         // submitted to the SRI (api/sri/submit-invoice.js) and used by the POS.
         setTaxRate(billingConfig.taxRate || 12);
+        setSelectedBranchId(branchList[0]?.id || ALL_BRANCHES);
       } catch (error) {
         console.error('Error:', error);
-        showToast('error', 'Error al cargar inventario');
-      } finally {
-        setLoading(false);
+        showToast('error', 'Error al cargar sucursales');
       }
     };
 
-    if (currentUser?.company_id) loadProducts();
-  }, [currentUser, showToast]);
+    if (currentUser?.company_id) loadInitial();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!selectedBranchId) return;
+      setLoading(true);
+      await loadProducts(selectedBranchId);
+      setLoading(false);
+    };
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBranchId]);
 
   const categories = [...new Set(products.map(p => p.category))];
   const filtered = filterCategory === 'all' ? products : products.filter(p => p.category === filterCategory);
@@ -78,6 +107,10 @@ export default function InventoryManagement() {
   };
 
   const handleAddProduct = async () => {
+    if (isAllBranches) {
+      showToast('error', 'Selecciona una sucursal específica para agregar productos');
+      return;
+    }
     if (!newProduct.code || !newProduct.name || !newProduct.category) {
       showToast('error', 'Completa los campos requeridos: Código, Nombre y Categoría');
       return;
@@ -94,6 +127,7 @@ export default function InventoryManagement() {
         name: newProduct.name,
         category: newProduct.category,
         company_id: currentUser.company_id,
+        branchId: selectedBranchId,
         quantity: parseInt(newProduct.quantity) || 0,
         minStock: parseInt(newProduct.minStock) || 10,
         costPrice: parseFloat(newProduct.costPrice) || 0,
@@ -104,12 +138,8 @@ export default function InventoryManagement() {
       });
 
       showToast('success', `Producto "${newProduct.name}" agregado al inventario`);
+      await loadProducts(selectedBranchId);
 
-      // Reload products from database
-      const updatedProducts = await fetchProductsByCompany(currentUser.company_id);
-      setProducts(updatedProducts || []);
-
-      // Reset form
       setNewProduct({
         code: '',
         name: '',
@@ -138,15 +168,19 @@ export default function InventoryManagement() {
         salePrice: parseFloat(editForm.salePrice),
         priceIncludesVat: editForm.priceIncludesVat,
         discount: parseFloat(editForm.discount),
-        promotion: editForm.promotion,
-        quantity: parseInt(editForm.quantity),
-        minStock: parseInt(editForm.minStock)
+        promotion: editForm.promotion
       });
 
-      // Reload products from database
-      const updatedProducts = await fetchProductsByCompany(currentUser.company_id);
-      setProducts(updatedProducts || []);
+      if (!isAllBranches) {
+        await upsertProductStock({
+          productId: editingProduct.id,
+          branchId: selectedBranchId,
+          quantity: parseInt(editForm.quantity),
+          minStock: parseInt(editForm.minStock)
+        });
+      }
 
+      await loadProducts(selectedBranchId);
       showToast('success', `Producto ${editingProduct.name} actualizado`);
       setEditingProduct(null);
     } catch (error) {
@@ -160,14 +194,10 @@ export default function InventoryManagement() {
   };
 
   const handleDeleteProduct = async (productId, productName) => {
-    if (window.confirm(`¿Eliminar producto "${productName}"?`)) {
+    if (window.confirm(`¿Eliminar producto "${productName}"? Esto lo elimina de todas las sucursales.`)) {
       try {
         await deleteProduct(productId);
-
-        // Reload products from database
-        const updatedProducts = await fetchProductsByCompany(currentUser.company_id);
-        setProducts(updatedProducts || []);
-
+        await loadProducts(selectedBranchId);
         showToast('success', `Producto ${productName} eliminado`);
       } catch (error) {
         console.error('Error deleting product:', error);
@@ -180,6 +210,30 @@ export default function InventoryManagement() {
     <div className="max-w-7xl mx-auto space-y-6">
       <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Gestión de Inventario</h1>
 
+      {/* Branch selector */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-wrap items-center gap-2">
+        <MapPin size={16} className="text-zinc-500 flex-shrink-0" />
+        <button
+          onClick={() => setSelectedBranchId(ALL_BRANCHES)}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+            isAllBranches ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+          }`}
+        >
+          Todas las sucursales
+        </button>
+        {branches.map(b => (
+          <button
+            key={b.id}
+            onClick={() => setSelectedBranchId(b.id)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              selectedBranchId === b.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+            }`}
+          >
+            {b.name}
+          </button>
+        ))}
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
@@ -187,7 +241,7 @@ export default function InventoryManagement() {
           <div className="text-3xl font-bold text-zinc-100">{filtered.length}</div>
         </div>
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <div className="text-sm text-zinc-500">Stock Total</div>
+          <div className="text-sm text-zinc-500">Stock Total {isAllBranches && '(todas)'}</div>
           <div className="text-3xl font-bold text-emerald-400">{filtered.reduce((sum, p) => sum + p.quantity, 0)}</div>
         </div>
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
@@ -226,8 +280,10 @@ export default function InventoryManagement() {
           ))}
         </select>
         <button
-          onClick={() => setShowAddModal(true)}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
+          onClick={() => isAllBranches ? showToast('warning', 'Selecciona una sucursal específica para agregar productos') : setShowAddModal(true)}
+          disabled={isAllBranches}
+          title={isAllBranches ? 'Selecciona una sucursal específica primero' : ''}
+          className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
         >
           <Plus size={20} />
           Agregar Producto
@@ -250,7 +306,7 @@ export default function InventoryManagement() {
                   <td className="px-4 py-3 font-bold text-zinc-100">{product.name}</td>
                   <td className="px-4 py-3 text-sm text-zinc-400">{product.category}</td>
                   <td className="px-4 py-3">
-                    <div className="font-bold text-zinc-100">{product.quantity}</div>
+                    <div className={`font-bold ${isLowStock ? 'text-amber-400' : 'text-zinc-100'}`}>{product.quantity}</div>
                     <div className="text-xs text-zinc-500">Mín: {product.min_stock}</div>
                   </td>
                   <td className="px-4 py-3">
@@ -337,29 +393,38 @@ export default function InventoryManagement() {
 
               {/* Stock Management */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300">Stock</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Cantidad Actual</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editForm.quantity}
-                      onChange={(e) => setEditForm({...editForm, quantity: e.target.value})}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
-                    />
+                <h3 className="font-bold text-zinc-300 flex items-center gap-2">
+                  <MapPin size={16} />
+                  Stock {isAllBranches ? '' : `- ${branches.find(b => b.id === selectedBranchId)?.name || ''}`}
+                </h3>
+                {isAllBranches ? (
+                  <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                    Estás viendo "Todas las sucursales". Selecciona una sucursal específica arriba para editar su stock.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-400 mb-2">Cantidad Actual</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editForm.quantity}
+                        onChange={(e) => setEditForm({...editForm, quantity: e.target.value})}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-zinc-400 mb-2">Stock Mínimo</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={editForm.minStock}
+                        onChange={(e) => setEditForm({...editForm, minStock: e.target.value})}
+                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Stock Mínimo</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={editForm.minStock}
-                      onChange={(e) => setEditForm({...editForm, minStock: e.target.value})}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
-                    />
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Pricing */}
@@ -522,6 +587,13 @@ export default function InventoryManagement() {
               >
                 <X size={24} />
               </button>
+            </div>
+
+            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4 flex items-center gap-2">
+              <MapPin size={16} className="text-blue-400 flex-shrink-0" />
+              <p className="text-xs text-blue-300">
+                Se agregará a <span className="font-bold">{branches.find(b => b.id === selectedBranchId)?.name}</span> con la cantidad inicial indicada. Otras sucursales lo verán con stock 0 hasta que ajustes su inventario ahí.
+              </p>
             </div>
 
             <div className="space-y-4 mb-6">
