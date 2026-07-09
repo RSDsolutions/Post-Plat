@@ -53,7 +53,7 @@ export default function Login() {
 
     try {
       const credentials = userType === 'admin'
-        ? { email: 'admin@postplat.com', password: '123456' }
+        ? { email: 'admin@postplat.com', password: 'ABC123456' }
         : { email: 'vendedor1@supermercadoabc.com', password: 'ABC123456' };
 
       const user = await validateAdminCredentials(credentials.email, credentials.password);
@@ -143,7 +143,7 @@ export default function Login() {
             <p className="text-xs text-zinc-500 mt-1">
               Contraseña:
               <span className="text-emerald-400 font-semibold ml-1">
-                {userType === 'admin' ? '123456' : 'ABC123456'}
+                ABC123456
               </span>
             </p>
           </div>
