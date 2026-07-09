@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, AlertTriangle, Users, Package, DollarSign, TrendingUp, Activity, Settings, LogOut, Eye, Lock, Zap } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData } from '../../lib/supabaseHelpers.js';
+import { fetchData, fetchCompanyUsers } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
 
 export default function StoreManagerDashboard() {
@@ -32,7 +32,7 @@ export default function StoreManagerDashboard() {
           fetchData('invoices', { filter: { column: 'company_id', value: currentUser.company_id } }),
           fetchData('customers', { filter: { column: 'company_id', value: currentUser.company_id } }),
           fetchData('products', { filter: { column: 'company_id', value: currentUser.company_id } }),
-          fetchData('users', { filter: { column: 'company_id', value: currentUser.company_id } })
+          fetchCompanyUsers(currentUser.company_id)
         ]);
 
         const todaySales = invoices

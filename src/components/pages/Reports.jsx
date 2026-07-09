@@ -4,7 +4,7 @@ import {
   Loader, FileSpreadsheet, FileText
 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, fetchInvoicesForReports, fetchCompanyById } from '../../lib/supabaseHelpers.js';
+import { fetchData, fetchInvoicesForReports, fetchCompanyById, fetchCompanyUsers } from '../../lib/supabaseHelpers.js';
 import {
   DATE_PRESETS, computeDateRange, formatDateRangeLabel,
   buildReportDataset, buildReport, formatCellValue, REPORT_TABS
@@ -47,7 +47,7 @@ export default function Reports() {
     Promise.all([
       fetchInvoicesForReports(currentUser.company_id, start ? start.toISOString() : null, end ? end.toISOString() : null),
       fetchData('products', { filter: { column: 'company_id', value: currentUser.company_id } }),
-      fetchData('users', { filter: { column: 'company_id', value: currentUser.company_id } }),
+      fetchCompanyUsers(currentUser.company_id),
       fetchCompanyById(currentUser.company_id)
     ]).then(([invoices, products, users, companyData]) => {
       if (cancelled) return;

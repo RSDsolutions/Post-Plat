@@ -242,6 +242,54 @@ export async function updateAdminLastLogin(email) {
   if (error) throw new Error(`Error updating last login: ${error.message}`);
 }
 
+// users.password_hash is column-level revoked for anon/authenticated (see
+// migration fix_users_password_exposure_and_cashier_rpcs), so select('*')
+// against this table now errors - always use an explicit column list here.
+export async function fetchCompanyUsers(companyId) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, company_id, email, name, phone, role, is_active, last_login, created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(`Error fetching users: ${error.message}`);
+  return data || [];
+}
+
+// Creates an operario/vendedor login for the gerente's own company via the
+// create_company_user RPC - bcrypt hashing only happens inside Postgres
+// (pgcrypto), so this can't be a plain insert from the client. The RPC also
+// re-validates the role server-side, so this can't be used to create a
+// gerente/admin account even if the client request were tampered with.
+export async function createCashierUser({ companyId, email, password, name, role, phone }) {
+  const { data, error } = await supabase.rpc('create_company_user', {
+    p_company_id: companyId,
+    p_email: email,
+    p_password: password,
+    p_name: name,
+    p_role: role,
+    p_phone: phone || null
+  });
+
+  if (error) throw new Error(error.message);
+  return data?.[0];
+}
+
+// Lets a gerente set a new password for one of their cashiers directly -
+// there's no outbound email/reset-link flow in this project (no Supabase
+// Auth session, no SMTP configured), so this is the functional stand-in:
+// the gerente sets it and relays it to the cashier themselves.
+export async function resetCashierPassword({ companyId, userId, newPassword }) {
+  const { data, error } = await supabase.rpc('reset_company_user_password', {
+    p_company_id: companyId,
+    p_user_id: userId,
+    p_new_password: newPassword
+  });
+
+  if (error) throw new Error(error.message);
+  return data?.[0];
+}
+
 // Generic functions
 export async function fetchData(table, options = {}) {
   let query = supabase.from(table).select(options.select || '*');
