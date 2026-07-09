@@ -1,0 +1,240 @@
+# 🔍 Auditoría del Sistema - POST-PLAT
+
+**Fecha:** 2026-07-09
+**Alcance:** Base de datos (Supabase/Postgres), API serverless (`api/sri/*`), frontend (React/Vite), configuración y despliegue.
+**Método:** Supabase Advisors (security + performance), lectura directa de `pg_policies`/`information_schema`, pruebas reales contra la API REST con la anon key (no solo simulación con rol privilegiado), lectura de código fuente y del historial de cambios de esta sesión.
+
+> Ver también [`RESUMEN_SISTEMA.md`](./RESUMEN_SISTEMA.md) para una descripción funcional de cómo está armado el sistema hoy.
+
+---
+
+## 🚨 Resumen ejecutivo
+
+Hay **3 hallazgos críticos que están activos en producción ahora mismo**, no son teóricos. Los primeros dos los confirmé con pruebas reales (no solo revisando el código):
+
+1. **Cualquiera con la anon key pública puede crearse un login de `gerente` (control total) para cualquier empresa del sistema, incluyendo FARMACIA CRUZ AZUL.** La función `create_company_gerente` no verifica quién la llama. → [Detalle](#1-create_company_gerente-no-verifica-quién-llama-crítico)
+2. **La tabla `plans` no se puede leer desde el navegador.** Lo confirmé con una petición real a la API REST usando la anon key: devuelve `200 []` (vacío) en vez de los 3 planes reales. Esto significa que la pantalla de Suscripciones, el selector de plan del wizard de alta de empresas, y las alertas de consumo probablemente estén rotas o vacías en producción ahora mismo. → [Detalle](#2-la-tabla-plans-es-ilegible-desde-el-cliente-crítico)
+3. **El registro de actividad (`activity_log`) nunca se guarda de verdad.** El código que se conectó esta sesión falla silenciosamente por el mismo motivo que el punto 2 (RLS sin políticas) — el error se atrapa y solo hace `console.error`, así que nadie lo nota desde la interfaz. La tabla tiene 0 filas pese a que ya se ejecutaron varias acciones de admin que deberían haberla llenado. → [Detalle](#3-activity_log-nunca-persiste-crítico)
+
+El motivo raíz de los tres es el mismo patrón: varias tablas tienen **RLS activado pero sin ninguna política creada**, lo cual en Postgres significa "nadie puede tocar esta tabla" para cualquier rol sin `BYPASSRLS` (es decir, ni `anon` ni `authenticated`, que son los roles que usa toda la app). Herramientas como el MCP de Supabase usadas para verificar trabajo durante esta sesión corren con un rol privilegiado que sí puede saltarse RLS — por eso estos problemas no se notaron antes: la verificación por SQL directo confirmó que los datos *quedaban bien guardados*, pero no pasó por el mismo camino (anon key) que usa la app real en el navegador.
+
+**Recomendación:** antes de seguir agregando funcionalidades, corregir estos 3 puntos. Son cambios pequeños y acotados (agregar políticas RLS, agregar una verificación de rol en una función). Puedo aplicarlos de inmediato si lo autorizas — no los toqué porque el pedido de esta conversación fue específicamente generar esta auditoría, no modificar la base de datos.
+
+El resto del documento detalla estos y otros hallazgos por categoría, más una hoja de ruta priorizada.
+
+---
+
+## 1. Seguridad
+
+### 1.1 Hallazgos críticos
+
+#### 1. `create_company_gerente` no verifica quién llama (CRÍTICO)
+
+Esta función (creada esta sesión para que el admin dé de alta el primer login de un cliente nuevo) es `SECURITY DEFINER` y es ejecutable directamente por `anon`/`authenticated` vía `/rest/v1/rpc/create_company_gerente`. Su cuerpo real:
+
+```sql
+BEGIN
+  IF p_email IS NULL OR p_email = '' OR p_name IS NULL OR p_name = '' THEN
+    RAISE EXCEPTION 'Nombre y correo son requeridos';
+  END IF;
+  IF length(p_password) < 6 THEN
+    RAISE EXCEPTION 'La contraseña debe tener al menos 6 caracteres';
+  END IF;
+  IF EXISTS (SELECT 1 FROM users u WHERE u.company_id = p_company_id AND u.email = p_email) THEN
+    RAISE EXCEPTION 'Ya existe un usuario con ese correo en esta empresa';
+  END IF;
+  INSERT INTO users (company_id, email, password_hash, name, role, is_active)
+  VALUES (p_company_id, p_email, crypt(p_password, gen_salt('bf')), p_name, 'gerente', true)
+  ...
+```
+
+Valida formato de email/contraseña y que no exista ya ese correo **en la empresa indicada** — pero nunca valida que quien llama sea realmente un admin de la plataforma. `p_company_id` es un parámetro que el llamador elige libremente. Como referencia, `create_company_user` (la función equivalente para que un *gerente* cree cajeros) sí tiene este mismo problema de fondo, pero al menos ahí el rol creado está restringido a `operario`/`vendedor`. Esta función crea directamente un **`gerente`**, el rol con más control dentro de una empresa (inventario, facturación, cajeros, sucursales, config SRI).
+
+**Impacto real:** cualquier visitante del sitio puede abrir la consola del navegador y ejecutar el equivalente a:
+```
+POST /rest/v1/rpc/create_company_gerente
+{ "p_company_id": "<uuid de cualquier empresa existente>", "p_email": "atacante@x.com", "p_password": "123456", "p_name": "x" }
+```
+y quedar con acceso total a esa empresa — incluyendo la real (FARMACIA CRUZ AZUL). Los UUIDs de empresas no son secretos: `companies` es de lectura pública (ver 1.2).
+
+**Corrección sugerida:** esta función no debería ser invocable directamente desde el cliente. Opciones, de más a menos robusta:
+- Moverla detrás de un endpoint serverless (`api/admin/create-gerente.js`) que primero verifique la sesión del admin (mismo patrón que ya usa `api/sri/submit-invoice.js` para validar `userId`+`role`), y que la función SQL deje de ser `SECURITY DEFINER` ejecutable por `anon`/`authenticated` (`REVOKE EXECUTE ... FROM anon, authenticated`).
+- Como mínimo aceptable hoy: agregar un parámetro `p_admin_user_id` y validar `EXISTS (SELECT 1 FROM users WHERE id = p_admin_user_id AND role = 'admin')` dentro de la función, igual que ya hacen las validaciones de rol en `create_company_user`.
+
+#### 2. La tabla `plans` es ilegible desde el cliente (CRÍTICO)
+
+Prueba real ejecutada contra la API REST de Supabase con la anon key del proyecto (la misma que usa el navegador):
+```
+GET /rest/v1/plans?select=id,name&limit=3
+→ HTTP 200
+→ []
+```
+`plans` tiene RLS activado y **cero políticas** (confirmado en `pg_policies`, no es un falso positivo del advisor). Postgres deniega todo por defecto en ese caso — PostgREST lo traduce en una respuesta `200` con array vacío para `SELECT`, no un error, así que además es un fallo silencioso: no hay excepción visible en consola, solo listas vacías.
+
+**Impacto real:** `fetchPlans()` devuelve `[]` en producción. Cualquier pantalla que dependa de los planes reales —Suscripciones del admin, selector de plan en el wizard de alta de empresa, el cálculo de alertas de consumo (`plan.comprobantesLimit`)— está mostrando vacío o degradando silenciosamente ahora mismo, aunque en las pruebas de esta sesión (hechas vía SQL directo con rol privilegiado) todo se veía correcto.
+
+**Corrección sugerida:**
+```sql
+CREATE POLICY plans_read_access ON public.plans FOR SELECT USING (true);
+```
+(Planes no tiene datos sensibles por fila — es catálogo público de precios — así que una política de lectura abierta es razonable, en línea con el resto del esquema.)
+
+#### 3. `activity_log` nunca persiste (CRÍTICO)
+
+Mismo defecto que el punto 2, pero en escritura. `activity_log` también tiene RLS activado sin políticas. El helper que se conectó esta sesión:
+
+```js
+// src/lib/supabaseHelpers.js
+export async function logActivity(companyId, action, description, userId = null) {
+  const { data, error } = await supabase.from('activity_log').insert([...]).select().single();
+  if (error) throw new Error(`Error logging activity: ${error.message}`);
+  return data;
+}
+```
+y en `useStore.js`:
+```js
+addActivityEvent: async (action, companyId, companyName, detail) => {
+  try {
+    const saved = await logActivity(...);
+    set((state) => ({ activityLog: [event, ...state.activityLog] })); // nunca se alcanza
+  } catch (error) {
+    console.error('Error logging activity:', error); // se traga el error
+  }
+},
+```
+El `insert` falla por RLS, `logActivity` lanza la excepción, `addActivityEvent` la atrapa y solo hace `console.error` — la acción principal (suspender empresa, registrar pago, etc.) sí se guarda bien porque usa otras tablas con políticas correctas, pero la fila de auditoría nunca se crea, ni siquiera en el estado local (esa línea es inalcanzable si el insert falla). Confirmado con datos: **0 filas en `activity_log`** pese a que ya se ejecutaron altas/suspensiones/cambios de plan reales esta sesión.
+
+**Corrección sugerida:**
+```sql
+CREATE POLICY activity_log_insert_access ON public.activity_log FOR INSERT WITH CHECK (true);
+CREATE POLICY activity_log_read_access ON public.activity_log FOR SELECT USING (true);
+```
+
+#### 4. El bloqueo de cuenta por intentos fallidos no existe realmente
+
+`SECURITY_GUIDE.md` documenta `failed_login_attempts`/`locked_until` como una protección activa, y la tabla `users` tiene esas columnas. Pero el cuerpo real de `verify_user_password` es:
+```sql
+SELECT users.id, users.email, users.name, users.role, users.company_id
+FROM users
+WHERE users.email = p_email AND users.is_active = true
+  AND users.password_hash = crypt(p_password, users.password_hash);
+```
+Nunca lee ni actualiza `failed_login_attempts`/`locked_until`. No hay límite de intentos: un atacante puede probar contraseñas contra cualquier email indefinidamente (fuerza bruta / credential stuffing), y las columnas de bloqueo son decorativas. Tampoco hay rate-limiting a nivel de red (Vercel/Supabase) delante del RPC.
+
+**Corrección sugerida:** incrementar `failed_login_attempts` en cada intento fallido dentro de la misma función (o en el código que la llama), fijar `locked_until` tras N intentos, y que la función rechace el login mientras `locked_until > now()`. Es exactamente la lógica que `SECURITY_GUIDE.md` ya describe como diseño — falta implementarla.
+
+### 1.2 Hallazgos importantes
+
+**No hay aislamiento real entre empresas (multi-tenant "de confianza", no criptográfico).** Todas las tablas operativas tienen políticas RLS del tipo `USING (true)` / `WITH CHECK (true)`:
+
+| Tabla | Política | Efecto real |
+|---|---|---|
+| `companies` | insert/update `WITH CHECK(true)` | cualquiera puede editar cualquier empresa |
+| `branches`, `point_of_sales`, `product_stock`, `customers`, `invoices`, `invoice_details`, `payment_methods`, `billing_configs` | `ALL USING(true)` | cualquiera puede leer/escribir/borrar filas de cualquier empresa |
+| `products` | insert/update/delete `USING(true)`/`WITH CHECK(true)` | ídem |
+
+Esto no es una regresión de esta sesión — es el modelo de confianza que ya tenía el proyecto (todo pasa por la anon key compartida, sin sesión de Supabase Auth real; la app confía en que el propio cliente sólo pide su `company_id`). Quedó registrado explícitamente como decisión consciente al construir sucursales. Lo marco aquí porque es la causa estructural detrás de los puntos 1-3: sin un `auth.uid()` real, no hay forma de que una política RLS diferencie "el gerente de la empresa A" de "un visitante cualquiera", así que hoy la única protección real está en:
+- Los RPCs que sí validan (`create_company_user`, `reset_company_user_password`, `update_user_branch` — bien hechos, con guardas server-side).
+- El endpoint `api/sri/submit-invoice.js`, que sí valida `userId` pertenece a `companyId` y tiene rol `gerente`/`admin` antes de firmar/enviar al SRI.
+- Todo lo demás depende de que el frontend "se porte bien" y filtre por `company_id` — un atacante que hable directo con la API REST no tiene ese límite.
+
+**No hay sesión/token real, solo IDs que el cliente declara.** `api/sri/submit-invoice.js` recibe `{ invoiceId, companyId, userId }` en el body y valida que `userId` pertenezca a `companyId` con el rol correcto — pero nada garantiza criptográficamente que quien hace la petición *es* ese `userId`. Quien conozca (u obtenga listando `users`/`companies`) un UUID de gerente puede invocar el endpoint como si fuera él. Es el mismo problema de fondo que los puntos anteriores, aplicado a la API serverless en vez de a PostgREST directo.
+
+**Funciones `SECURITY DEFINER` sin `search_path` fijo.** `verify_user_password`, `verify_admin_password`, `reset_company_user_password`, `create_company_user`, `update_user_branch` no fijan `search_path`, lo que en teoría permite un ataque de "search path hijacking" si alguna vez existiera un esquema adicional manipulable. Corrección de una línea por función: `SET search_path = public, pg_temp`.
+
+**El bucket `company-logos` permite listar todos los archivos**, no solo obtenerlos por URL conocida (política `SELECT` amplia sobre `storage.objects`). Un visitante puede enumerar los logos de todas las empresas, no solo acceder al que ya conoce. Bajo impacto (son logos, no son datos sensibles) pero fácil de acotar a "get por key" sin "list".
+
+**`api/sri/submit-invoice.js` devuelve `error.stack` al cliente** en dos lugares (falla al cargar `open-factura`, y el catch general). Expone rutas de archivos y estructura interna del servidor en la respuesta HTTP. Debería quedar solo en `console.error` server-side.
+
+### 1.3 Hallazgos menores / hardening
+
+- `rls_auto_enable()` (función interna de infraestructura, dispara con un event trigger de `CREATE TABLE`) también aparece como ejecutable por `anon`/`authenticated`. No hace nada útil invocada manualmente, pero no hay razón para dejarla expuesta: `REVOKE EXECUTE ... FROM anon, authenticated`.
+- Múltiples políticas permisivas duplicadas en `invoices` para `SELECT` (`invoices_all_access` + `read_invoices`) — no es un problema de seguridad en sí, pero cada política se evalúa en cada consulta; ver sección de rendimiento.
+- `permissions` (10 filas, catálogo cargado) y `role_permissions` (**0 filas**) sugieren que el sistema granular de permisos de `DATABASE_SCHEMA_V2.sql` nunca se terminó de poblar — hoy el control de acceso real es por `role` (`admin`/`gerente`/`vendedor`/`contador`/`operario`) verificado a mano en cada RPC/endpoint, no por esta tabla. Estas dos tablas también están bloqueadas por RLS sin políticas, así que aunque se poblara `role_permissions`, la app no podría leerla hoy.
+
+### 1.4 Lo que ya está bien resuelto
+
+Para que quede balanceado — esto ya se corrigió y verificó en sesiones recientes, no hace falta tocarlo de nuevo:
+- **Exposición de `password_hash`:** antes cualquiera con la anon key podía leer los hashes bcrypt de todas las empresas (`GRANT SELECT` sin restricción de columnas + política sin filtro). Ya está revocado y reemplazado por una lista explícita de columnas seguras.
+- **Constraint de `point_of_sales` demasiado restrictiva:** impedía repetir un mismo punto de emisión en distintos establecimientos (sí permitido por el SRI). Corregida a `UNIQUE(company_id, numero_establecimiento, numero_pos)`.
+- **Panel admin sin persistencia real:** suspender/reactivar/cambiar plan/crear empresa eran mutaciones locales que se perdían al refrescar. Ahora todo pasa por Supabase de verdad.
+- **RPCs de cajeros (`create_company_user`, `reset_company_user_password`) con buenas guardas server-side:** restringen rol a `operario`/`vendedor`, validan que el cajero pertenezca a la empresa del gerente que llama. Es el patrón correcto — falta replicarlo en `create_company_gerente` (punto 1.1.1).
+
+---
+
+## 2. Estructura / Arquitectura
+
+- **Cero pruebas automatizadas.** No existe ni un solo archivo de test en el proyecto (`**/*.test.js` solo matchea dentro de `node_modules`). El código más frágil y menos visible cuando falla —generación de clave de acceso SRI, firma XAdES, los RPCs con lógica de negocio— es exactamente el que más se beneficiaría de tests, porque un error ahí no se nota hasta que el SRI rechaza un comprobante real.
+- **Sin TypeScript ni JSDoc.** Varios bugs de esta sesión (`subtotal` vs `subtotal_amount`, `comprobantes_limit` vs `max_invoices_monthly`) fueron directamente discrepancias de forma/nombre entre lo que el código asumía y lo que la base de datos realmente tenía — la clase de error que un sistema de tipos atrapa en el editor antes de ejecutar nada.
+- **Sin CI.** No hay `.github/workflows` ni equivalente. Nada corre build/lint automáticamente antes de mergear a `main`, que además es la rama de despliegue automático a Vercel.
+- **Bundle único de ~1.4MB** (advertencia del propio build de Vite, sin resolver). La SPA sirve tres experiencias muy distintas (admin, gerente, punto de venta del cajero) desde un solo bundle inicial — candidata natural a code-splitting por rol/ruta.
+- **`CLAUDE.md` describe un esquema desactualizado.** Dice "16 tablas" y no menciona `billing_configs`, `payment_methods` ni `product_stock` (esta última ni existía antes de esta sesión). El esquema real hoy tiene **19 tablas**. Vale la pena actualizar ese documento para que no desoriente a quien lo use como referencia.
+- **Código y datos muertos identificados:**
+  - `src/data/companies.js`, `src/data/activityLog.js` — datos de demo, no se importan en ningún lado.
+  - Tabla `admin_users` — 1 fila residual, bloqueada por RLS sin políticas, la app nunca la consulta (el admin real vive en `public.users` con `role='admin'`).
+  - `products.quantity` / `products.min_stock` — columnas que ya no se escriben (reemplazadas por `product_stock` desde la migración de sucursales) pero siguen en el esquema.
+  - Dependencia `@modelcontextprotocol/sdk` en `dependencies` de `package.json` — no se usa en ningún archivo de `src/` (es config de Claude Code, no del runtime de la app).
+- **Índices duplicados** (gasto puro, sin trade-off en quitarlos):
+  - `invoice_details`: `idx_invoice_details_inv` + `idx_invoice_details_invoice_id`
+  - `invoices`: `idx_invoices_company` + `idx_invoices_company_id`, y `idx_invoices_date` + `idx_invoices_issue_date`
+- **Foreign keys sin índice de cobertura** (impacto en joins/deletes a medida que crecen las tablas): `audit_log.admin_user_id`, `companies.plan_id`, `inventory_movements.user_id`, `invoices.user_id`, `product_stock.branch_id`, `role_permissions.permission_id`, `users.branch_id`.
+- **FK sin `ON DELETE CASCADE`:** `activity_log_company_id_fkey` bloquea borrar una empresa si tiene actividad registrada (hoy no importa porque el flujo de auditoría está roto — punto 1.1.3 — pero al corregirlo esto empezará a molestar si algún día se necesita borrar una empresa de prueba).
+
+---
+
+## 3. Funcionalidad
+
+- **Los límites de plan no se hacen cumplir en ningún lado.** `plans.max_invoices_monthly`, y los límites de usuarios/sucursales se guardan y se *muestran* (Subscripciones, alertas de consumo), pero no encontré ningún punto del código que bloquee o avise en el momento en que una empresa los supera (crear una factura número 501 en un plan con tope 500, o un cajero número 6 en un plan con tope 5, simplemente funciona igual). Sin esto, la diferenciación entre planes es solo visual.
+- **No hay pasarela de pago real.** "Registrar pago" en el panel admin es un botón que actualiza `subscription_status`/`payment_status` manualmente — no hay integración con Stripe, PayPal ni un procesador local ecuatoriano, ni webhooks. Es coherente con una operación manual hoy, pero vale la pena nombrarlo como lo que es: no hay cobro automático.
+- **No hay envío de correo en ningún punto del sistema.** Ni para verificación de cuenta, ni para recuperación de contraseña de `gerente`/`admin` (los cajeros sí pueden ser reseteados, pero por su gerente manualmente, no por email), ni para avisar al cliente que su suscripción está por vencer (las alertas de vencimiento hoy solo las ve el admin en su propio panel, nunca llegan al cliente). Esto fue una decisión consciente tomada esta sesión (mantener el sistema de auth actual en vez de migrar a Supabase Auth), pero como falta funcional queda pendiente.
+- **`inventory_movements` existe pero nada escribe ahí.** El descuento de stock en una venta (`decrementProductStock`) actualiza `product_stock` directamente, sin dejar un registro de auditoría de movimiento (quién, cuándo, por qué bajó el stock). Además la tabla está bloqueada por RLS sin políticas (mismo defecto de la sección 1), así que aunque se empezara a usar, fallaría igual que `activity_log`.
+- **Asignación cajero↔terminal es implícita, no explícita.** Si una sucursal llega a tener más de un punto de venta activo, cada cajero usa "el primero activo" de su sucursal — no hay forma de asignar un cajero a una terminal específica. Documentado como límite de alcance consciente al construir sucursales, no un bug, pero vale la pena tenerlo en el radar si algún cliente real llega a necesitar dos cajas simultáneas en un mismo local.
+- **No hay flujo de baja de empresa** en el panel admin (solo suspender). Tiene sentido no ofrecerlo aún dado que ni siquiera se podría ejecutar limpio hoy (ver el FK no-cascade de la sección 2).
+
+---
+
+## 4. Diseño / UX
+
+- **El panel admin no recibió el pase de responsividad móvil.** El trabajo de esta sesión fue explícitamente para "el sistema del gerente" — Empresas/Suscripciones/Alertas/Actividad del admin probablemente se vean mal o sean poco usables en pantallas chicas. Si el admin (o algún cliente del admin) llega a necesitar gestionar el SaaS desde el celular, esto va a doler.
+- **Sin evidencia de accesibilidad tratada como requisito** (`aria-label`, manejo de foco en modales, navegación por teclado, contraste). No es algo que se haya evaluado a fondo en esta auditoría, pero tampoco apareció como consideración explícita en el código revisado esta sesión.
+- **Ya resuelto, vale la pena mencionarlo:** la inconsistencia entre `showToast` (se autodescarta a los 4s) y la necesidad de mostrar una contraseña temporal de forma persistente ya se corrigió usando `ConfirmDialog` con `whitespace-pre-line`. Es el patrón correcto a reusar si aparece un caso similar (por ejemplo, si se implementa el punto 1.1.1 con un flujo que también necesite mostrar credenciales one-time).
+
+---
+
+## 5. Rendimiento
+
+- **Bundle único ~1.4MB** sin code-splitting (ver sección 2) — el mayor punto de apalancamiento para mejorar el tiempo de carga inicial, especialmente para el rol `operario`/`vendedor` que solo necesita el POS y hoy probablemente descarga también todo el código del panel admin y del panel gerente.
+- **Políticas RLS permisivas duplicadas en `invoices`** (`invoices_all_access` + `read_invoices`, ambas cubren `SELECT` para los mismos roles) — Postgres evalúa ambas en cada consulta. Consolidar en una sola política reduce trabajo por query, aunque con el volumen actual (5 facturas) el impacto real es insignificante; vale la pena limpiarlo ahora que es barato, antes de que haya miles de filas.
+- **Índices "no usados" reportados por el advisor** (en `products`, `invoices`, `customers`, `activity_log`, etc.): en su mayoría reflejan que las tablas todavía tienen pocas filas y poco tráfico de queries, no necesariamente que el índice esté mal diseñado. No los tocaría todavía — mejor revisar de nuevo este mismo reporte de advisors dentro de unos meses de uso real en producción, cuando el patrón de queries sea representativo.
+- **Duplicados sí vale la pena quitarlos ya** (ver sección 2) — ahí no hay ningún trade-off, solo espacio y escritura desperdiciados.
+
+---
+
+## 6. Hoja de ruta priorizada
+
+**🔴 Urgente — riesgo activo en producción**
+1. `create_company_gerente`: agregar verificación de que quien llama es admin (§1.1.1).
+2. Agregar política `SELECT` a `plans` (§1.1.2).
+3. Agregar políticas `INSERT`/`SELECT` a `activity_log` (§1.1.3).
+4. Implementar de verdad el bloqueo por intentos fallidos en `verify_user_password`/`verify_admin_password` (§1.1.4).
+5. Quitar `stack` de las respuestas HTTP en `api/sri/submit-invoice.js` (§1.2).
+
+**🟠 Alta**
+6. Definir un plan real para aislamiento entre empresas: migrar a Supabase Auth (JWT + `auth.uid()` en las políticas RLS) o, como paso intermedio, firmar un token de sesión propio que los RPCs y `api/sri/*` puedan verificar en vez de confiar en IDs sueltos del body.
+7. Hacer cumplir los límites de plan (facturas/mes, usuarios, sucursales) en el momento de crear el recurso, no solo mostrarlos.
+8. `SET search_path` en las funciones `SECURITY DEFINER` (§1.2).
+9. Acotar la política de listado del bucket `company-logos` (§1.2).
+
+**🟡 Media**
+10. Code-splitting por rol (admin / gerente / POS) para bajar el bundle inicial.
+11. Integración de pasarela de pago real.
+12. Flujo de recuperación de contraseña por correo para `gerente`/`admin` (requiere elegir proveedor de email).
+13. Quitar índices duplicados, agregar índices a las FK listadas en §2, consolidar las políticas duplicadas de `invoices`.
+14. Responsividad móvil del panel admin.
+
+**🟢 Baja**
+15. Suite de tests mínima, empezando por generación de clave de acceso SRI y los RPCs de negocio (es el código con más riesgo y menos visibilidad cuando falla).
+16. Evaluar TypeScript (o al menos JSDoc) — varios bugs de esta sesión eran discrepancias de forma que un tipado hubiera atrapado antes de ejecutar.
+17. Pipeline de CI (build + lint) en cada push a `main`.
+18. Limpieza de código muerto: `src/data/companies.js`, `src/data/activityLog.js`, tabla `admin_users`, columnas `products.quantity`/`min_stock`, dependencia `@modelcontextprotocol/sdk`.
+19. Actualizar la sección de esquema de `CLAUDE.md` para reflejar las 19 tablas reales.
