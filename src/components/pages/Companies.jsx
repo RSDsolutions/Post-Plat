@@ -4,7 +4,6 @@ import { useStore } from '../../store/useStore.js';
 import Badge from '../ui/Badge.jsx';
 import Table from '../ui/Table.jsx';
 import EmptyState from '../ui/EmptyState.jsx';
-import { daysFrom } from '../../lib/dates.js';
 
 export default function Companies() {
   const { companies, plans, companySearch, setCompanySearch, companyStatusFilter, setCompanyStatusFilter, companyPlanFilter, setCompanyPlanFilter, openWizard, selectCompany, globalSearch } = useStore();
@@ -62,9 +61,8 @@ export default function Companies() {
             data={filtered}
             renderRow={(company) => {
               const plan = plans.find(p => p.id === company.planId);
-              const pct = plan ? (company.monthlyComprobantes / plan.comprobantesLimit) * 100 : 0;
-              const certDays = company.cert ? daysFrom(company.cert.expiresAt) : null;
-              
+              const pct = plan?.comprobantesLimit ? (company.monthlyComprobantes / plan.comprobantesLimit) * 100 : 0;
+
               return (
                 <tr key={company.id} className="hover:bg-zinc-800/50 transition-colors">
                   <td className="px-4 py-3">
@@ -89,12 +87,8 @@ export default function Companies() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {company.cert ? (
-                      <div>
-                        <div className={`text-sm font-bold ${certDays <= 0 ? 'text-red-500' : certDays <= 30 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                          {certDays <= 0 ? 'Vencido' : `${certDays} días`}
-                        </div>
-                      </div>
+                    {company.certUploaded ? (
+                      <span className="text-sm font-bold text-emerald-500">Cargado</span>
                     ) : (
                       <span className="text-sm text-zinc-600 font-medium">Sin cert.</span>
                     )}

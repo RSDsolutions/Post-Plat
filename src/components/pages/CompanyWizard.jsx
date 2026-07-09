@@ -34,10 +34,6 @@ export default function CompanyWizard() {
 
   const setField = (k, v) => setWizardData({ [k]: v });
 
-  const handleFileSimulate = () => {
-    setWizardData({ certFilename: 'certificado-nuevo.p12', certExpiresAt: '2026-07-10' });
-  };
-
   const footer = (
     <div className="flex justify-between w-full">
       {wizardStep > 1 ? (
@@ -137,26 +133,10 @@ export default function CompanyWizard() {
                 className="w-full border border-zinc-800 bg-zinc-950 text-zinc-100 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)]" min={1} />
             </div>
 
-            <div className="md:col-span-2 border border-zinc-800 rounded-3xl p-5 mt-2">
-              <label className="block text-sm font-bold text-zinc-100 mb-3">Certificado de firma (.p12 / .pfx)</label>
-              {!wizardData.certFilename ? (
-                <div className="border-2 border-dashed border-zinc-800 bg-zinc-950/50 rounded-2xl p-6 text-center">
-                  <p className="text-sm text-zinc-500 mb-4 font-medium">Ningún archivo seleccionado</p>
-                  <button onClick={handleFileSimulate} className="border border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors">
-                    Seleccionar archivo
-                  </button>
-                </div>
-              ) : (
-                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-emerald-400">{wizardData.certFilename}</p>
-                    <label className="block text-[10px] font-bold uppercase tracking-widest text-emerald-500 mt-2 mb-1">Fecha de vencimiento *</label>
-                    <input type="date" value={wizardData.certExpiresAt} onChange={e => setField('certExpiresAt', e.target.value)}
-                      className="border border-emerald-500/30 rounded-xl px-3 py-1.5 text-sm bg-zinc-950 text-zinc-100 focus:outline-none focus:ring-2 focus:ring-[var(--brand)]" />
-                  </div>
-                  <button onClick={() => {setField('certFilename', null); setField('certExpiresAt', null);}} className="text-xs font-bold uppercase tracking-wider text-red-500 hover:text-red-400 transition-colors">Quitar</button>
-                </div>
-              )}
+            <div className="md:col-span-2 bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
+              <p className="text-xs font-medium text-blue-300">
+                Esto crea la sucursal y el punto de venta iniciales del cliente. El certificado de firma electrónica lo carga el propio cliente desde su panel ("Facturación SRI") - no se sube aquí.
+              </p>
             </div>
           </div>
         </div>

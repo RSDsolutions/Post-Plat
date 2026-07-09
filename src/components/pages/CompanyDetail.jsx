@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Check, X } from 'lucide-react';
+import { ArrowLeft, Check } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import Badge from '../ui/Badge.jsx';
 import Tabs from '../ui/Tabs.jsx';
@@ -9,7 +9,7 @@ import { formatDate, daysFrom } from '../../lib/dates.js';
 import { formatUSD } from '../../lib/format.js';
 
 export default function CompanyDetail() {
-  const { companies, plans, selectedCompanyId, setActivePage, companyDetailTab, setCompanyDetailTab, openEditCompany, registerPayment, suspendCompany, reactivateCompany, openConfirm, updatePlan, updateCompanyNotes, showToast, addActivityEvent, recalculateAlerts } = useStore();
+  const { companies, plans, selectedCompanyId, setActivePage, companyDetailTab, setCompanyDetailTab, openEditCompany, registerPayment, suspendCompany, reactivateCompany, openConfirm, changeCompanyPlan, updateCompanyNotes, showToast } = useStore();
   
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [selectedNewPlan, setSelectedNewPlan] = useState('');
@@ -46,13 +46,7 @@ export default function CompanyDetail() {
 
   const handleChangePlan = () => {
     if (!selectedNewPlan) return;
-    const newPlanObj = plans.find(p => p.id === selectedNewPlan);
-    
-    // Simulate updating company plan
-    company.planId = selectedNewPlan; 
-    addActivityEvent('Plan modificado', company.nombreComercial, `${plan.name} → ${newPlanObj.name}`);
-    recalculateAlerts();
-    showToast('success', 'Plan actualizado correctamente.');
+    changeCompanyPlan(company.id, selectedNewPlan);
     setShowPlanModal(false);
   };
 
@@ -141,7 +135,7 @@ export default function CompanyDetail() {
                   <div className="text-zinc-500 font-medium">Régimen:</div><div className="font-bold text-zinc-100">{company.regimen}</div>
                   <div className="text-zinc-500 font-medium">Contabilidad:</div><div className="font-bold text-zinc-100">{company.llevaContabilidad ? 'Sí' : 'No'}</div>
                   <div className="text-zinc-500 font-medium">Ambiente SRI:</div><div><Badge status={company.environment} /></div>
-                  <div className="text-zinc-500 font-medium">Establecimiento:</div><div className="font-bold text-zinc-100 font-mono">{company.establishment}-{company.pointOfSale}</div>
+                  <div className="text-zinc-500 font-medium">Sucursales:</div><div className="font-bold text-zinc-100">{company.branches} configurada{company.branches === 1 ? '' : 's'}</div>
                 </div>
                 {company.environment === 'Pruebas' && (
                   <div className="mt-4 bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl">
@@ -149,23 +143,19 @@ export default function CompanyDetail() {
                   </div>
                 )}
               </div>
-              
+
               <div className="space-y-4">
                 <h3 className="text-base font-bold text-zinc-100 border-b border-zinc-800 pb-2">Certificado de Firma</h3>
-                {company.cert ? (() => {
-                  const certDays = daysFrom(company.cert.expiresAt);
-                  const color = certDays <= 0 ? 'text-red-400 bg-red-500/10 border-red-500/20' : certDays <= 30 ? 'text-amber-400 bg-amber-500/10 border-amber-500/20' : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
-                  return (
-                    <div className={`p-4 border rounded-2xl ${color}`}>
-                      <div className="font-bold mb-1">{company.cert.filename}</div>
-                      <div className="text-sm mb-2 opacity-80">Vence: {formatDate(company.cert.expiresAt)}</div>
-                      <div className="text-xs font-bold uppercase tracking-widest">
-                        {certDays <= 0 ? 'Vencido' : `${certDays} días restantes`}
-                      </div>
-                    </div>
-                  );
-                })() : (
-                  <p className="text-sm font-medium text-zinc-500">No hay certificado configurado.</p>
+                {company.certUploaded ? (
+                  <div className="p-4 border rounded-2xl text-emerald-400 bg-emerald-500/10 border-emerald-500/20">
+                    <div className="font-bold mb-1">Certificado cargado</div>
+                    {company.certUploadedAt && (
+                      <div className="text-sm opacity-80">Subido: {formatDate(company.certUploadedAt)}</div>
+                    )}
+                    <p className="text-xs opacity-70 mt-2">La fecha de vencimiento la administra el cliente desde su propio panel (Facturación SRI).</p>
+                  </div>
+                ) : (
+                  <p className="text-sm font-medium text-zinc-500">El cliente aún no ha cargado su certificado de firma. Lo hace desde su propio panel (Facturación SRI).</p>
                 )}
               </div>
             </div>
@@ -241,10 +231,10 @@ export default function CompanyDetail() {
                  <div className="bg-zinc-950/50 border border-zinc-800 p-5 rounded-3xl mb-6">
                     <div className="flex justify-between text-sm mb-3">
                       <span className="font-bold text-zinc-400">Comprobantes emitidos</span>
-                      <span className="font-bold text-zinc-100">{company.monthlyComprobantes} / {plan?.comprobantesLimit}</span>
+                      <span className="font-bold text-zinc-100">{company.monthlyComprobantes} / {plan?.comprobantesLimit ?? 'Sin límite'}</span>
                     </div>
                     <div className="w-full h-2.5 bg-zinc-800 rounded-full overflow-hidden">
-                      {plan && (() => {
+                      {plan?.comprobantesLimit && (() => {
                         const pct = (company.monthlyComprobantes / plan.comprobantesLimit) * 100;
                         const color = pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
                         return <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />;
@@ -258,30 +248,29 @@ export default function CompanyDetail() {
                      <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-2">Mes anterior</div>
                    </div>
                    <div className="border border-zinc-800 bg-zinc-950/50 p-5 rounded-3xl text-center">
-                     <div className="text-3xl font-bold text-zinc-100">{company.activeUsers} / {plan?.usersLimit}</div>
+                     <div className="text-3xl font-bold text-zinc-100">{company.activeUsers} / {plan?.usersLimit ?? '—'}</div>
                      <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-2">Usuarios activos</div>
+                   </div>
+                   <div className="border border-zinc-800 bg-zinc-950/50 p-5 rounded-3xl text-center">
+                     <div className="text-3xl font-bold text-zinc-100">{company.branches} / {plan?.branchesLimit ?? '—'}</div>
+                     <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest mt-2">Sucursales</div>
                    </div>
                  </div>
                </div>
 
                <div>
-                 <h3 className="text-base font-bold text-zinc-100 border-b border-zinc-800 pb-2 mb-4">Características habilitadas</h3>
-                 <ul className="space-y-3">
-                   <li className="flex items-center text-sm font-medium">
-                     <Check size={18} className="text-emerald-500 mr-3" /> <span>Emisión ilimitada (hasta límite de plan)</span>
-                   </li>
-                   <li className="flex items-center text-sm font-medium">
-                     <Check size={18} className="text-emerald-500 mr-3" /> <span>Reportes básicos</span>
-                   </li>
-                   <li className="flex items-center text-sm font-medium">
-                     {plan?.includesProduction ? <Check size={18} className="text-emerald-500 mr-3" /> : <X size={18} className="text-zinc-600 mr-3" />}
-                     <span className={plan?.includesProduction ? 'text-zinc-100' : 'text-zinc-600 line-through'}>Módulo de producción</span>
-                   </li>
-                   <li className="flex items-center text-sm font-medium">
-                     {plan?.includesLots ? <Check size={18} className="text-emerald-500 mr-3" /> : <X size={18} className="text-zinc-600 mr-3" />}
-                     <span className={plan?.includesLots ? 'text-zinc-100' : 'text-zinc-600 line-through'}>Control de lotes y fechas</span>
-                   </li>
-                 </ul>
+                 <h3 className="text-base font-bold text-zinc-100 border-b border-zinc-800 pb-2 mb-4">Características del plan</h3>
+                 {plan?.features?.length > 0 ? (
+                   <ul className="space-y-3">
+                     {plan.features.map(feature => (
+                       <li key={feature} className="flex items-center text-sm font-medium">
+                         <Check size={18} className="text-emerald-500 mr-3" /> <span className="capitalize">{feature}</span>
+                       </li>
+                     ))}
+                   </ul>
+                 ) : (
+                   <p className="text-sm font-medium text-zinc-500">Este plan no tiene características configuradas.</p>
+                 )}
                </div>
             </div>
           )}

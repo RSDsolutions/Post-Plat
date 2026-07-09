@@ -34,7 +34,7 @@ export default function ConfirmDialog() {
 
   return (
     <Modal title={confirmDialog.title} onClose={closeConfirm} footer={footer}>
-      <p className="text-gray-600 mb-4">{confirmDialog.message}</p>
+      <p className="text-gray-600 mb-4 whitespace-pre-line">{confirmDialog.message}</p>
       
       {isSuspend && (
         <div className="space-y-3 mt-4">

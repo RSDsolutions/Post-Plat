@@ -4,7 +4,9 @@ import { supabase } from './supabase.js';
 export async function fetchCompanies() {
   const { data, error } = await supabase
     .from('companies')
-    .select('*')
+    // cert_password is column-level revoked for anon/authenticated - only
+    // pull the non-secret cert fields, same allowlist getBillingConfig uses.
+    .select('*, billing_configs(cert_storage_path, cert_uploaded_at)')
     .order('created_at', { ascending: false });
 
   if (error) throw new Error(`Error fetching companies: ${error.message}`);
@@ -349,7 +351,7 @@ export async function updatePlan(id, updates) {
 export async function fetchActivityLog(companyId = null, limit = 100) {
   let query = supabase
     .from('activity_log')
-    .select('*');
+    .select('*, companies(nombre_comercial), users(name)');
 
   if (companyId) {
     query = query.eq('company_id', companyId);
@@ -516,6 +518,21 @@ export async function updateUserBranch({ companyId, userId, branchId }) {
     p_company_id: companyId,
     p_user_id: userId,
     p_branch_id: branchId
+  });
+
+  if (error) throw new Error(error.message);
+  return data?.[0];
+}
+
+// Creates the initial gerente login for a newly onboarded client company
+// (admin-side, CompanyWizard) via the create_company_gerente RPC - same
+// reason as createCashierUser: bcrypt hashing only happens inside Postgres.
+export async function createCompanyGerente({ companyId, email, password, name }) {
+  const { data, error } = await supabase.rpc('create_company_gerente', {
+    p_company_id: companyId,
+    p_email: email,
+    p_password: password,
+    p_name: name
   });
 
   if (error) throw new Error(error.message);

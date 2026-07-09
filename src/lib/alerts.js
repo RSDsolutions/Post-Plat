@@ -1,38 +1,28 @@
-import { daysFrom, DEMO_DATE } from './dates.js';
+import { daysFrom } from './dates.js';
 
-export function generateAlerts(companies, plans, demoDate = DEMO_DATE) {
+export function generateAlerts(companies, plans, referenceDate = new Date()) {
   const alerts = [];
 
   companies.forEach(company => {
     if (company.subscriptionStatus === 'Suspendida') return;
 
-    if (company.cert && company.cert.expiresAt) {
-      const certDays = daysFrom(company.cert.expiresAt, demoDate);
-      if (certDays <= 0) {
-        alerts.push({
-          id: `cert_exp_${company.id}`,
-          severity: 'danger',
-          type: 'cert_expired',
-          companyId: company.id,
-          companyName: company.nombreComercial,
-          message: 'Certificado de firma electrónica vencido.',
-          attended: false
-        });
-      } else if (certDays <= 30) {
-        alerts.push({
-          id: `cert_expiring_${company.id}`,
-          severity: 'warning',
-          type: 'cert_expiring',
-          companyId: company.id,
-          companyName: company.nombreComercial,
-          message: `Certificado vence en ${certDays} días.`,
-          attended: false
-        });
-      }
+    // Expiry isn't tracked (only upload status - see transformCompany), but a
+    // production client with no certificate at all can't sign real
+    // invoices, which is worth flagging.
+    if (company.environment === 'Producción' && !company.certUploaded) {
+      alerts.push({
+        id: `cert_missing_${company.id}`,
+        severity: 'warning',
+        type: 'cert_missing',
+        companyId: company.id,
+        companyName: company.nombreComercial,
+        message: 'Ambiente de producción sin certificado de firma cargado.',
+        attended: false
+      });
     }
 
-    const subDays = daysFrom(company.subscriptionRenewal, demoDate);
-    if (subDays <= 0 && company.subscriptionStatus !== 'Vencida') {
+    const subDays = company.subscriptionRenewal ? daysFrom(company.subscriptionRenewal, referenceDate) : null;
+    if (subDays !== null && subDays <= 0 && company.subscriptionStatus !== 'Vencida') {
         alerts.push({
         id: `sub_exp_${company.id}`,
         severity: 'danger',
@@ -52,7 +42,7 @@ export function generateAlerts(companies, plans, demoDate = DEMO_DATE) {
         message: 'Suscripción vencida. Pago pendiente.',
         attended: false
       });
-    } else if (subDays <= 15) {
+    } else if (subDays !== null && subDays <= 15) {
       alerts.push({
         id: `sub_expiring_${company.id}`,
         severity: 'warning',
@@ -65,7 +55,7 @@ export function generateAlerts(companies, plans, demoDate = DEMO_DATE) {
     }
 
     const plan = plans.find(p => p.id === company.planId);
-    if (plan) {
+    if (plan && plan.comprobantesLimit) {
       const limit = plan.comprobantesLimit;
       const usage = company.monthlyComprobantes;
       if (usage / limit >= 0.85) {

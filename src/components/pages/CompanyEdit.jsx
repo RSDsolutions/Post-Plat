@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../../store/useStore.js';
-import { formatDate } from '../../lib/dates.js';
 
 export default function CompanyEdit() {
   const { editCompanyId, closeEditCompany, saveEditCompany, companies } = useStore();
@@ -16,12 +15,7 @@ export default function CompanyEdit() {
           address: comp.address,
           llevaContabilidad: comp.llevaContabilidad,
           regimen: comp.regimen,
-          environment: comp.environment,
-          establishment: comp.establishment,
-          pointOfSale: comp.pointOfSale,
-          sequentialStart: comp.sequentialStart,
-          certFilename: comp.cert?.filename || null,
-          certExpiresAt: comp.cert ? new Date(comp.cert.expiresAt).toISOString().split('T')[0] : null
+          environment: comp.environment
         });
       }
     }
@@ -31,18 +25,10 @@ export default function CompanyEdit() {
   const company = companies.find(c => c.id === editCompanyId);
 
   const handleSave = () => {
-    saveEditCompany(editCompanyId, {
-      ...data,
-      cert: data.certFilename ? { filename: data.certFilename, expiresAt: new Date(data.certExpiresAt) } : null
-    });
+    saveEditCompany(editCompanyId, data);
   };
 
   const setField = (k, v) => setData(prev => ({ ...prev, [k]: v }));
-
-  const handleFileSimulate = () => {
-    setField('certFilename', 'certificado-actualizado.p12');
-    setField('certExpiresAt', '2026-07-10');
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/80 backdrop-blur-sm overflow-y-auto">
@@ -90,60 +76,22 @@ export default function CompanyEdit() {
             </section>
 
             <section className="space-y-4">
-              <h3 className="text-lg font-bold text-zinc-100 border-b border-zinc-800 pb-2">Configuración de emisión</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-2">Ambiente SRI</label>
-                  <div className="flex space-x-4">
-                    <label className="flex items-center space-x-2 bg-zinc-950/50 p-3 rounded-2xl border border-zinc-800 cursor-pointer flex-1">
-                      <input type="radio" name="env-edit" value="Pruebas" checked={data.environment === 'Pruebas'} onChange={() => setField('environment', 'Pruebas')} className="text-[var(--brand)]" />
-                      <span className="text-sm font-bold text-zinc-100">Pruebas</span>
-                    </label>
-                    <label className="flex items-center space-x-2 bg-zinc-950/50 p-3 rounded-2xl border border-zinc-800 cursor-pointer flex-1">
-                      <input type="radio" name="env-edit" value="Produccion" checked={data.environment === 'Produccion'} onChange={() => setField('environment', 'Produccion')} className="text-[var(--brand)]" />
-                      <span className="text-sm font-bold text-zinc-100">Producción</span>
-                    </label>
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1">Establecimiento</label>
-                  <input type="text" value={data.establishment} onChange={e => setField('establishment', e.target.value)} className="w-full border border-zinc-800 bg-zinc-950 text-zinc-100 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)]" maxLength={3} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1">Punto de emisión</label>
-                  <input type="text" value={data.pointOfSale} onChange={e => setField('pointOfSale', e.target.value)} className="w-full border border-zinc-800 bg-zinc-950 text-zinc-100 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)]" maxLength={3} />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-1">Secuencial inicial</label>
-                  <input type="number" value={data.sequentialStart} onChange={e => setField('sequentialStart', parseInt(e.target.value))} className="w-full border border-zinc-800 bg-zinc-950 text-zinc-100 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)]" min={1} />
-                </div>
+              <h3 className="text-lg font-bold text-zinc-100 border-b border-zinc-800 pb-2">Ambiente SRI</h3>
+              <div className="flex space-x-4">
+                <label className="flex items-center space-x-2 bg-zinc-950/50 p-3 rounded-2xl border border-zinc-800 cursor-pointer flex-1">
+                  <input type="radio" name="env-edit" value="Pruebas" checked={data.environment === 'Pruebas'} onChange={() => setField('environment', 'Pruebas')} className="text-[var(--brand)]" />
+                  <span className="text-sm font-bold text-zinc-100">Pruebas</span>
+                </label>
+                <label className="flex items-center space-x-2 bg-zinc-950/50 p-3 rounded-2xl border border-zinc-800 cursor-pointer flex-1">
+                  <input type="radio" name="env-edit" value="Produccion" checked={data.environment === 'Produccion'} onChange={() => setField('environment', 'Produccion')} className="text-[var(--brand)]" />
+                  <span className="text-sm font-bold text-zinc-100">Producción</span>
+                </label>
+              </div>
 
-                <div className="md:col-span-2 border border-zinc-800 rounded-3xl p-5 mt-2">
-                  <label className="block text-sm font-bold text-zinc-100 mb-3">Certificado de firma (.p12 / .pfx)</label>
-                  {!data.certFilename ? (
-                    <div className="border-2 border-dashed border-zinc-800 bg-zinc-950/50 rounded-2xl p-6 text-center">
-                      <p className="text-sm font-medium text-zinc-500 mb-4">Ningún archivo seleccionado</p>
-                      <button onClick={handleFileSimulate} className="border border-zinc-700 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white font-bold px-4 py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors">
-                        Subir certificado nuevo
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="bg-zinc-950/50 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                      <div>
-                        <p className="text-sm font-bold text-zinc-100">{data.certFilename}</p>
-                        <div className="mt-2">
-                          <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Fecha de vencimiento *</label>
-                          <input type="date" value={data.certExpiresAt} onChange={e => setField('certExpiresAt', e.target.value)} className="border border-zinc-800 bg-zinc-950 text-zinc-100 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)]" />
-                        </div>
-                      </div>
-                      <div className="flex flex-col space-y-2 items-end">
-                         <button onClick={handleFileSimulate} className="text-[10px] font-bold uppercase tracking-widest text-[var(--brand)] hover:text-white transition-colors">Actualizar certificado .p12</button>
-                         <button onClick={() => {setField('certFilename', null); setField('certExpiresAt', null);}} className="text-[10px] font-bold uppercase tracking-widest text-red-500 hover:text-red-400 transition-colors">Eliminar</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
+                <p className="text-xs font-medium text-blue-300">
+                  Sucursales, puntos de venta, secuenciales y el certificado de firma electrónica los administra el propio cliente desde su panel ("Sucursales" y "Facturación SRI"). Aquí solo se gestionan datos de identidad fiscal y la suscripción.
+                </p>
               </div>
             </section>
           </div>

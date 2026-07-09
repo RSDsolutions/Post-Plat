@@ -78,11 +78,12 @@ export default function Subscriptions() {
               )}
 
               <ul className="space-y-3 text-sm text-zinc-400 border-t border-zinc-800/50 pt-5 font-medium">
-                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.comprobantesLimit} comprobantes/mes</span></li>
-                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.usersLimit} usuarios permitidos</span></li>
-                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.branchesLimit} sucursales</span></li>
-                {plan.includesLots && <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>Control de lotes</span></li>}
-                {plan.includesProduction && <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>Módulo de producción</span></li>}
+                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.comprobantesLimit ?? 'Sin límite'} comprobantes/mes</span></li>
+                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.usersLimit ?? 'Sin límite'} usuarios permitidos</span></li>
+                <li className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span>{plan.branchesLimit ?? 'Sin límite'} sucursales</span></li>
+                {plan.features.map(feature => (
+                  <li key={feature} className="flex items-center"><Check size={16} className="text-emerald-500 mr-2" /> <span className="capitalize">{feature}</span></li>
+                ))}
               </ul>
             </div>
           );

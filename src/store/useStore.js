@@ -1,7 +1,16 @@
 import { create } from 'zustand';
-import { DEMO_DATE, addDays } from '../lib/dates.js';
+import { addDays } from '../lib/dates.js';
 import { generateAlerts } from '../lib/alerts.js';
 import { formatUSD } from '../lib/format.js';
+import { transformCompany } from '../lib/transforms.js';
+import {
+  createCompany, updateCompany, createBranch, createPointOfSale,
+  createCompanyGerente, logActivity, updatePlan as updatePlanInDb
+} from '../lib/supabaseHelpers.js';
+
+function generateTempPassword() {
+  return Math.random().toString(36).slice(-5) + Math.random().toString(36).slice(-5).toUpperCase();
+}
 
 export const useStore = create((set, get) => ({
   brand: {
@@ -80,140 +89,258 @@ export const useStore = create((set, get) => ({
   setWizardStep: (step) => set({ wizardStep: step }),
   setWizardData: (data) => set((state) => ({ wizardData: { ...state.wizardData, ...data } })),
 
-  submitWizard: () => {
-    const { wizardData, plans, addActivityEvent, recalculateAlerts, showToast } = get();
+  submitWizard: async () => {
+    const { wizardData, plans, addActivityEvent, recalculateAlerts, showToast, openConfirm } = get();
     const selectedPlan = plans.find(p => p.id === wizardData.planId) || plans[0];
     const isAnnual = wizardData.billingCycle === 'anual';
     const renewalDays = isAnnual ? 365 : 30;
-    
-    const newCompany = {
-      id: `c_${Date.now()}`,
-      ruc: wizardData.ruc || '0190000000001',
-      razonSocial: wizardData.razonSocial,
-      nombreComercial: wizardData.nombreComercial,
-      address: wizardData.address,
-      llevaContabilidad: wizardData.llevaContabilidad || false,
-      regimen: wizardData.regimen || 'General',
-      environment: wizardData.environment || 'Pruebas',
-      establishment: wizardData.establishment || '001',
-      pointOfSale: wizardData.pointOfSale || '001',
-      sequentialStart: wizardData.sequentialStart || 1,
-      planId: selectedPlan.id,
-      billingCycle: wizardData.billingCycle || 'mensual',
-      subscriptionStart: DEMO_DATE,
-      subscriptionRenewal: addDays(DEMO_DATE, renewalDays),
-      subscriptionStatus: 'Activa',
-      paymentStatus: 'Al día',
-      cert: wizardData.certFilename ? { filename: wizardData.certFilename, expiresAt: new Date(wizardData.certExpiresAt) } : null,
-      monthlyComprobantes: 0,
-      prevMonthComprobantes: 0,
-      activeUsers: 1,
-      branches: 1,
-      paymentHistory: [{ date: DEMO_DATE, amount: selectedPlan.price, method: 'Transferencia', status: 'Pagado' }],
-      suspensionInfo: null,
-      internalNotes: '',
-      createdAt: DEMO_DATE,
-      adminEmail: wizardData.adminEmail || 'admin@empresa.com'
-    };
+    const environmentType = wizardData.environment === 'Produccion' ? 'produccion' : 'pruebas';
+    const now = new Date();
 
-    set((state) => ({
-      companies: [newCompany, ...state.companies],
-      wizardOpen: false
-    }));
+    try {
+      const dbCompany = await createCompany({
+        ruc: wizardData.ruc,
+        razon_social: wizardData.razonSocial,
+        nombre_comercial: wizardData.nombreComercial,
+        address: wizardData.address,
+        direccion: wizardData.address,
+        lleva_contabilidad: wizardData.llevaContabilidad || false,
+        regimen: wizardData.regimen || 'General',
+        environment_type: environmentType,
+        plan_id: selectedPlan.id,
+        subscription_status: 'activa',
+        subscription_start: now.toISOString(),
+        subscription_renewal: addDays(now, renewalDays).toISOString(),
+        payment_status: 'Al día',
+        admin_email: wizardData.adminEmail
+      });
 
-    addActivityEvent('Empresa creada', newCompany.nombreComercial, `Instancia lista en modo ${newCompany.environment.toLowerCase()}`);
-    recalculateAlerts();
-    showToast('success', 'Empresa creada — instancia lista en modo pruebas');
-    get().setActivePage('companies');
+      // First branch + point of sale so the new client can actually invoice
+      // immediately - a company with zero branches can't sell anything (see
+      // the Sucursales work: POS is blocked without a resolvable branch+POS).
+      const branch = await createBranch({
+        companyId: dbCompany.id,
+        name: 'Matriz',
+        code: '001',
+        address: wizardData.address,
+        establishment: wizardData.establishment || '001'
+      });
+
+      await createPointOfSale({
+        company_id: dbCompany.id,
+        branch_id: branch.id,
+        nombre: 'Caja Principal',
+        numero_establecimiento: wizardData.establishment || '001',
+        numero_pos: wizardData.pointOfSale || '001',
+        sequential_start: wizardData.sequentialStart || 1,
+        sequential_current: wizardData.sequentialStart || 1,
+        status: 'activo',
+        is_active: true
+      });
+
+      // First login for the client, since there's no self-serve signup flow.
+      // The password is only ever visible right now - shown in a dialog that
+      // stays open (not a toast) so there's actually time to copy it.
+      const tempPassword = generateTempPassword();
+      await createCompanyGerente({
+        companyId: dbCompany.id,
+        email: wizardData.adminEmail,
+        password: tempPassword,
+        name: `Gerente ${wizardData.nombreComercial}`
+      });
+
+      set((state) => ({
+        companies: [transformCompany(dbCompany), ...state.companies],
+        wizardOpen: false
+      }));
+
+      await addActivityEvent('Empresa creada', dbCompany.id, dbCompany.nombre_comercial, `Instancia lista en modo ${environmentType}`);
+      recalculateAlerts();
+      get().setActivePage('companies');
+      openConfirm(
+        'Empresa creada exitosamente',
+        `"${dbCompany.nombre_comercial}" ya está lista. Credenciales del gerente (cópialas ahora, no se vuelven a mostrar):\n\nCorreo: ${wizardData.adminEmail}\nContraseña temporal: ${tempPassword}\n\nCompártelas con el cliente por un canal seguro.`,
+        () => {}
+      );
+    } catch (error) {
+      console.error('Error creating company:', error);
+      showToast('error', error.message || 'Error al crear la empresa');
+    }
   },
 
   openEditCompany: (id) => set({ editCompanyId: id }),
   closeEditCompany: () => set({ editCompanyId: null }),
-  saveEditCompany: (id, data) => {
-    set((state) => ({
-      companies: state.companies.map(c => c.id === id ? { ...c, ...data } : c),
-      editCompanyId: null
-    }));
-    const comp = get().companies.find(c => c.id === id);
-    get().addActivityEvent('Empresa actualizada', comp.nombreComercial, 'Datos modificados');
-    get().recalculateAlerts();
-    get().showToast('success', 'Datos guardados correctamente.');
+  saveEditCompany: async (id, data) => {
+    const { showToast, addActivityEvent, recalculateAlerts } = get();
+    try {
+      const environmentType = data.environment === 'Produccion' ? 'produccion' : 'pruebas';
+      const dbCompany = await updateCompany(id, {
+        razon_social: data.razonSocial,
+        nombre_comercial: data.nombreComercial,
+        address: data.address,
+        direccion: data.address,
+        regimen: data.regimen,
+        lleva_contabilidad: data.llevaContabilidad,
+        environment_type: environmentType
+      });
+      // Merge just the changed fields rather than re-transforming dbCompany -
+      // updateCompany()'s return has no billing_configs embed, so a full
+      // re-transform would wrongly reset the cert-uploaded flag to false.
+      set((state) => ({
+        companies: state.companies.map(c => c.id === id ? {
+          ...c,
+          razonSocial: data.razonSocial,
+          nombreComercial: data.nombreComercial,
+          address: data.address,
+          regimen: data.regimen,
+          llevaContabilidad: data.llevaContabilidad,
+          environment: environmentType === 'produccion' ? 'Producción' : 'Pruebas'
+        } : c),
+        editCompanyId: null
+      }));
+      await addActivityEvent('Empresa actualizada', id, dbCompany.nombre_comercial, 'Datos modificados');
+      recalculateAlerts();
+      showToast('success', 'Datos guardados correctamente.');
+    } catch (error) {
+      console.error('Error saving company:', error);
+      showToast('error', error.message || 'Error al guardar los datos');
+    }
   },
 
-  suspendCompany: (id, motive, reason) => {
-    set((state) => ({
-      companies: state.companies.map(c => 
-        c.id === id ? { 
-          ...c, 
-          subscriptionStatus: 'Suspendida', 
-          paymentStatus: 'Vencido',
-          suspensionInfo: { date: DEMO_DATE, reason, motive } 
-        } : c
-      )
-    }));
-    const comp = get().companies.find(c => c.id === id);
-    get().addActivityEvent('Empresa suspendida', comp.nombreComercial, `Motivo: ${reason}`);
-    get().recalculateAlerts();
-    get().showToast('warning', 'Empresa suspendida correctamente.');
+  suspendCompany: async (id, motive, reason) => {
+    const { showToast, addActivityEvent, recalculateAlerts, companies } = get();
+    const comp = companies.find(c => c.id === id);
+    const suspensionInfo = { date: new Date().toISOString(), reason, motive };
+    try {
+      await updateCompany(id, {
+        subscription_status: 'suspendida',
+        payment_status: 'Vencido',
+        suspension_info: suspensionInfo
+      });
+      set((state) => ({
+        companies: state.companies.map(c =>
+          c.id === id ? { ...c, subscriptionStatus: 'Suspendida', paymentStatus: 'Vencido', suspensionInfo } : c
+        )
+      }));
+      await addActivityEvent('Empresa suspendida', id, comp.nombreComercial, `Motivo: ${reason}`);
+      recalculateAlerts();
+      showToast('warning', 'Empresa suspendida correctamente.');
+    } catch (error) {
+      console.error('Error suspending company:', error);
+      showToast('error', error.message || 'Error al suspender la empresa');
+    }
   },
 
-  reactivateCompany: (id) => {
-    set((state) => ({
-      companies: state.companies.map(c => 
-        c.id === id ? { 
-          ...c, 
-          subscriptionStatus: 'Activa', 
-          paymentStatus: 'Al día',
-          subscriptionRenewal: addDays(DEMO_DATE, 30),
-          suspensionInfo: null 
-        } : c
-      )
-    }));
-    const comp = get().companies.find(c => c.id === id);
-    get().addActivityEvent('Empresa reactivada', comp.nombreComercial, 'Reactivada manualmente');
-    get().recalculateAlerts();
-    get().showToast('success', 'Empresa reactivada.');
+  reactivateCompany: async (id) => {
+    const { showToast, addActivityEvent, recalculateAlerts, companies } = get();
+    const comp = companies.find(c => c.id === id);
+    const renewal = addDays(new Date(), 30);
+    try {
+      await updateCompany(id, {
+        subscription_status: 'activa',
+        payment_status: 'Al día',
+        subscription_renewal: renewal.toISOString(),
+        suspension_info: null
+      });
+      set((state) => ({
+        companies: state.companies.map(c =>
+          c.id === id ? { ...c, subscriptionStatus: 'Activa', paymentStatus: 'Al día', subscriptionRenewal: renewal, suspensionInfo: null } : c
+        )
+      }));
+      await addActivityEvent('Empresa reactivada', id, comp.nombreComercial, 'Reactivada manualmente');
+      recalculateAlerts();
+      showToast('success', 'Empresa reactivada.');
+    } catch (error) {
+      console.error('Error reactivating company:', error);
+      showToast('error', error.message || 'Error al reactivar la empresa');
+    }
   },
 
-  registerPayment: (companyId) => {
-    set((state) => ({
-      companies: state.companies.map(c => {
-        if (c.id === companyId) {
-          const plan = state.plans.find(p => p.id === c.planId);
+  // No dedicated payment-ledger table exists yet, so this persists the real
+  // subscription/status fields (what actually gates access) - the itemized
+  // paymentHistory list shown in CompanyDetail stays session-local until
+  // there's a real table to back it.
+  registerPayment: async (companyId) => {
+    const { showToast, addActivityEvent, recalculateAlerts, companies, plans } = get();
+    const comp = companies.find(c => c.id === companyId);
+    const plan = plans.find(p => p.id === comp.planId);
+    const renewal = addDays(new Date(), 30);
+    try {
+      await updateCompany(companyId, {
+        subscription_renewal: renewal.toISOString(),
+        subscription_status: 'activa',
+        payment_status: 'Al día'
+      });
+      set((state) => ({
+        companies: state.companies.map(c => {
+          if (c.id !== companyId) return c;
           return {
             ...c,
-            subscriptionRenewal: addDays(DEMO_DATE, 30),
+            subscriptionRenewal: renewal,
             subscriptionStatus: 'Activa',
             paymentStatus: 'Al día',
             paymentHistory: [
-              { date: DEMO_DATE, amount: plan ? plan.price : 0, method: 'Transferencia bancaria', status: 'Pagado' },
+              { date: new Date(), amount: plan ? plan.price : 0, method: 'Transferencia bancaria', status: 'Pagado' },
               ...c.paymentHistory
             ]
           };
-        }
-        return c;
-      })
-    }));
-    const comp = get().companies.find(c => c.id === companyId);
-    const plan = get().plans.find(p => p.id === comp.planId);
-    get().addActivityEvent('Pago registrado', comp.nombreComercial, `${formatUSD(plan ? plan.price : 0)} — transferencia bancaria`);
-    get().recalculateAlerts();
-    get().showToast('success', 'Pago registrado. Suscripción renovada.');
+        })
+      }));
+      await addActivityEvent('Pago registrado', companyId, comp.nombreComercial, `${formatUSD(plan ? plan.price : 0)} — transferencia bancaria`);
+      recalculateAlerts();
+      showToast('success', 'Pago registrado. Suscripción renovada.');
+    } catch (error) {
+      console.error('Error registering payment:', error);
+      showToast('error', error.message || 'Error al registrar el pago');
+    }
   },
 
-  updatePlan: (planId, changes) => {
-    set((state) => ({
-      plans: state.plans.map(p => p.id === planId ? { ...p, ...changes } : p)
-    }));
-    get().showToast('success', 'Plan actualizado. El MRR se ha recalculado.');
-    get().addActivityEvent('Plan modificado', changes.name || planId, 'Configuración de precios actualizada');
+  changeCompanyPlan: async (companyId, planId) => {
+    const { showToast, addActivityEvent, recalculateAlerts, companies, plans } = get();
+    const comp = companies.find(c => c.id === companyId);
+    const oldPlan = plans.find(p => p.id === comp.planId);
+    const newPlan = plans.find(p => p.id === planId);
+    try {
+      await updateCompany(companyId, { plan_id: planId });
+      set((state) => ({
+        companies: state.companies.map(c => c.id === companyId ? { ...c, planId } : c)
+      }));
+      await addActivityEvent('Plan modificado', companyId, comp.nombreComercial, `${oldPlan?.name || '—'} → ${newPlan?.name || '—'}`);
+      recalculateAlerts();
+      showToast('success', 'Plan actualizado correctamente.');
+    } catch (error) {
+      console.error('Error changing plan:', error);
+      showToast('error', error.message || 'Error al cambiar el plan');
+    }
   },
 
-  updateCompanyNotes: (companyId, notes) => {
-    set((state) => ({
-      companies: state.companies.map(c => c.id === companyId ? { ...c, internalNotes: notes } : c)
-    }));
-    get().showToast('success', 'Notas guardadas.');
+  updatePlan: async (planId, changes) => {
+    const { showToast, addActivityEvent } = get();
+    try {
+      await updatePlanInDb(planId, { name: changes.name, price: changes.price });
+      set((state) => ({
+        plans: state.plans.map(p => p.id === planId ? { ...p, ...changes } : p)
+      }));
+      showToast('success', 'Plan actualizado. El MRR se ha recalculado.');
+      await addActivityEvent('Plan modificado', null, changes.name || planId, 'Configuración de precios actualizada');
+    } catch (error) {
+      console.error('Error updating plan:', error);
+      showToast('error', error.message || 'Error al actualizar el plan');
+    }
+  },
+
+  updateCompanyNotes: async (companyId, notes) => {
+    const { showToast } = get();
+    try {
+      await updateCompany(companyId, { internal_notes: notes });
+      set((state) => ({
+        companies: state.companies.map(c => c.id === companyId ? { ...c, internalNotes: notes } : c)
+      }));
+      showToast('success', 'Notas guardadas.');
+    } catch (error) {
+      console.error('Error saving notes:', error);
+      showToast('error', error.message || 'Error al guardar las notas');
+    }
   },
 
   setCompanySearch: (q) => set({ companySearch: q }),
@@ -240,18 +367,28 @@ export const useStore = create((set, get) => ({
   recalculateAlerts: () => {
     const { companies, plans } = get();
     const existingAttended = get().alerts.filter(a => a.attended).map(a => a.id);
-    const newAlerts = generateAlerts(companies, plans, DEMO_DATE).map(a => ({
+    const newAlerts = generateAlerts(companies, plans).map(a => ({
       ...a,
       attended: existingAttended.includes(a.id)
     }));
     set({ alerts: newAlerts });
   },
 
-  addActivityEvent: (action, companyName, detail) => {
-    const event = { id: `ev_${Date.now()}`, date: DEMO_DATE, user: 'Administrador', action, company: companyName, detail };
-    set((state) => ({ activityLog: [event, ...state.activityLog] }));
+  // Persists to activity_log (logActivity) so the audit trail survives a
+  // refresh, then mirrors it into local state immediately rather than
+  // waiting on a re-fetch. companyId may be null for events not tied to one
+  // specific company (e.g. editing a plan's price affects every subscriber).
+  addActivityEvent: async (action, companyId, companyName, detail) => {
+    const currentUser = get().currentUser;
+    try {
+      const saved = await logActivity(companyId, action, detail, currentUser?.id || null);
+      const event = { id: saved.id, date: new Date(saved.created_at), user: currentUser?.name || 'Administrador', action, company: companyName, detail };
+      set((state) => ({ activityLog: [event, ...state.activityLog] }));
+    } catch (error) {
+      console.error('Error logging activity:', error);
+    }
   },
-  
+
   initData: (companiesData, plansData, logData) => {
      set({ companies: [...companiesData], plans: [...plansData], activityLog: [...logData] });
      get().recalculateAlerts();

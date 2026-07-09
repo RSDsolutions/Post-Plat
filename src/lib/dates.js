@@ -6,7 +6,7 @@ export function addDays(date, n) {
   return d;
 }
 
-export function daysFrom(date, reference = DEMO_DATE) {
+export function daysFrom(date, reference = new Date()) {
   const diffTime = date.getTime() - reference.getTime();
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 }
