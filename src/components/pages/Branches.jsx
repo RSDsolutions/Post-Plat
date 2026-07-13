@@ -2,14 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { Building2, Plus, X, Loader, MapPin, Phone, CreditCard, Power } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { fetchBranches, createBranch, updateBranch, createPointOfSale, updatePointOfSale } from '../../lib/supabaseHelpers.js';
+import { checkLimit, limitReachedMessage } from '../../lib/planLimits.js';
 
 const EMPTY_BRANCH = { name: '', code: '', establishment: '', address: '', city: '', phone: '' };
 const EMPTY_POS = { nombre: '', numero_establecimiento: '', numero_pos: '' };
 
 export default function Branches() {
-  const { currentUser, showToast } = useStore();
+  const { currentUser, showToast, companies, plans } = useStore();
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const company = companies.find(c => c.id === currentUser?.company_id);
+  const plan = plans.find(p => p.id === company?.planId);
+  const totalPos = branches.reduce((sum, b) => sum + (b.point_of_sales?.length || 0), 0);
 
   const [showBranchModal, setShowBranchModal] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
@@ -65,6 +69,13 @@ export default function Branches() {
     if (!/^\d{3}$/.test(branchForm.establishment.trim())) {
       showToast('error', 'El establecimiento debe tener exactamente 3 dígitos (ej: 001)');
       return;
+    }
+    if (!editingBranch) {
+      const limitCheck = checkLimit('branches', plan, branches.length);
+      if (!limitCheck.ok) {
+        showToast('error', limitReachedMessage(limitCheck, plan?.name));
+        return;
+      }
     }
 
     try {
@@ -127,6 +138,13 @@ export default function Branches() {
     if (!/^\d{3}$/.test(posForm.numero_establecimiento.trim()) || !/^\d{3}$/.test(posForm.numero_pos.trim())) {
       showToast('error', 'Establecimiento y punto de venta deben tener exactamente 3 dígitos (ej: 001)');
       return;
+    }
+    if (!editingPos) {
+      const limitCheck = checkLimit('pos', plan, totalPos);
+      if (!limitCheck.ok) {
+        showToast('error', limitReachedMessage(limitCheck, plan?.name));
+        return;
+      }
     }
 
     try {

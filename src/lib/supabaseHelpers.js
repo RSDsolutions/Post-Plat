@@ -522,6 +522,7 @@ export async function updateUserBranch({ companyId, userId, branchId }) {
 }
 
 // Creates the initial gerente login for a newly onboarded client company
+<<<<<<< HEAD
 // (admin-side, CompanyWizard) and emails them their temp password. Goes through
 // api/admin/create-gerente.js, which verifies the caller is an admin before
 // invoking the RPC with service role. The RPC's EXECUTE was revoked from
@@ -532,6 +533,17 @@ export async function createCompanyGerente({ adminId, companyId, email, password
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ adminId, companyId, email, password, name })
+=======
+// (admin-side, CompanyWizard) via the create_company_gerente RPC - same
+// reason as createCashierUser: bcrypt hashing only happens inside Postgres.
+export async function createCompanyGerente({ companyId, email, password, name, adminId }) {
+  const { data, error } = await supabase.rpc('create_company_gerente', {
+    p_company_id: companyId,
+    p_email: email,
+    p_password: password,
+    p_name: name,
+    p_admin_id: adminId
+>>>>>>> a8b67df4aba83266168d9625ada638299e42d0cd
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al crear el gerente');
@@ -1001,6 +1013,22 @@ export async function submitInvoiceToSRI(invoiceId, companyId, userId) {
   return result;
 }
 
+// On-demand reachability check for the SRI webservices (test + production),
+// via a serverless proxy (api/sri/status.js) to avoid a CORS request straight
+// from the browser to gob.ec.
+export async function checkSriStatus() {
+  const response = await fetch('/api/sri/status');
+  const rawText = await response.text();
+  let result;
+  try {
+    result = JSON.parse(rawText);
+  } catch {
+    throw new Error(`El servidor no respondió correctamente (status ${response.status})`);
+  }
+  if (!response.ok) throw new Error(result.error || 'Error al verificar el estado del SRI');
+  return result;
+}
+
 export async function getNextInvoiceSequential(companyId) {
   try {
     // Read current sequential counter from billing config
@@ -1253,4 +1281,147 @@ export async function getPaymentMethods() {
   } catch (error) {
     throw new Error(`Error fetching payment methods: ${error.message}`);
   }
+}
+
+// Feature flags: global catalog + per-company overrides (admin-only screens)
+export async function fetchFeatureFlags() {
+  const { data, error } = await supabase.from('feature_flags').select('*').order('category');
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function fetchCompanyFeatureOverrides(companyId) {
+  const { data, error } = await supabase
+    .from('company_feature_overrides')
+    .select('*')
+    .eq('company_id', companyId);
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function setCompanyFeatureOverride({ companyId, featureKey, enabled, note, adminId }) {
+  const { data, error } = await supabase
+    .from('company_feature_overrides')
+    .upsert(
+      { company_id: companyId, feature_key: featureKey, enabled, note: note || null, updated_by: adminId, updated_at: new Date().toISOString() },
+      { onConflict: 'company_id,feature_key' }
+    )
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+export async function clearCompanyFeatureOverride(companyId, featureKey) {
+  const { error } = await supabase
+    .from('company_feature_overrides')
+    .delete()
+    .eq('company_id', companyId)
+    .eq('feature_key', featureKey);
+
+  if (error) throw new Error(error.message);
+}
+
+// Real payment ledger (replaces the session-local paymentHistory list)
+export async function fetchPayments(companyId) {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('payment_date', { ascending: false });
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+// Global payment feed for the admin Pagos dashboard - across every company,
+// not scoped to one (fetchPayments above is for a single company's detail).
+export async function fetchAllPayments(limit = 100) {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('*, companies(nombre_comercial)')
+    .order('payment_date', { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+export async function createPaymentRecord({ companyId, amount, method, reference }) {
+  const { data, error } = await supabase
+    .from('payments')
+    .insert([{
+      company_id: companyId,
+      amount,
+      currency: 'USD',
+      payment_method: method,
+      reference: reference || null,
+      status: 'pagado',
+      payment_date: new Date().toISOString()
+    }])
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Finds the gerente login for a company - used by admin impersonation
+// ("ver como cliente") to know which session to adopt.
+export async function fetchCompanyGerente(companyId) {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, company_id, email, name, phone, role, is_active, branch_id')
+    .eq('company_id', companyId)
+    .eq('role', 'gerente')
+    .eq('is_active', true)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Counts backing the onboarding checklist in CompanyDetail - one targeted
+// query per count, only run for the single company being viewed.
+export async function fetchOnboardingCounts(companyId) {
+  const [branches, cashiers, invoices] = await Promise.all([
+    supabase.from('branches').select('id, point_of_sales(id)').eq('company_id', companyId),
+    supabase.from('users').select('id', { count: 'exact', head: true }).eq('company_id', companyId).in('role', ['operario', 'vendedor']),
+    supabase.from('invoices').select('id', { count: 'exact', head: true }).eq('company_id', companyId).eq('status', 'autorizada')
+  ]);
+
+  const firstError = [branches, cashiers, invoices].find(r => r.error)?.error;
+  if (firstError) throw new Error(firstError.message);
+
+  const branchesWithPos = (branches.data || []).filter(b => (b.point_of_sales || []).length > 0).length;
+  return {
+    branchesWithPos,
+    cashierCount: cashiers.count || 0,
+    authorizedInvoiceCount: invoices.count || 0
+  };
+}
+
+// Pulls everything company-scoped for the "export data" button in
+// CompanyDetail - read-only, client-side download, no new storage involved.
+export async function fetchCompanyExportBundle(companyId) {
+  const [products, customers, invoices, branches] = await Promise.all([
+    supabase.from('products').select('*').eq('company_id', companyId),
+    supabase.from('customers').select('*').eq('company_id', companyId),
+    supabase.from('invoices').select('*, invoice_details(*)').eq('company_id', companyId),
+    supabase.from('branches').select('*, point_of_sales(*)').eq('company_id', companyId)
+  ]);
+
+  const firstError = [products, customers, invoices, branches].find(r => r.error)?.error;
+  if (firstError) throw new Error(firstError.message);
+
+  return {
+    exportedAt: new Date().toISOString(),
+    products: products.data || [],
+    customers: customers.data || [],
+    invoices: invoices.data || [],
+    branches: branches.data || []
+  };
 }

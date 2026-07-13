@@ -12,11 +12,11 @@ export default function Badge({ status }) {
     'Vencida': 'bg-red-500/10 text-red-400 border border-red-500/20',
     'Vencido': 'bg-red-500/10 text-red-400 border border-red-500/20',
     'Anulada': 'bg-red-500/10 text-red-400 border border-red-500/20',
-    'Suspendida': 'bg-zinc-800 text-zinc-400 border border-zinc-700',
+    'Suspendida': 'bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border-subtle)]',
     'Pruebas': 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20',
     'Produccion': 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
   };
-  const className = colors[status] || 'bg-zinc-800 text-zinc-400 border border-zinc-700';
+  const className = colors[status] || 'bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border-subtle)]';
   
   return (
     <span className={`inline-flex items-center rounded-full text-[10px] font-bold px-2 py-0.5 uppercase tracking-wider ${className} whitespace-nowrap`}>

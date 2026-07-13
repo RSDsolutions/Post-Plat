@@ -4,6 +4,9 @@ import { useStore } from '../../store/useStore.js';
 import Badge from '../ui/Badge.jsx';
 import Table from '../ui/Table.jsx';
 import EmptyState from '../ui/EmptyState.jsx';
+import { computeHealthScore } from '../../lib/healthScore.js';
+
+const HEALTH_DOT = { Alto: 'bg-emerald-500', Medio: 'bg-amber-500', Bajo: 'bg-red-500' };
 
 export default function Companies() {
   const { companies, plans, companySearch, setCompanySearch, companyStatusFilter, setCompanyStatusFilter, companyPlanFilter, setCompanyPlanFilter, openWizard, selectCompany, globalSearch } = useStore();
@@ -19,7 +22,7 @@ export default function Companies() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-4xl font-bold tracking-tighter uppercase text-zinc-100">Empresas</h1>
+        <h1 className="text-4xl font-bold tracking-tighter uppercase text-[var(--text-primary)]">Empresas</h1>
         <button 
           onClick={openWizard}
           className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-3 rounded-2xl text-sm flex items-center shrink-0 w-fit transition-colors"
@@ -28,16 +31,16 @@ export default function Companies() {
         </button>
       </div>
 
-      <div className="bg-zinc-900 rounded-3xl border border-zinc-800 p-4 flex flex-col md:flex-row gap-4">
+      <div className="bg-[var(--surface-1)] rounded-3xl border border-[var(--border-subtle)] p-4 flex flex-col md:flex-row gap-4">
         <input
           type="text"
           placeholder="Buscar por nombre o RUC..."
           value={companySearch}
           onChange={(e) => setCompanySearch(e.target.value)}
-          className="flex-1 border border-zinc-800 bg-zinc-950 text-zinc-100 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] placeholder-zinc-500"
+          className="flex-1 border border-[var(--border-subtle)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] placeholder-zinc-500"
         />
         <div className="flex items-center space-x-2 overflow-x-auto pb-2 md:pb-0 hide-scrollbar">
-          <span className="text-xs uppercase tracking-widest font-bold text-zinc-500 whitespace-nowrap mr-2">Estado:</span>
+          <span className="text-xs uppercase tracking-widest font-bold text-[var(--text-muted)] whitespace-nowrap mr-2">Estado:</span>
           {['all', 'Activa', 'Por vencer', 'Vencida', 'Suspendida'].map(status => (
             <button
               key={status}
@@ -45,7 +48,7 @@ export default function Companies() {
               className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${
                 companyStatusFilter === status 
                   ? 'bg-zinc-100 text-zinc-950' 
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+                  : 'bg-[var(--surface-2)] text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
               }`}
             >
               {status === 'all' ? 'Todas' : status}
@@ -54,26 +57,27 @@ export default function Companies() {
         </div>
       </div>
 
-      <div className="bg-zinc-900 rounded-3xl border border-zinc-800 overflow-hidden">
+      <div className="bg-[var(--surface-1)] rounded-3xl border border-[var(--border-subtle)] overflow-hidden">
         {filtered.length > 0 ? (
-          <Table 
-            columns={['Empresa', 'RUC', 'Plan', 'Estado', 'Comprobantes/mes', 'Cert. firma', 'Acciones']}
+          <Table
+            columns={['Empresa', 'RUC', 'Plan', 'Estado', 'Salud', 'Comprobantes/mes', 'Cert. firma', 'Acciones']}
             data={filtered}
             renderRow={(company) => {
               const plan = plans.find(p => p.id === company.planId);
               const pct = plan?.comprobantesLimit ? (company.monthlyComprobantes / plan.comprobantesLimit) * 100 : 0;
+              const health = computeHealthScore(company, plan);
 
               return (
-                <tr key={company.id} className="hover:bg-zinc-800/50 transition-colors">
+                <tr key={company.id} className="hover:bg-[var(--surface-2)]/50 transition-colors">
                   <td className="px-4 py-3">
                     <button onClick={() => selectCompany(company.id)} className="text-left group block">
-                      <div className="text-sm font-bold text-zinc-100 group-hover:text-[var(--brand)] transition-colors">{company.nombreComercial}</div>
-                      <div className="text-xs text-zinc-500 truncate max-w-[200px]">{company.razonSocial}</div>
+                      <div className="text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--brand)] transition-colors">{company.nombreComercial}</div>
+                      <div className="text-xs text-[var(--text-muted)] truncate max-w-[200px]">{company.razonSocial}</div>
                     </button>
                   </td>
                   <td className="px-4 py-3 text-sm font-mono text-zinc-400">{company.ruc}</td>
                   <td className="px-4 py-3">
-                    <span className="inline-block px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                    <span className="inline-block px-2 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-[var(--surface-2)] text-zinc-300 border border-zinc-700">
                       {plan?.name}
                     </span>
                   </td>
@@ -81,8 +85,13 @@ export default function Companies() {
                     <Badge status={company.subscriptionStatus} />
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-sm text-zinc-100 font-bold">{company.monthlyComprobantes}</div>
-                    <div className="w-24 h-1.5 bg-zinc-800 rounded-full mt-1 overflow-hidden">
+                    <span className="flex items-center gap-1.5 text-xs font-bold text-zinc-400" title={health.reasons.join(' · ') || 'Sin señales negativas'}>
+                      <span className={`w-2 h-2 rounded-full ${HEALTH_DOT[health.level]}`} /> {health.level}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm text-[var(--text-primary)] font-bold">{company.monthlyComprobantes}</div>
+                    <div className="w-24 h-1.5 bg-[var(--surface-2)] rounded-full mt-1 overflow-hidden">
                       <div className={`h-full rounded-full ${pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                     </div>
                   </td>
@@ -90,7 +99,7 @@ export default function Companies() {
                     {company.certUploaded ? (
                       <span className="text-sm font-bold text-emerald-500">Cargado</span>
                     ) : (
-                      <span className="text-sm text-zinc-600 font-medium">Sin cert.</span>
+                      <span className="text-sm text-[var(--text-faint)] font-medium">Sin cert.</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">

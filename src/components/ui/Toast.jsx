@@ -22,13 +22,13 @@ export default function Toast() {
         return (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-start gap-3 w-full bg-zinc-900 border ${border} rounded-xl shadow-lg p-4`}
+            className={`pointer-events-auto flex items-start gap-3 w-full bg-[var(--surface-1)] border ${border} rounded-xl shadow-lg p-4`}
           >
             <Icon className={`${icon} flex-shrink-0`} size={20} />
-            <p className="flex-1 min-w-0 text-sm font-medium text-zinc-100 break-words">{toast.message}</p>
+            <p className="flex-1 min-w-0 text-sm font-medium text-[var(--text-primary)] break-words">{toast.message}</p>
             <button
               onClick={() => dismissToast(toast.id)}
-              className="flex-shrink-0 text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="flex-shrink-0 text-[var(--text-muted)] hover:text-zinc-300 transition-colors"
             >
               <X size={16} />
             </button>
