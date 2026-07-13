@@ -5,6 +5,7 @@ import Badge from '../ui/Badge.jsx';
 import Tabs from '../ui/Tabs.jsx';
 import Modal from '../ui/Modal.jsx';
 import PaymentModal from '../ui/PaymentModal.jsx';
+import CompanyUsersTab from './CompanyUsersTab.jsx';
 import { getBrandInitials } from '../../lib/brand.js';
 import { formatDate, daysFrom, buildPaymentSequence } from '../../lib/dates.js';
 import { formatUSD } from '../../lib/format.js';
@@ -250,6 +251,7 @@ export default function CompanyDetail() {
         <Tabs
           tabs={[
             { id: 'resumen', label: 'Resumen' },
+            { id: 'usuarios', label: 'Usuarios' },
             { id: 'suscripcion', label: 'Suscripción y Pagos' },
             { id: 'consumo', label: 'Consumo y Límites' },
             { id: 'notas', label: 'Notas internas' }
@@ -326,6 +328,10 @@ export default function CompanyDetail() {
                 )}
               </div>
             </div>
+          )}
+
+          {companyDetailTab === 'usuarios' && (
+            <CompanyUsersTab company={company} />
           )}
 
           {companyDetailTab === 'suscripcion' && (

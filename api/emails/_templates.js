@@ -106,6 +106,24 @@ export function welcomeCashierEmail({ name, email, tempPassword, companyName, ro
   };
 }
 
+// --- 2b. Restablecimiento de contraseña (admin lo dispara) ------------------
+export function passwordResetEmail({ name, email, tempPassword, companyName, loginUrl }) {
+  const body = `
+    <h1 style="margin:0 0 16px;font-size:22px;color:${TEXT};">Tu contraseña fue restablecida</h1>
+    <p style="margin:0 0 12px;">Hola ${esc(name)}, un administrador de POST-PLAT restableció la contraseña de tu cuenta en <strong>${esc(companyName)}</strong>. Usa estas credenciales para tu próximo inicio de sesión:</p>
+    <p style="margin:0 0 4px;color:${MUTED};font-size:13px;">Usuario</p>
+    <p style="margin:0 0 12px;font-weight:600;">${esc(email)}</p>
+    <p style="margin:0 0 4px;color:${MUTED};font-size:13px;">Contraseña temporal</p>
+    ${codeBox(tempPassword)}
+    <p style="margin:0 0 12px;">Si no esperabas este cambio, contacta a tu administrador de inmediato.</p>
+    ${loginUrl ? button(loginUrl, 'Iniciar sesión') : ''}
+  `;
+  return {
+    subject: `Tu contraseña de POST-PLAT fue restablecida`,
+    html: layout({ title: 'Contraseña restablecida', preheader: 'Tu nueva contraseña temporal está adentro', bodyHtml: body })
+  };
+}
+
 // --- 3. Alerta de stock bajo (a la empresa) ---------------------------------
 export function lowStockEmail({ companyName, productName, productCode, branchName, quantity, minStock }) {
   const body = `

@@ -7,6 +7,24 @@ import { DEMO_DATE, formatDate } from '../../lib/dates.js';
 export default function CompanyWizard() {
   const { wizardStep, setWizardStep, wizardData, setWizardData, submitWizard, closeWizard, plans } = useStore();
   const [errors, setErrors] = useState({});
+  const [cajeroDraft, setCajeroDraft] = useState({ name: '', email: '', role: 'vendedor' });
+  const cajeros = wizardData.cajeros || [];
+
+  const addCajero = () => {
+    const name = cajeroDraft.name.trim();
+    const email = cajeroDraft.email.trim();
+    if (!name || !email) { setErrors({ cajero: 'Nombre y correo son requeridos' }); return; }
+    const emailLower = email.toLowerCase();
+    if (emailLower === (wizardData.adminEmail || '').toLowerCase() || cajeros.some(c => c.email.toLowerCase() === emailLower)) {
+      setErrors({ cajero: 'Ese correo ya está en uso en esta empresa' });
+      return;
+    }
+    setWizardData({ cajeros: [...cajeros, { name, email, role: cajeroDraft.role }] });
+    setCajeroDraft({ name: '', email: '', role: 'vendedor' });
+    setErrors({});
+  };
+
+  const removeCajero = (idx) => setWizardData({ cajeros: cajeros.filter((_, i) => i !== idx) });
 
   const handleNext = () => {
     if (wizardStep === 1) {
@@ -21,13 +39,15 @@ export default function CompanyWizard() {
       if (!wizardData.establishment) { setErrors({ establishment: 'Requerido' }); return; }
       if (!wizardData.pointOfSale) { setErrors({ pointOfSale: 'Requerido' }); return; }
     }
-    
-    setErrors({});
-    if (wizardStep < 3) {
-      setWizardStep(wizardStep + 1);
-    } else {
+    if (wizardStep === 3) {
       if (!wizardData.planId) { setErrors({ planId: 'Debe seleccionar un plan' }); return; }
       if (!wizardData.adminEmail) { setErrors({ adminEmail: 'Correo requerido' }); return; }
+    }
+
+    setErrors({});
+    if (wizardStep < 4) {
+      setWizardStep(wizardStep + 1);
+    } else {
       submitWizard();
     }
   };
@@ -42,15 +62,15 @@ export default function CompanyWizard() {
         </button>
       ) : <div />}
       <button onClick={handleNext} className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors ml-auto">
-        {wizardStep === 3 ? 'Crear empresa' : 'Siguiente'}
+        {wizardStep === 4 ? 'Crear empresa' : 'Siguiente'}
       </button>
     </div>
   );
 
   return (
-    <Modal title={`Nueva Empresa — Paso ${wizardStep} de 3`} onClose={closeWizard} footer={footer}>
+    <Modal title={`Nueva Empresa — Paso ${wizardStep} de 4`} onClose={closeWizard} footer={footer}>
       <div className="mb-6 flex space-x-2">
-        {[1, 2, 3].map(i => (
+        {[1, 2, 3, 4].map(i => (
           <div key={i} className={`flex-1 h-2 rounded-full ${wizardStep >= i ? 'bg-[var(--brand)]' : 'bg-[var(--surface-2)]'}`} />
         ))}
       </div>
@@ -186,8 +206,58 @@ export default function CompanyWizard() {
               <input type="email" value={wizardData.adminEmail || ''} onChange={e => setField('adminEmail', e.target.value)}
                 className={`w-full border ${errors.adminEmail ? 'border-red-500' : 'border-[var(--border-subtle)]'} bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] placeholder-zinc-600`} 
                 placeholder="admin@empresa.com" />
-              <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-2">Se enviarán las credenciales de acceso a este correo (simulado en la demo)</p>
+              <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-2">Se enviarán las credenciales de acceso a este correo</p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {wizardStep === 4 && (
+        <div className="space-y-6">
+          <h3 className="text-lg font-bold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-2">Cajeros iniciales (opcional)</h3>
+          <p className="text-xs font-medium text-[var(--text-muted)]">Puedes agregar cajeros ahora o hacerlo después desde la ficha de la empresa. Todos quedan asignados a la sucursal matriz que se crea con esta empresa.</p>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-3 items-end">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Nombre</label>
+              <input type="text" value={cajeroDraft.name} onChange={e => setCajeroDraft({ ...cajeroDraft, name: e.target.value })}
+                className="w-full border border-[var(--border-subtle)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)]" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Correo</label>
+              <input type="email" value={cajeroDraft.email} onChange={e => setCajeroDraft({ ...cajeroDraft, email: e.target.value })}
+                className="w-full border border-[var(--border-subtle)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)]" />
+            </div>
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Rol</label>
+              <select value={cajeroDraft.role} onChange={e => setCajeroDraft({ ...cajeroDraft, role: e.target.value })}
+                className="border border-[var(--border-subtle)] bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)]">
+                <option value="vendedor">Vendedor</option>
+                <option value="operario">Operario</option>
+              </select>
+            </div>
+            <button type="button" onClick={addCajero} className="bg-[var(--surface-2)] hover:bg-[var(--brand)] hover:text-zinc-950 text-[var(--text-primary)] font-bold px-4 py-2 rounded-2xl text-xs uppercase tracking-wider transition-colors">
+              Agregar
+            </button>
+          </div>
+          {errors.cajero && <p className="text-red-500 text-xs">{errors.cajero}</p>}
+
+          {cajeros.length > 0 && (
+            <ul className="space-y-2">
+              {cajeros.map((c, i) => (
+                <li key={i} className="flex items-center justify-between bg-[var(--surface-0)]/50 border border-[var(--border-subtle)] rounded-2xl px-4 py-3">
+                  <div>
+                    <div className="font-bold text-[var(--text-primary)] text-sm">{c.name} <span className="text-[var(--text-muted)] font-medium uppercase text-[10px] ml-2">{c.role}</span></div>
+                    <div className="text-xs text-[var(--text-muted)]">{c.email}</div>
+                  </div>
+                  <button type="button" onClick={() => removeCajero(i)} className="text-red-500 hover:text-red-400 text-xs font-bold uppercase tracking-wider">Quitar</button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="bg-blue-500/10 border border-blue-500/20 rounded-2xl p-4">
+            <p className="text-xs font-medium text-blue-300">Las contraseñas temporales se generan automáticamente y se envían por correo a cada cajero (también se muestran aquí al finalizar, por si el correo falla).</p>
           </div>
         </div>
       )}

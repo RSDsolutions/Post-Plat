@@ -30,13 +30,19 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseAdmin();
 
-    // Verifica que quien llama es gerente/admin de esa empresa.
+    // Verifica que quien llama es el gerente de esa empresa, o un admin del
+    // sistema (que no pertenece a ninguna empresa - company_id es null, por
+    // eso no se le exige que coincida con companyId como al gerente).
     const { data: caller, error: callerError } = await supabase
       .from('users')
       .select('id, company_id, role')
       .eq('id', callerId)
       .single();
-    if (callerError || !caller || caller.company_id !== companyId || !['gerente', 'admin'].includes(caller.role)) {
+    const isAuthorized = caller && (
+      caller.role === 'admin' ||
+      (caller.role === 'gerente' && caller.company_id === companyId)
+    );
+    if (callerError || !isAuthorized) {
       return res.status(403).json({ error: 'No autorizado para crear usuarios en esta empresa' });
     }
 

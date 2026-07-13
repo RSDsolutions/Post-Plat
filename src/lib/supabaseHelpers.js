@@ -568,6 +568,32 @@ export async function resetCashierPassword({ companyId, userId, newPassword }) {
   return data?.[0];
 }
 
+// Admin-side password reset for any company user (gerente included) - goes
+// through api/admin/reset-user-password.js (service role), which emails the
+// new temp password to the user. The underlying RPC is not anon-executable.
+export async function adminResetUserPassword({ adminId, companyId, userId, newPassword }) {
+  const response = await fetch('/api/admin/reset-user-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ adminId, companyId, userId, newPassword })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Error al restablecer la contraseña');
+  return result;
+}
+
+// Admin-side activate/deactivate for any company user (gerente or cajero).
+export async function adminSetUserActive({ adminId, companyId, userId, isActive }) {
+  const response = await fetch('/api/admin/set-user-active', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ adminId, companyId, userId, isActive })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Error al actualizar el estado del usuario');
+  return result;
+}
+
 // Generic functions
 export async function fetchData(table, options = {}) {
   let query = supabase.from(table).select(options.select || '*');

@@ -3,15 +3,12 @@ import { addDays, computeNextRenewal } from '../lib/dates.js';
 import { generateAlerts } from '../lib/alerts.js';
 import { formatUSD } from '../lib/format.js';
 import { transformCompany } from '../lib/transforms.js';
+import { generateTempPassword } from '../lib/password.js';
 import {
   createCompany, updateCompany, createBranch, createPointOfSale,
-  createCompanyGerente, logActivity, updatePlan as updatePlanInDb,
+  createCompanyGerente, createCashierUser, logActivity, updatePlan as updatePlanInDb,
   fetchCompanyGerente, createPaymentRecord
 } from '../lib/supabaseHelpers.js';
-
-function generateTempPassword() {
-  return Math.random().toString(36).slice(-5) + Math.random().toString(36).slice(-5).toUpperCase();
-}
 
 export const useStore = create((set, get) => ({
   brand: {
@@ -187,13 +184,36 @@ export const useStore = create((set, get) => ({
       // stays open (not a toast) so there's actually time to copy it.
       const tempPassword = generateTempPassword();
       const gerenteResult = await createCompanyGerente({
-        adminId: get().currentUser?.id,
+        adminId: currentUser?.id,
         companyId: dbCompany.id,
         email: wizardData.adminEmail,
         password: tempPassword,
-        name: `Gerente ${wizardData.nombreComercial}`,
-        adminId: currentUser?.id
+        name: `Gerente ${wizardData.nombreComercial}`
       });
+
+      // Cajeros iniciales staged in wizard step 4 (optional) - created against
+      // the branch just provisioned above so they can invoice immediately.
+      // One failing cajero (e.g. a duplicate email) shouldn't block the rest
+      // or the company itself, which is already created at this point.
+      const cajeroCredentials = [];
+      for (const cajero of (wizardData.cajeros || [])) {
+        try {
+          const cajeroPassword = generateTempPassword();
+          const cajeroResult = await createCashierUser({
+            callerId: currentUser?.id,
+            companyId: dbCompany.id,
+            email: cajero.email,
+            password: cajeroPassword,
+            name: cajero.name,
+            role: cajero.role || 'vendedor',
+            phone: '',
+            branchId: branch.id
+          });
+          cajeroCredentials.push({ name: cajero.name, email: cajero.email, password: cajeroPassword, emailSent: cajeroResult?.emailStatus === 'sent' });
+        } catch (error) {
+          showToast('error', `No se pudo crear el cajero "${cajero.name}": ${error.message}`);
+        }
+      }
 
       set((state) => ({
         companies: [transformCompany(dbCompany), ...state.companies],
@@ -206,9 +226,12 @@ export const useStore = create((set, get) => ({
       const emailNote = gerenteResult?.emailStatus === 'sent'
         ? `\n\nYa le enviamos estas credenciales por correo a ${wizardData.adminEmail}.`
         : `\n\n⚠️ No se pudo enviar el correo automático; compártelas tú por un canal seguro.`;
+      const cajerosBlock = cajeroCredentials.length
+        ? `\n\nCajeros:\n${cajeroCredentials.map(c => `- ${c.name}: ${c.email} / ${c.password}${c.emailSent ? '' : ' (correo no enviado)'}`).join('\n')}`
+        : '';
       openConfirm(
         'Empresa creada exitosamente',
-        `"${dbCompany.nombre_comercial}" ya está lista. Credenciales del gerente (cópialas ahora, no se vuelven a mostrar):\n\nCorreo: ${wizardData.adminEmail}\nContraseña temporal: ${tempPassword}${emailNote}`,
+        `"${dbCompany.nombre_comercial}" ya está lista. Credenciales (cópialas ahora, no se vuelven a mostrar):\n\nGerente:\n${wizardData.adminEmail} / ${tempPassword}${emailNote}${cajerosBlock}`,
         () => {}
       );
     } catch (error) {
