@@ -68,6 +68,7 @@ export default function CashierManagement() {
     try {
       setCreating(true);
       await createCashierUser({
+        callerId: currentUser.id,
         companyId: currentUser.company_id,
         email: newCashier.email.trim(),
         password: newCashier.password,

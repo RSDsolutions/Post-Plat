@@ -142,7 +142,8 @@ export const useStore = create((set, get) => ({
       // The password is only ever visible right now - shown in a dialog that
       // stays open (not a toast) so there's actually time to copy it.
       const tempPassword = generateTempPassword();
-      await createCompanyGerente({
+      const gerenteResult = await createCompanyGerente({
+        adminId: get().currentUser?.id,
         companyId: dbCompany.id,
         email: wizardData.adminEmail,
         password: tempPassword,
@@ -157,9 +158,12 @@ export const useStore = create((set, get) => ({
       await addActivityEvent('Empresa creada', dbCompany.id, dbCompany.nombre_comercial, `Instancia lista en modo ${environmentType}`);
       recalculateAlerts();
       get().setActivePage('companies');
+      const emailNote = gerenteResult?.emailStatus === 'sent'
+        ? `\n\nYa le enviamos estas credenciales por correo a ${wizardData.adminEmail}.`
+        : `\n\n⚠️ No se pudo enviar el correo automático; compártelas tú por un canal seguro.`;
       openConfirm(
         'Empresa creada exitosamente',
-        `"${dbCompany.nombre_comercial}" ya está lista. Credenciales del gerente (cópialas ahora, no se vuelven a mostrar):\n\nCorreo: ${wizardData.adminEmail}\nContraseña temporal: ${tempPassword}\n\nCompártelas con el cliente por un canal seguro.`,
+        `"${dbCompany.nombre_comercial}" ya está lista. Credenciales del gerente (cópialas ahora, no se vuelven a mostrar):\n\nCorreo: ${wizardData.adminEmail}\nContraseña temporal: ${tempPassword}${emailNote}`,
         () => {}
       );
     } catch (error) {

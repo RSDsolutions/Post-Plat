@@ -4,14 +4,14 @@ import { useStore } from '../../store/useStore.js';
 import { getBrandInitials } from '../../lib/brand.js';
 
 export default function TopBar() {
-  const { brand, globalSearch, setGlobalSearch, alerts, setActivePage, toggleSidebar, currentUser, logout } = useStore();
+  const { brand, globalSearch, setGlobalSearch, alerts, setActivePage, toggleMobileMenu, currentUser, logout } = useStore();
   const initials = getBrandInitials(brand.name);
   const unreadAlerts = alerts.filter(a => !a.attended).length;
 
   return (
     <header className="flex items-center justify-between h-12 shrink-0">
       <div className="flex items-center flex-1">
-        <button onClick={toggleSidebar} className="md:hidden p-2 -ml-2 mr-2 text-zinc-500 hover:bg-zinc-800 rounded-lg">
+        <button onClick={toggleMobileMenu} className="md:hidden p-2 -ml-2 mr-2 text-zinc-500 hover:bg-zinc-800 rounded-lg" title="Abrir menú">
           <Menu size={20} />
         </button>
         <div className="flex items-center space-x-3">

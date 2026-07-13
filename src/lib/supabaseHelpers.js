@@ -490,24 +490,21 @@ export async function fetchCompanyUsers(companyId) {
   return data || [];
 }
 
-// Creates an operario/vendedor login for the gerente's own company via the
-// create_company_user RPC - bcrypt hashing only happens inside Postgres
-// (pgcrypto), so this can't be a plain insert from the client. The RPC also
-// re-validates the role server-side, so this can't be used to create a
-// gerente/admin account even if the client request were tampered with.
-export async function createCashierUser({ companyId, email, password, name, role, phone, branchId }) {
-  const { data, error } = await supabase.rpc('create_company_user', {
-    p_company_id: companyId,
-    p_email: email,
-    p_password: password,
-    p_name: name,
-    p_role: role,
-    p_phone: phone || null,
-    p_branch_id: branchId
+// Creates an operario/vendedor login for the gerente's own company and emails
+// them a welcome + temp password. Goes through the serverless endpoint
+// (api/admin/create-cashier.js) instead of calling the RPC directly, so the
+// plaintext password can be emailed server-side without ever living in the
+// browser bundle. The endpoint verifies the caller is gerente/admin of the
+// company and the RPC still re-validates the role server-side.
+export async function createCashierUser({ callerId, companyId, email, password, name, role, phone, branchId }) {
+  const response = await fetch('/api/admin/create-cashier', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ callerId, companyId, email, password, name, role, phone, branchId })
   });
-
-  if (error) throw new Error(error.message);
-  return data?.[0];
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Error al crear el cajero');
+  return result;
 }
 
 // Reassigns an existing cashier to a different branch (or unassigns with
@@ -525,18 +522,35 @@ export async function updateUserBranch({ companyId, userId, branchId }) {
 }
 
 // Creates the initial gerente login for a newly onboarded client company
-// (admin-side, CompanyWizard) via the create_company_gerente RPC - same
-// reason as createCashierUser: bcrypt hashing only happens inside Postgres.
-export async function createCompanyGerente({ companyId, email, password, name }) {
-  const { data, error } = await supabase.rpc('create_company_gerente', {
-    p_company_id: companyId,
-    p_email: email,
-    p_password: password,
-    p_name: name
+// (admin-side, CompanyWizard) and emails them their temp password. Goes through
+// api/admin/create-gerente.js, which verifies the caller is an admin before
+// invoking the RPC with service role. The RPC's EXECUTE was revoked from
+// anon/authenticated (see migration 20260711_email_notifications.sql), closing
+// the §1.1.1 audit hole where anyone could self-provision a gerente login.
+export async function createCompanyGerente({ adminId, companyId, email, password, name }) {
+  const response = await fetch('/api/admin/create-gerente', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ adminId, companyId, email, password, name })
   });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Error al crear el gerente');
+  return result;
+}
 
-  if (error) throw new Error(error.message);
-  return data?.[0];
+// Emails the RIDE (PDF, generated in-browser with jsPDF as Base64) of an
+// authorized invoice to the customer. The endpoint re-validates the invoice is
+// 'autorizada' and pulls the recipient from the DB - the browser never chooses
+// who receives it.
+export async function emailInvoiceRide({ invoiceId, companyId, userId, pdfBase64 }) {
+  const response = await fetch('/api/emails/send-invoice-ride', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invoiceId, companyId, userId, pdfBase64 })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Error al enviar el RIDE por correo');
+  return result;
 }
 
 // Lets a gerente set a new password for one of their cashiers directly -

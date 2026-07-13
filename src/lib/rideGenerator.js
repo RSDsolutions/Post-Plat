@@ -28,10 +28,13 @@ function accessKeyBarcode(accessKey) {
   return canvas.toDataURL('image/png');
 }
 
-// Generates the RIDE (Representación Impresa del Documento Electrónico) as a PDF
-// and triggers a browser download. Only meaningful for invoices already authorized
-// by the SRI (needs a real authorization_number/date).
-export async function generateRidePdf({ invoice, details, company, sriEnvironment }) {
+// Generates the RIDE (Representación Impresa del Documento Electrónico) as a PDF.
+// Only meaningful for invoices already authorized by the SRI (needs a real
+// authorization_number/date).
+//   output = 'save'   -> triggers a browser download (default, unchanged behavior)
+//   output = 'base64' -> returns the PDF as a raw Base64 string (no data-URI
+//                        prefix), for attaching to an email via api/emails/*.
+export async function generateRidePdf({ invoice, details, company, sriEnvironment, output = 'save' }) {
   if (!invoice.authorization_number) {
     throw new Error('Esta factura aún no tiene autorización del SRI');
   }
@@ -237,6 +240,12 @@ export async function generateRidePdf({ invoice, details, company, sriEnvironmen
   doc.setFontSize(8);
   doc.setTextColor(...MUTED);
   doc.text(`Forma de Pago: ${PAYMENT_LABELS[invoice.payment_method] || invoice.payment_method}`, margin, y);
+
+  if (output === 'base64') {
+    // 'datauristring' -> "data:application/pdf;filename=...;base64,XXXX";
+    // devolvemos sólo el tramo Base64 que espera Resend.
+    return doc.output('datauristring').split('base64,')[1];
+  }
 
   doc.save(`RIDE_${estab}-${ptoEmi}-${secuencial}.pdf`);
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin, Mail } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig, fetchCompanyById, fetchBranches } from '../../lib/supabaseHelpers.js';
+import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig, fetchCompanyById, fetchBranches, emailInvoiceRide } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Badge from '../ui/Badge.jsx';
 import { formatUSD } from '../../lib/format.js';
@@ -26,6 +26,7 @@ export default function InvoiceManagement() {
   const [lastError, setLastError] = useState(null);
   const [company, setCompany] = useState(null);
   const [downloadingRideId, setDownloadingRideId] = useState(null);
+  const [emailingRideId, setEmailingRideId] = useState(null);
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('all');
 
@@ -86,6 +87,42 @@ export default function InvoiceManagement() {
     }
   };
 
+  // Genera el RIDE en el navegador (Base64) y lo manda a la función serverless
+  // que lo adjunta y lo envía al correo del cliente. Devuelve el resultado para
+  // que quien lo llame (botón manual o auto-envío) decida qué avisar.
+  const sendRideByEmail = async (invoice) => {
+    const details = await fetchInvoiceDetails(invoice.id);
+    const pdfBase64 = await generateRidePdf({ invoice, details, company, sriEnvironment, output: 'base64' });
+    return emailInvoiceRide({
+      invoiceId: invoice.id,
+      companyId: currentUser.company_id,
+      userId: currentUser.id,
+      pdfBase64
+    });
+  };
+
+  const handleEmailRide = async (invoice, e) => {
+    e?.stopPropagation();
+    if (!company) {
+      showToast('error', 'Cargando datos de la empresa, intenta de nuevo en un momento');
+      return;
+    }
+    setEmailingRideId(invoice.id);
+    try {
+      const result = await sendRideByEmail(invoice);
+      if (result?.skipped) {
+        showToast('info', 'El cliente no tiene un correo registrado');
+      } else {
+        showToast('success', `RIDE enviado a ${result?.to || 'el cliente'}`);
+      }
+    } catch (error) {
+      console.error('Error emailing RIDE:', error);
+      showToast('error', error.message || 'Error al enviar el RIDE por correo');
+    } finally {
+      setEmailingRideId(null);
+    }
+  };
+
   const handleApprove = (invoice) => {
     const envLabel = sriEnvironment === 'production' ? 'PRODUCCIÓN (real)' : 'PRUEBAS';
     openConfirm(
@@ -99,6 +136,28 @@ export default function InvoiceManagement() {
           showToast('success', `Factura ${invoice.invoice_number} autorizada por el SRI`);
           await loadInvoices();
           setSelectedInvoice(null);
+
+          // En producción, envía el RIDE al cliente automáticamente. Volvemos a
+          // leer la factura ya 'autorizada' (con authorization_number) porque el
+          // objeto local seguía en 'borrador'. Un fallo aquí no invalida la
+          // autorización; el gerente puede reenviar con el botón de correo.
+          if (sriEnvironment === 'production') {
+            try {
+              const fresh = await fetchInvoicesByCompany(currentUser.company_id);
+              const authorized = fresh.find(i => i.id === invoice.id);
+              if (authorized?.status === 'autorizada') {
+                setEmailingRideId(invoice.id);
+                const result = await sendRideByEmail(authorized);
+                if (!result?.skipped) {
+                  showToast('info', `RIDE enviado a ${result?.to || 'el cliente'}`);
+                }
+              }
+            } catch (mailErr) {
+              console.error('Auto-envío del RIDE falló:', mailErr);
+            } finally {
+              setEmailingRideId(null);
+            }
+          }
         } catch (error) {
           console.error('SRI submission error:', error);
           showToast('error', error.message || 'Error al enviar la factura al SRI');
@@ -240,17 +299,30 @@ export default function InvoiceManagement() {
                     )
                   )}
                   {inv.status === 'autorizada' && (
-                    <button
-                      onClick={(e) => handleDownloadRide(inv, e)}
-                      disabled={downloadingRideId === inv.id}
-                      className="text-xs font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {downloadingRideId === inv.id ? (
-                        <><Loader size={14} className="animate-spin" /> Generando...</>
-                      ) : (
-                        <><Download size={14} /> Descargar RIDE</>
-                      )}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={(e) => handleDownloadRide(inv, e)}
+                        disabled={downloadingRideId === inv.id}
+                        className="text-xs font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {downloadingRideId === inv.id ? (
+                          <><Loader size={14} className="animate-spin" /> Generando...</>
+                        ) : (
+                          <><Download size={14} /> Descargar RIDE</>
+                        )}
+                      </button>
+                      <button
+                        onClick={(e) => handleEmailRide(inv, e)}
+                        disabled={emailingRideId === inv.id}
+                        className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 disabled:opacity-50"
+                      >
+                        {emailingRideId === inv.id ? (
+                          <><Loader size={14} className="animate-spin" /> Enviando...</>
+                        ) : (
+                          <><Mail size={14} /> Enviar por correo</>
+                        )}
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -406,7 +478,7 @@ export default function InvoiceManagement() {
               )}
 
               {selectedInvoice.status === 'autorizada' && (
-                <div className="pt-4 border-t border-zinc-800">
+                <div className="pt-4 border-t border-zinc-800 space-y-2">
                   <button
                     onClick={() => handleDownloadRide(selectedInvoice)}
                     disabled={downloadingRideId === selectedInvoice.id}
@@ -416,6 +488,17 @@ export default function InvoiceManagement() {
                       <><Loader size={18} className="animate-spin" /> Generando RIDE...</>
                     ) : (
                       <><Download size={18} /> Descargar RIDE (PDF)</>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleEmailRide(selectedInvoice)}
+                    disabled={emailingRideId === selectedInvoice.id}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    {emailingRideId === selectedInvoice.id ? (
+                      <><Loader size={18} className="animate-spin" /> Enviando...</>
+                    ) : (
+                      <><Mail size={18} /> Enviar RIDE por correo al cliente</>
                     )}
                   </button>
                 </div>

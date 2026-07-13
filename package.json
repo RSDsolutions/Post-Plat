@@ -19,6 +19,7 @@
     "open-factura": "^0.1.1",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "resend": "^4.8.0",
     "xadesjs": "^2.6.7",
     "xpath": "^0.0.34",
     "zustand": "^4.5.7"
