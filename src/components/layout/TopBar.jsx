@@ -11,11 +11,7 @@ export default function TopBar() {
   return (
     <header className="flex items-center justify-between h-12 shrink-0">
       <div className="flex items-center flex-1">
-<<<<<<< HEAD
-        <button onClick={toggleMobileMenu} className="md:hidden p-2 -ml-2 mr-2 text-zinc-500 hover:bg-zinc-800 rounded-lg" title="Abrir menú">
-=======
-        <button onClick={toggleSidebar} className="md:hidden p-2 -ml-2 mr-2 text-[var(--text-muted)] hover:bg-[var(--surface-2)] rounded-lg">
->>>>>>> a8b67df4aba83266168d9625ada638299e42d0cd
+        <button onClick={toggleMobileMenu} className="md:hidden p-2 -ml-2 mr-2 text-[var(--text-muted)] hover:bg-[var(--surface-2)] rounded-lg" title="Abrir menú">
           <Menu size={20} />
         </button>
         <div className="flex items-center space-x-3">

@@ -1,9 +1,5 @@
 import React from 'react';
-<<<<<<< HEAD
-import { LayoutDashboard, Building2, CreditCard, Activity, Palette, Menu, ChevronLeft, X } from 'lucide-react';
-=======
-import { LayoutDashboard, Building2, CreditCard, Activity, Palette, Menu, ChevronLeft, BarChart3, DollarSign } from 'lucide-react';
->>>>>>> a8b67df4aba83266168d9625ada638299e42d0cd
+import { LayoutDashboard, Building2, CreditCard, Activity, Palette, Menu, ChevronLeft, X, BarChart3, DollarSign } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 
 export default function Sidebar() {
@@ -22,7 +18,6 @@ export default function Sidebar() {
   ];
 
   return (
-<<<<<<< HEAD
     <>
       {/* Fondo oscuro en móvil: tap para cerrar el drawer */}
       {mobileMenuOpen && (
@@ -38,21 +33,18 @@ export default function Sidebar() {
       <div
         className={`fixed inset-y-0 left-0 z-50 w-64 ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
         md:static md:z-auto md:translate-x-0 ${sidebarCollapsed ? 'md:w-20' : 'md:w-64'}
-        bg-zinc-900 border-r border-zinc-800 md:border md:rounded-3xl flex flex-col transition-all duration-300`}
+        bg-[var(--surface-1)] border-r border-[var(--border-subtle)] md:border md:rounded-3xl flex flex-col transition-all duration-300`}
       >
       {/* Botón de cerrar, sólo en móvil */}
       <div className="flex justify-end p-4 md:hidden">
         <button
           onClick={closeMobileMenu}
-          className="p-2 text-zinc-500 hover:bg-zinc-800 rounded-lg"
+          className="p-2 text-[var(--text-muted)] hover:bg-[var(--surface-2)] rounded-lg"
           title="Cerrar menú"
         >
           <X size={20} />
         </button>
       </div>
-=======
-    <div className={`bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-3xl flex flex-col transition-all duration-300 ${sidebarCollapsed ? 'w-20' : 'w-64'} hidden md:flex`}>
->>>>>>> a8b67df4aba83266168d9625ada638299e42d0cd
       <div className="flex-1 py-6 overflow-y-auto pr-2">
         <nav className="space-y-1">
           {navItems.map((item) => {
@@ -84,13 +76,8 @@ export default function Sidebar() {
           })}
         </nav>
       </div>
-<<<<<<< HEAD
-      <div className="p-4 border-t border-zinc-800 hidden md:flex justify-end">
+      <div className="p-4 border-t border-[var(--border-subtle)] hidden md:flex justify-end">
         <button
-=======
-      <div className="p-4 border-t border-[var(--border-subtle)] flex justify-end">
-        <button 
->>>>>>> a8b67df4aba83266168d9625ada638299e42d0cd
           onClick={toggleSidebar}
           className="p-2 text-[var(--text-muted)] hover:bg-[var(--surface-2)] rounded-lg"
         >

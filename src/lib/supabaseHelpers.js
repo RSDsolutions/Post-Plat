@@ -522,28 +522,16 @@ export async function updateUserBranch({ companyId, userId, branchId }) {
 }
 
 // Creates the initial gerente login for a newly onboarded client company
-<<<<<<< HEAD
 // (admin-side, CompanyWizard) and emails them their temp password. Goes through
 // api/admin/create-gerente.js, which verifies the caller is an admin before
-// invoking the RPC with service role. The RPC's EXECUTE was revoked from
-// anon/authenticated (see migration 20260711_email_notifications.sql), closing
-// the §1.1.1 audit hole where anyone could self-provision a gerente login.
+// invoking the RPC (with p_admin_id) using the service role. The RPC itself also
+// re-verifies the admin internally, closing the §1.1.1 audit hole where anyone
+// could self-provision a gerente login.
 export async function createCompanyGerente({ adminId, companyId, email, password, name }) {
   const response = await fetch('/api/admin/create-gerente', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ adminId, companyId, email, password, name })
-=======
-// (admin-side, CompanyWizard) via the create_company_gerente RPC - same
-// reason as createCashierUser: bcrypt hashing only happens inside Postgres.
-export async function createCompanyGerente({ companyId, email, password, name, adminId }) {
-  const { data, error } = await supabase.rpc('create_company_gerente', {
-    p_company_id: companyId,
-    p_email: email,
-    p_password: password,
-    p_name: name,
-    p_admin_id: adminId
->>>>>>> a8b67df4aba83266168d9625ada638299e42d0cd
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al crear el gerente');
