@@ -1,11 +1,17 @@
 ﻿import React, { useState, useEffect } from "react";
-import { Settings, Save, AlertCircle, FileText, CheckCircle } from "lucide-react";
+import { Settings, Save, AlertCircle, FileText, CheckCircle, CreditCard } from "lucide-react";
 import { useStore } from "../../store/useStore.js";
-import { saveBillingConfig, getBillingConfig } from "../../lib/supabaseHelpers.js";
+import { saveBillingConfig, getBillingConfig, fetchPayments } from "../../lib/supabaseHelpers.js";
 import { validateRUC } from "../../lib/invoiceUtils.js";
+import { formatDate, daysFrom, buildPaymentSequence } from "../../lib/dates.js";
+import { formatUSD } from "../../lib/format.js";
+import Badge from "../ui/Badge.jsx";
 
 export default function StoreSettings() {
-  const { currentUser, showToast } = useStore();
+  const { currentUser, showToast, companies, plans } = useStore();
+  const company = companies.find(c => c.id === currentUser?.company_id);
+  const plan = plans.find(p => p.id === company?.planId);
+  const [payments, setPayments] = useState([]);
   const [taxRate, setTaxRate] = useState(12);
   const [saving, setSaving] = useState(false);
   const [billingConfig, setBillingConfig] = useState({
@@ -43,6 +49,15 @@ export default function StoreSettings() {
       loadConfig();
     }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser?.company_id) {
+      fetchPayments(currentUser.company_id).then(setPayments).catch(() => {});
+    }
+  }, [currentUser?.company_id]);
+
+  const paymentSequence = buildPaymentSequence(payments, company?.subscriptionRenewal);
+  const renewalDays = company?.subscriptionRenewal ? daysFrom(company.subscriptionRenewal) : null;
 
   const handleSaveTaxRate = async () => {
     setSaving(true);
@@ -95,6 +110,71 @@ export default function StoreSettings() {
       <div className="flex items-center gap-3 mb-8">
         <Settings className="text-blue-500" size={32} />
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Configuración de Tienda</h1>
+      </div>
+
+      {/* Subscription status - read only here, payments/plan changes are
+          managed by POST-PLAT on the admin side */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3 mb-2">
+          <CreditCard className="text-emerald-500" size={22} />
+          <h2 className="text-xl font-bold text-zinc-100">Mi Suscripción</h2>
+        </div>
+
+        {company?.subscriptionStatus === 'Suspendida' && (
+          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
+            <p className="text-sm font-bold text-red-400">Tu cuenta está suspendida. Contacta a POST-PLAT para regularizar el pago y reactivar la facturación.</p>
+          </div>
+        )}
+        {company?.subscriptionStatus === 'Vencida' && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4">
+            <p className="text-sm font-bold text-amber-400">Tu suscripción venció. Regulariza el pago para evitar la suspensión del servicio.</p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4">
+            <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest mb-1">Plan</div>
+            <div className="text-lg font-bold text-zinc-100">{plan?.name || '—'}</div>
+            <div className="text-xs text-zinc-500 mt-0.5">{formatUSD(company?.customPrice ?? plan?.price)} / {plan?.billingCycle || 'mensual'}</div>
+          </div>
+          <div className="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4">
+            <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest mb-1">Próxima renovación</div>
+            <div className="text-lg font-bold text-zinc-100">{company?.subscriptionRenewal ? formatDate(company.subscriptionRenewal) : '—'}</div>
+            {renewalDays !== null && <div className="text-xs text-zinc-500 mt-0.5">{renewalDays >= 0 ? `en ${renewalDays} días` : `vencida hace ${Math.abs(renewalDays)} días`}</div>}
+          </div>
+          <div className="bg-zinc-950/50 border border-zinc-800 rounded-xl p-4 flex flex-col justify-center">
+            <div className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest mb-2">Estado</div>
+            {company && <Badge status={company.subscriptionStatus} />}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wide mb-2 mt-2">Historial de pagos</h3>
+          <div className="border border-zinc-800 rounded-xl overflow-hidden">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-zinc-950/50 text-zinc-500 uppercase text-[10px] tracking-widest border-b border-zinc-800 font-bold">
+                <tr>
+                  <th className="px-4 py-2.5">#</th>
+                  <th className="px-4 py-2.5">Período cubierto</th>
+                  <th className="px-4 py-2.5">Monto</th>
+                  <th className="px-4 py-2.5">Estado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800">
+                {paymentSequence.length === 0 ? (
+                  <tr><td colSpan={4} className="px-4 py-4 text-center text-zinc-500">Sin pagos registrados todavía</td></tr>
+                ) : paymentSequence.slice().reverse().map(p => (
+                  <tr key={p.id}>
+                    <td className="px-4 py-2.5 text-zinc-600 font-mono">#{p.sequence}</td>
+                    <td className="px-4 py-2.5 text-zinc-400 text-xs">{p.periodEnd ? `${formatDate(p.periodStart)} → ${formatDate(p.periodEnd)}` : '—'}</td>
+                    <td className="px-4 py-2.5 font-bold text-zinc-100">{formatUSD(p.amount)}</td>
+                    <td className="px-4 py-2.5 capitalize text-zinc-400">{p.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {/* Tax Rate Configuration */}

@@ -22,7 +22,6 @@ export const transformCompany = (dbCompany) => ({
   subscriptionStatus: SUBSCRIPTION_STATUS_LABELS[dbCompany.subscription_status] || 'Activa',
   subscriptionStart: dbCompany.subscription_start ? new Date(dbCompany.subscription_start) : null,
   subscriptionRenewal: dbCompany.subscription_renewal ? new Date(dbCompany.subscription_renewal) : null,
-  billingCycle: 'mensual',
   monthlyComprobantes: dbCompany.monthly_comprobantes || 0,
   prevMonthComprobantes: dbCompany.prev_month_comprobantes || 0,
   activeUsers: dbCompany.active_users || 0,
@@ -65,6 +64,7 @@ export const transformPlan = (dbPlan) => ({
   branchesLimit: dbPlan.max_branches ?? null,
   productsLimit: dbPlan.max_products ?? null,
   posLimit: dbPlan.max_pos ?? null,
+  billingCycle: dbPlan.billing_cycle === 'annual' || dbPlan.billing_cycle === 'anual' ? 'anual' : 'mensual',
   description: dbPlan.description || '',
   features: Array.isArray(dbPlan.features) ? dbPlan.features : [],
   color: 'emerald'

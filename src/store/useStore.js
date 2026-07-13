@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { addDays } from '../lib/dates.js';
+import { addDays, computeNextRenewal } from '../lib/dates.js';
 import { generateAlerts } from '../lib/alerts.js';
 import { formatUSD } from '../lib/format.js';
 import { transformCompany } from '../lib/transforms.js';
@@ -277,9 +277,11 @@ export const useStore = create((set, get) => ({
   },
 
   reactivateCompany: async (id) => {
-    const { showToast, addActivityEvent, recalculateAlerts, companies } = get();
+    const { showToast, addActivityEvent, recalculateAlerts, companies, plans } = get();
     const comp = companies.find(c => c.id === id);
-    const renewal = addDays(new Date(), 30);
+    const plan = plans.find(p => p.id === comp.planId);
+    const cycleDays = plan?.billingCycle === 'anual' ? 365 : 30;
+    const renewal = computeNextRenewal(comp.subscriptionRenewal, cycleDays);
     try {
       await updateCompany(id, {
         subscription_status: 'activa',
@@ -310,7 +312,12 @@ export const useStore = create((set, get) => ({
     const comp = companies.find(c => c.id === companyId);
     const plan = plans.find(p => p.id === comp.planId);
     const amount = comp.customPrice ?? (plan ? plan.price : 0);
-    const renewal = addDays(new Date(), 30);
+    // Extends from the current renewal date if the subscription still has
+    // time left (so paying early/on time never loses days), or from today
+    // if it already lapsed. Cycle length follows the plan (mensual=30,
+    // anual=365) instead of always assuming monthly.
+    const cycleDays = plan?.billingCycle === 'anual' ? 365 : 30;
+    const renewal = computeNextRenewal(comp.subscriptionRenewal, cycleDays);
     try {
       await updateCompany(companyId, {
         subscription_renewal: renewal.toISOString(),

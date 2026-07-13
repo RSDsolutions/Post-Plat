@@ -5,7 +5,7 @@ import Badge from '../ui/Badge.jsx';
 import Tabs from '../ui/Tabs.jsx';
 import Modal from '../ui/Modal.jsx';
 import { getBrandInitials } from '../../lib/brand.js';
-import { formatDate, daysFrom } from '../../lib/dates.js';
+import { formatDate, daysFrom, buildPaymentSequence } from '../../lib/dates.js';
 import { formatUSD } from '../../lib/format.js';
 import { computeHealthScore, computeOnboardingChecklist } from '../../lib/healthScore.js';
 import {
@@ -174,6 +174,7 @@ export default function CompanyDetail() {
     }
   };
 
+  const paymentSequence = buildPaymentSequence(payments, company.subscriptionRenewal);
   const health = computeHealthScore(company, plan);
   const checklist = onboarding ? computeOnboardingChecklist({ certUploaded: company.certUploaded, ...onboarding }) : null;
   const checklistDone = checklist ? checklist.every(i => i.done) : false;
@@ -363,7 +364,7 @@ export default function CompanyDetail() {
                     <div className="text-[10px] text-[var(--text-muted)] uppercase font-bold tracking-widest mb-1">Plan actual</div>
                     <div className="text-xl font-bold text-[var(--text-primary)]">{plan?.name}</div>
                     <div className="text-sm font-medium text-[var(--text-muted)] mt-1">
-                      {formatUSD(company.customPrice ?? plan?.price)} / {company.billingCycle}
+                      {formatUSD(company.customPrice ?? plan?.price)} / {plan?.billingCycle || 'mensual'}
                       {company.customPrice != null && <span className="ml-1 text-[10px] text-[var(--brand)] uppercase font-bold">Precio especial</span>}
                     </div>
                  </div>
@@ -435,7 +436,9 @@ export default function CompanyDetail() {
                  <table className="w-full text-sm text-left">
                    <thead className="bg-[var(--surface-0)]/50 text-[var(--text-muted)] uppercase text-[10px] tracking-widest border-b border-[var(--border-subtle)] font-bold">
                      <tr>
+                       <th className="px-4 py-3">#</th>
                        <th className="px-4 py-3">Fecha</th>
+                       <th className="px-4 py-3">Período cubierto</th>
                        <th className="px-4 py-3">Monto</th>
                        <th className="px-4 py-3">Método</th>
                        <th className="px-4 py-3">Referencia</th>
@@ -444,10 +447,14 @@ export default function CompanyDetail() {
                    </thead>
                    <tbody className="divide-y divide-[var(--border-subtle)]">
                      {payments.length === 0 ? (
-                       <tr><td colSpan={5} className="px-4 py-6 text-center text-[var(--text-muted)]">Sin pagos registrados todavía</td></tr>
-                     ) : payments.map((p) => (
+                       <tr><td colSpan={7} className="px-4 py-6 text-center text-[var(--text-muted)]">Sin pagos registrados todavía</td></tr>
+                     ) : paymentSequence.slice().reverse().map((p) => (
                        <tr key={p.id} className="hover:bg-[var(--surface-2)]/50 transition-colors">
-                         <td className="px-4 py-3 font-medium">{formatDate(new Date(p.payment_date))}</td>
+                         <td className="px-4 py-3 text-[var(--text-faint)] font-mono">#{p.sequence}</td>
+                         <td className="px-4 py-3 font-medium">{formatDate(p.periodStart)}</td>
+                         <td className="px-4 py-3 text-[var(--text-muted)] text-xs">
+                           {p.periodEnd ? `${formatDate(p.periodStart)} → ${formatDate(p.periodEnd)}` : '—'}
+                         </td>
                          <td className="px-4 py-3 font-bold">{formatUSD(p.amount)}</td>
                          <td className="px-4 py-3 text-zinc-400">{p.payment_method}</td>
                          <td className="px-4 py-3 text-[var(--text-muted)] font-mono text-xs">{p.reference || '—'}</td>

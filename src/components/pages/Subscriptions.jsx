@@ -129,7 +129,7 @@ export default function Subscriptions() {
               <tr key={company.id} className="hover:bg-[var(--surface-2)]/50 transition-colors border-b border-[var(--border-subtle)]/50 last:border-0">
                 <td className="px-5 py-4 font-bold text-[var(--text-primary)]">{company.nombreComercial}</td>
                 <td className="px-5 py-4"><span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{plan?.name}</span></td>
-                <td className="px-5 py-4 font-medium text-zinc-300 capitalize">{company.billingCycle}</td>
+                <td className="px-5 py-4 font-medium text-zinc-300 capitalize">{plan?.billingCycle || 'mensual'}</td>
                 <td className="px-5 py-4 font-medium text-zinc-400">{formatDate(company.subscriptionRenewal)}</td>
                 <td className="px-5 py-4"><Badge status={company.paymentStatus} /></td>
                 <td className="px-5 py-4">
