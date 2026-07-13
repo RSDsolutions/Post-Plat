@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Building2, CreditCard, Activity, Palette, Menu, ChevronLeft, BarChart3 } from 'lucide-react';
+import { LayoutDashboard, Building2, CreditCard, Activity, Palette, Menu, ChevronLeft, BarChart3, DollarSign } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 
 export default function Sidebar() {
@@ -11,6 +11,7 @@ export default function Sidebar() {
     { id: 'dashboard', label: 'Inicio', icon: LayoutDashboard },
     { id: 'companies', label: 'Empresas', icon: Building2 },
     { id: 'subscriptions', label: 'Suscripciones y planes', icon: CreditCard },
+    { id: 'payments', label: 'Pagos', icon: DollarSign },
     { id: 'metrics', label: 'Métricas', icon: BarChart3 },
     { id: 'activity', label: 'Actividad y alertas', icon: Activity, badge: unreadAlerts },
     { id: 'brand', label: 'Mi marca', icon: Palette },

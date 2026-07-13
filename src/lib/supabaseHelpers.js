@@ -1311,6 +1311,19 @@ export async function fetchPayments(companyId) {
   return data || [];
 }
 
+// Global payment feed for the admin Pagos dashboard - across every company,
+// not scoped to one (fetchPayments above is for a single company's detail).
+export async function fetchAllPayments(limit = 100) {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('*, companies(nombre_comercial)')
+    .order('payment_date', { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
 export async function createPaymentRecord({ companyId, amount, method, reference }) {
   const { data, error } = await supabase
     .from('payments')

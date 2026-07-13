@@ -4,6 +4,7 @@ import { useStore } from '../../store/useStore.js';
 import Badge from '../ui/Badge.jsx';
 import Tabs from '../ui/Tabs.jsx';
 import Modal from '../ui/Modal.jsx';
+import PaymentModal from '../ui/PaymentModal.jsx';
 import { getBrandInitials } from '../../lib/brand.js';
 import { formatDate, daysFrom, buildPaymentSequence } from '../../lib/dates.js';
 import { formatUSD } from '../../lib/format.js';
@@ -19,12 +20,10 @@ const HEALTH_COLORS = {
   Bajo: 'bg-red-500/10 text-red-400 border-red-500/20'
 };
 
-const PAYMENT_METHODS = ['Transferencia bancaria', 'Efectivo', 'Tarjeta', 'Cheque', 'Otro'];
-
 export default function CompanyDetail() {
   const {
     companies, plans, selectedCompanyId, setActivePage, companyDetailTab, setCompanyDetailTab,
-    openEditCompany, registerPayment, suspendCompany, reactivateCompany, openConfirm, changeCompanyPlan,
+    openEditCompany, suspendCompany, reactivateCompany, openConfirm, changeCompanyPlan,
     updateCompanyNotes, updateCompanyCustomPrice, updateCompanyTrialEndsAt, showToast, currentUser,
     impersonateCompany
   } = useStore();
@@ -38,9 +37,7 @@ export default function CompanyDetail() {
   const [savingFeatureKey, setSavingFeatureKey] = useState(null);
 
   const [payments, setPayments] = useState([]);
-  const [paymentMethod, setPaymentMethod] = useState(PAYMENT_METHODS[0]);
-  const [paymentReference, setPaymentReference] = useState('');
-  const [registering, setRegistering] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const [customPriceInput, setCustomPriceInput] = useState('');
   const [trialInput, setTrialInput] = useState('');
@@ -127,17 +124,6 @@ export default function CompanyDetail() {
       showToast('error', error.message || 'Error al restaurar la funcionalidad');
     } finally {
       setSavingFeatureKey(null);
-    }
-  };
-
-  const handleRegisterPayment = async () => {
-    setRegistering(true);
-    try {
-      await registerPayment(company.id, { method: paymentMethod, reference: paymentReference.trim() || null });
-      setPaymentReference('');
-      await loadPayments(company.id);
-    } finally {
-      setRegistering(false);
     }
   };
 
@@ -245,14 +231,12 @@ export default function CompanyDetail() {
           >
             Cambiar plan
           </button>
-          {company.subscriptionStatus !== 'Activa' && company.subscriptionStatus !== 'Suspendida' && (
-             <button
-               onClick={() => registerPayment(company.id)}
-               className="border border-[var(--brand)] text-[var(--brand)] hover:bg-[var(--brand)]/10 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
-             >
-               Registrar pago
-             </button>
-          )}
+          <button
+            onClick={() => setShowPaymentModal(true)}
+            className="border border-[var(--brand)] text-[var(--brand)] hover:bg-[var(--brand)]/10 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
+          >
+            Registrar pago
+          </button>
           <button
             onClick={handleSuspend}
             className={`${company.subscriptionStatus === 'Suspendida' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20'} border font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors`}
@@ -375,7 +359,12 @@ export default function CompanyDetail() {
                  </div>
                  <div className="border border-[var(--border-subtle)] rounded-3xl p-5 bg-[var(--surface-0)]/50 flex flex-col justify-center items-start">
                     <div className="mb-3"><Badge status={company.paymentStatus} /></div>
-                    <span className="text-xs font-medium text-[var(--text-muted)]">Usa el formulario de abajo para registrar un pago</span>
+                    <button
+                      onClick={() => setShowPaymentModal(true)}
+                      className="text-xs font-bold uppercase tracking-wider text-[var(--brand)] hover:text-white transition-colors"
+                    >
+                      Registrar pago →
+                    </button>
                  </div>
                </div>
 
@@ -408,27 +397,6 @@ export default function CompanyDetail() {
                    </div>
                    <p className="text-[11px] text-[var(--text-faint)] mt-1.5">Deja vacío y guarda para quitar el trial.</p>
                  </div>
-               </div>
-
-               <h3 className="text-base font-bold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-2 pt-4">Registrar pago</h3>
-               <div className="flex flex-wrap items-end gap-3">
-                 <div>
-                   <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-1">Método</label>
-                   <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="bg-[var(--surface-0)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]">
-                     {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-                   </select>
-                 </div>
-                 <div className="flex-1 min-w-[160px]">
-                   <label className="block text-[10px] font-bold text-[var(--text-muted)] uppercase mb-1">Referencia (opcional)</label>
-                   <input type="text" value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="N° de transferencia, etc." className="w-full bg-[var(--surface-0)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]" />
-                 </div>
-                 <button
-                   onClick={handleRegisterPayment}
-                   disabled={registering}
-                   className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-5 py-2 rounded-lg text-xs uppercase tracking-wider disabled:opacity-50"
-                 >
-                   {registering ? 'Registrando...' : 'Registrar pago'}
-                 </button>
                </div>
 
                <h3 className="text-base font-bold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-2 pt-4">Historial de pagos</h3>
@@ -615,6 +583,13 @@ export default function CompanyDetail() {
             )}
           </div>
         </Modal>
+      )}
+
+      {showPaymentModal && (
+        <PaymentModal
+          company={company}
+          onClose={() => { setShowPaymentModal(false); loadPayments(company.id); }}
+        />
       )}
     </div>
   );

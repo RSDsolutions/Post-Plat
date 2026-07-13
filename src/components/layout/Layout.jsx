@@ -9,6 +9,7 @@ import Subscriptions from '../pages/Subscriptions.jsx';
 import Activity from '../pages/Activity.jsx';
 import BrandConfig from '../pages/BrandConfig.jsx';
 import Metrics from '../pages/Metrics.jsx';
+import Payments from '../pages/Payments.jsx';
 import Toast from '../ui/Toast.jsx';
 import ConfirmDialog from '../ui/ConfirmDialog.jsx';
 import CompanyWizard from '../pages/CompanyWizard.jsx';
@@ -23,6 +24,7 @@ export default function Layout() {
     case 'companies': Content = selectedCompanyId ? CompanyDetail : Companies; break;
     case 'subscriptions': Content = Subscriptions; break;
     case 'metrics': Content = Metrics; break;
+    case 'payments': Content = Payments; break;
     case 'activity': Content = Activity; break;
     case 'brand': Content = BrandConfig; break;
     default: Content = Dashboard;

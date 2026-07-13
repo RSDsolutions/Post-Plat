@@ -4,12 +4,14 @@ import { useStore } from '../../store/useStore.js';
 import { formatUSD, formatMRR } from '../../lib/format.js';
 import Badge from '../ui/Badge.jsx';
 import Table from '../ui/Table.jsx';
+import PaymentModal from '../ui/PaymentModal.jsx';
 import { formatDate } from '../../lib/dates.js';
 
 export default function Subscriptions() {
-  const { companies, plans, updatePlan, registerPayment } = useStore();
+  const { companies, plans, updatePlan } = useStore();
   const [editingPlanId, setEditingPlanId] = useState(null);
   const [editData, setEditData] = useState({ name: '', price: 0 });
+  const [paymentCompany, setPaymentCompany] = useState(null);
 
   const activeCompanies = companies.filter(c => c.subscriptionStatus === 'Activa');
   const mrr = formatMRR(companies, plans);
@@ -133,9 +135,9 @@ export default function Subscriptions() {
                 <td className="px-5 py-4 font-medium text-zinc-400">{formatDate(company.subscriptionRenewal)}</td>
                 <td className="px-5 py-4"><Badge status={company.paymentStatus} /></td>
                 <td className="px-5 py-4">
-                  <button 
-                    onClick={() => registerPayment(company.id)}
-                    className="text-sm font-bold uppercase tracking-wider text-[var(--brand)] hover:text-white transition-colors"
+                  <button
+                    onClick={() => setPaymentCompany(company)}
+                    className="text-sm font-bold uppercase tracking-wider text-[var(--brand)] hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     disabled={company.subscriptionStatus === 'Suspendida'}
                   >
                     Registrar pago
@@ -146,6 +148,8 @@ export default function Subscriptions() {
           }}
         />
       </div>
+
+      {paymentCompany && <PaymentModal company={paymentCompany} onClose={() => setPaymentCompany(null)} />}
     </div>
   );
 }

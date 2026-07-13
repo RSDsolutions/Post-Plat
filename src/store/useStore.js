@@ -307,16 +307,22 @@ export const useStore = create((set, get) => ({
   // access) and, since this session, a real row in the payments ledger too
   // - registerPayment used to only touch companies, so CompanyDetail's
   // itemized history was session-local and vanished on refresh.
-  registerPayment: async (companyId, { method = 'Transferencia bancaria', reference = null } = {}) => {
+  // periods lets one payment deliberately cover more than one billing cycle
+  // (prepay 3 months, pay a year upfront) - this is the intended way to
+  // "pay while already up to date": it's an explicit choice with a visible
+  // amount and resulting date (made in PaymentModal), not a blind repeat of
+  // the same button.
+  registerPayment: async (companyId, { method = 'Transferencia bancaria', reference = null, periods = 1 } = {}) => {
     const { showToast, addActivityEvent, recalculateAlerts, companies, plans } = get();
     const comp = companies.find(c => c.id === companyId);
     const plan = plans.find(p => p.id === comp.planId);
-    const amount = comp.customPrice ?? (plan ? plan.price : 0);
+    const unitPrice = comp.customPrice ?? (plan ? plan.price : 0);
+    const amount = unitPrice * periods;
     // Extends from the current renewal date if the subscription still has
     // time left (so paying early/on time never loses days), or from today
     // if it already lapsed. Cycle length follows the plan (mensual=30,
-    // anual=365) instead of always assuming monthly.
-    const cycleDays = plan?.billingCycle === 'anual' ? 365 : 30;
+    // anual=365) instead of always assuming monthly, multiplied by periods.
+    const cycleDays = (plan?.billingCycle === 'anual' ? 365 : 30) * periods;
     const renewal = computeNextRenewal(comp.subscriptionRenewal, cycleDays);
     try {
       await updateCompany(companyId, {
@@ -330,7 +336,8 @@ export const useStore = create((set, get) => ({
           ? { ...c, subscriptionRenewal: renewal, subscriptionStatus: 'Activa', paymentStatus: 'Al día' }
           : c)
       }));
-      await addActivityEvent('Pago registrado', companyId, comp.nombreComercial, `${formatUSD(amount)} — ${method}`);
+      const periodLabel = periods > 1 ? ` (${periods} períodos)` : '';
+      await addActivityEvent('Pago registrado', companyId, comp.nombreComercial, `${formatUSD(amount)} — ${method}${periodLabel}`);
       recalculateAlerts();
       showToast('success', 'Pago registrado. Suscripción renovada.');
     } catch (error) {
