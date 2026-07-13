@@ -2,7 +2,7 @@
 
 Sistema profesional para gestionar empresas, puntos de venta y facturación. Desarrollado con React, Vite, Tailwind CSS, Zustand y Supabase.
 
-## ✨ Características
+## ✨ Característicasss
 
 - ✅ **Gestión de Empresas** - Múltiples empresas con suscripciones
 - ✅ **POS & Facturación** - Gestión completa de puntos de venta y facturas
