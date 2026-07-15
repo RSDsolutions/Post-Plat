@@ -1,0 +1,21 @@
+-- Fix de un bug de producción que rompía el login para TODOS los usuarios:
+-- "Tu usuario está desactivado" salía siempre, sin importar la cuenta.
+--
+-- Causa raíz: public.users usa una lista blanca de columnas para SELECT de
+-- "authenticated" (no un grant amplio de tabla completa) - a propósito,
+-- para mantener password_hash/failed_login_attempts/locked_until ocultas
+-- del cliente aunque sí sean actualizables vía RPC. La migración
+-- 20260718_add_user_ui_preferences.sql agregó la columna ui_preferences
+-- pero nunca la sumó a esa lista blanca. loginWithPassword()/restoreAuth()
+-- (supabaseHelpers.js, useStore.js) hacen
+-- select('id, email, name, role, company_id, is_active, ui_preferences')
+-- - con ui_preferences sin permiso, TODA la fila fallaba con
+-- "permission denied for table users" (código 42501), y el código trata
+-- cualquier error de esa consulta como "usuario desactivado" (mismo
+-- catch, mensaje genérico) - de ahí el mensaje engañoso.
+--
+-- Reproducido y confirmado con un usuario descartable antes de este fix:
+-- el mismo select SIN ui_preferences funciona perfecto: la fila y el
+-- is_active reales nunca fueron el problema.
+
+grant select (ui_preferences) on public.users to authenticated;
