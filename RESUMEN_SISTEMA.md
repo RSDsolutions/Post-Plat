@@ -19,15 +19,17 @@ La pieza diferencial del sistema es que la facturación **no es simulada**: gene
 | Capa | Tecnología | Rol |
 |---|---|---|
 | Frontend | React 18 + Vite, Tailwind CSS, Zustand | SPA única; `useStore.js` es la única fuente de verdad del estado del cliente |
-| Backend de datos | **Supabase** (Postgres + Row Level Security + Storage) | La app habla directo con Postgres vía PostgREST/RPC desde el navegador con la `anon key` — no hay backend tradicional |
-| Funciones serverless | **Vercel Functions** (`api/sri/*`, `api/emails/*`, `api/admin/*`), Node.js | Solo para lo que el navegador no puede hacer: criptografía, SOAP al SRI, envío de correos con secretos, y mutaciones que requieren `service_role` |
+| Autenticación | **Supabase Auth** | Login, sesión (JWT) y expiración reales — ver §3 |
+| Backend de datos | **Supabase** (Postgres + Row Level Security + Storage) | La app habla directo con Postgres vía PostgREST/RPC desde el navegador; RLS real basada en `auth.uid()` aísla cada empresa — no hay backend tradicional |
+| Funciones serverless | **Vercel Functions** (`api/sri/*`, `api/emails/*`, `api/admin/*`), Node.js | Solo para lo que el navegador no puede hacer: criptografía, SOAP al SRI, envío de correos con secretos, y mutaciones que requieren `service_role` (incluida la Auth Admin API) |
 | Documentos | `jsPDF` + `jsbarcode` | PDF de facturas (RIDE) y reportes, generados en el cliente |
+| Compresión | `jszip` | Descarga masiva de XML autorizados en un `.zip`, armado 100% en el navegador |
 | Firma electrónica | `xadesjs` + `node-forge` + WebCrypto (Node) | Firma XAdES-BES del XML de factura |
-| Correo transaccional | **Resend**, dominio verificado vía **Cloudflare DNS** | Contraseñas temporales, bienvenida de cajero, stock bajo, factura devuelta, envío de RIDE al cliente |
+| Correo transaccional | **Resend**, dominio verificado vía **Cloudflare DNS** | Contraseñas temporales, bienvenida de usuario nuevo, stock bajo, factura devuelta, envío de RIDE al cliente |
 | Automatización DB → correo | **Supabase Database Webhooks** (`pg_net`) | Dispara un `HTTP POST` a `api/emails/webhook` cuando cambian `product_stock` o `invoices` |
 | Despliegue | GitHub → Vercel (CI/CD automático) | `git push origin main` dispara build y deploy |
 
-No existe backend propio "tradicional": el navegador consulta Supabase directamente, y solo recurre a Vercel Functions para (a) criptografía de certificados, (b) SOAP al SRI, (c) envío de correos con secretos server-side, y (d) mutaciones administrativas que requieren `service_role` (crear usuarios, resetear contraseñas) para que la `anon key` del navegador nunca tenga esos privilegios.
+No existe backend propio "tradicional": el navegador consulta Supabase directamente (con sesión real de Supabase Auth), y solo recurre a Vercel Functions para (a) criptografía de certificados, (b) SOAP al SRI, (c) envío de correos con secretos server-side, y (d) mutaciones administrativas que requieren `service_role` (crear usuarios vía la Auth Admin API, resetear contraseñas, banear/desbanear al desactivar).
 
 ### Variables de entorno
 
@@ -50,22 +52,36 @@ CERT_ENCRYPTION_KEY      # cifra/descifra billing_configs.cert_password (pgcrypt
 
 ---
 
-## 3. Autenticación y roles
+## 3. Autenticación, roles y permisos
 
-**No existe Supabase Auth.** El login es una función propia (`verify_user_password` / `verify_admin_password`, RPC de Postgres) que compara la contraseña recibida contra un hash `bcrypt` en `password_hash`, usando `pgcrypto` (`crypt()`). El navegador guarda el objeto de usuario devuelto (persistido en `localStorage`, restaurado en `restoreAuth()`); no hay JWT ni sesión firmada — cada pantalla vuelve a pedir datos filtrando por el `company_id`/`id` que ya tiene en memoria, reforzado por RLS del lado de la base.
+**Supabase Auth real**, migrado desde un sistema propio de comparación bcrypt sin sesión. Login vía `supabase.auth.signInWithPassword()` (`useStore.js` → `login()`); la sesión (JWT, refresco automático) la maneja `supabase-js`, no `localStorage` a mano. `public.users` es la tabla de "perfil" (rol, `company_id`, `branch_id`, `is_active`), enlazada 1:1 a `auth.users` por `id` (FK). Desactivar un usuario también lo banea a nivel Auth (`ban_duration`), no solo marca `is_active = false` — así una sesión ya emitida no sigue funcionando indefinidamente.
 
-El sistema tiene tres interfaces según el rol del usuario (`App.jsx` decide el layout activo):
+El sistema tiene **dos interfaces** según el rol del usuario (`App.jsx` decide el layout activo):
 
-| Rol | Tabla | Layout | Uso |
-|---|---|---|---|
-| `admin` | `public.users` | `Layout` (panel SaaS) | Super-admin de la plataforma: gestiona empresas clientes, planes, pagos, feature flags. No opera ninguna empresa cliente. |
-| `gerente` | `public.users`, filtrado por `company_id` | `StoreManagerLayout` | Dueño/administrador de una empresa cliente. Acceso completo a su empresa. |
-| `vendedor` / `operario` | `public.users`, filtrado por `company_id` + `branch_id` | `POSLayout` | Cajero. Solo opera el punto de venta de su sucursal asignada. |
-| `contador` | `public.users` | `StoreLayout` (fallback legado) | Contemplado en el esquema; usa un set de pantallas antiguo (`Store*.jsx`) que no ha recibido las mejoras recientes (multi-sucursal, reportes nuevos) — candidato a unificarse con `StoreManagerLayout` o a eliminarse. |
+| Rol | Layout | Uso |
+|---|---|---|
+| `admin` | `Layout` (panel SaaS) | Super-admin de la plataforma: gestiona empresas clientes, planes, pagos, feature flags. No opera ninguna empresa cliente. |
+| `gerente` | `StoreManagerLayout` | Dueño/administrador de una empresa cliente. Acceso completo a su empresa (todos los permisos, ver abajo). |
+| `contador` | `StoreManagerLayout` (mismo layout que gerente) | Rol de solo lectura/exportación a nivel empresa (`branch_id = null`): Contabilidad completa, Facturación en modo lectura+export, Reportes, Clientes en lectura. Su vista de entrada es un dashboard contable (`AccountantDashboard.jsx`), no el comercial del gerente. |
+| `vendedor` / `operario` | `POSLayout` | Cajero. Solo opera el punto de venta de su sucursal asignada. |
 
-Existe también una tabla legada `admin_users` (1 fila) — de una versión anterior del proyecto, sin políticas activas en el flujo actual; el admin real vive en `public.users` con `role = 'admin'`.
+Existe también una tabla legada `admin_users` (1 fila) — de una versión anterior del proyecto, sin uso en el flujo actual; el admin real vive en `public.users` con `role = 'admin'`.
 
-**Soporte / impersonación:** el admin puede "ver como" una empresa cliente (`impersonating` en el store) — muestra un banner ámbar fijo y un botón para volver al panel admin. Útil para depurar o dar soporte sin pedir la contraseña del cliente.
+**Soporte / impersonación:** el admin puede "ver como" el gerente de una empresa cliente (`impersonating` en el store, incluye el set de permisos que se restaura al salir) — banner ámbar fijo + botón para volver. Es un swap de estado local, nunca crea una sesión Auth real del cliente; las queries siguen corriendo con la sesión del admin, que tiene SELECT (no escritura) sobre datos operativos de cualquier empresa.
+
+### Catálogo de permisos (`permissions` / `role_permissions`)
+
+21 claves `modulo.accion` (más `invoices.approve`/`invoices.void`, agregadas para cerrar un hueco de UI — ver más abajo), asignadas por rol:
+
+| Rol | Permisos |
+|---|---|
+| `gerente` | Todos (23) |
+| `vendedor` / `operario` | `pos.operate`, `products.read`, `customers.read`, `customers.write`, `cash_closure.create` |
+| `contador` | `invoices.read`, `invoices.export`, `invoices.resend_sri` (solo reconsulta, no reenvío), `reports.read`, `reports.export`, `accounting.read`, `accounting.export`, `cash_closure.read`, `customers.read`, `products.read` |
+
+`src/lib/permissions.js` (`fetchRolePermissions`, `can()`) carga el set del rol al hacer login/`restoreAuth()` y queda expuesto como `useStore().can(key)`. El sidebar de `StoreManagerLayout` y los botones de acción sensibles (crear/editar producto, enviar RIDE, exportar reportes, aprobar/anular factura) se condicionan con `can()`, no con `role === '...'` — así el mismo código sirve para gerente y contador sin casos especiales. Fail-closed: sin permisos cargados, `can()` deniega todo.
+
+**La protección real vive en RLS (`auth.uid()`), no en la UI.** Las 21 tablas operativas pasaron de `USING(true)` (cualquiera con la `anon key` leía/escribía todo) a políticas reales: `SELECT` scopeado a `company_id = current_company_id()` (o `is_platform_admin()` para el panel admin, siempre solo lectura de datos operativos), escritura restringida además por rol vía `current_role()`. Tres funciones helper `SECURITY DEFINER` (`current_company_id()`, `current_role()`, `is_platform_admin()`) resuelven esto sin recursión de RLS. Verificado con pruebas reales: un vendedor no puede leer ni escribir datos de otra empresa; un contador no puede escribir en ninguna tabla operativa aunque llame la query directo desde la consola del navegador.
 
 ---
 
@@ -80,61 +96,81 @@ Existe también una tabla legada `admin_users` (1 fila) — de una versión ante
 - **`products`** — catálogo compartido por toda la empresa (precio, IVA, descuento, promoción, si el precio incluye IVA).
 - **`product_stock`** — existencia real de cada producto **por sucursal** (modelo "auto-sanador": sin fila = stock 0, no requiere sembrar datos al crear sucursales/productos nuevos).
 - **`customers`** — clientes globales por empresa (no por sucursal), para no duplicar un mismo cliente que compra en más de un local.
-- **`users.branch_id`** — sucursal asignada a un cajero. Sin sucursal asignada, el POS bloquea la venta con un mensaje explícito.
-- **`billing_configs`** — un registro por empresa: certificado de firma (`.p12`, en Storage), su contraseña (cifrada en reposo con `pgcrypto`, clave fuera de la base — ver `CERT_ENCRYPTION_KEY` en §2 y `AUDITORIA_SISTEMA.md`), ambiente SRI, tasa de IVA, régimen contable, texto de pie de recibo. La subida del certificado pasa por `api/sri/upload-certificate.js` (service role), no se escribe directo desde el navegador.
+- **`users.branch_id`** — sucursal asignada a un cajero. `NULL` para `gerente`, `admin` y `contador` (roles a nivel empresa). Sin sucursal asignada, el POS bloquea la venta con un mensaje explícito.
+- **`billing_configs`** — un registro por empresa: certificado de firma (`.p12`, en Storage), su contraseña (cifrada en reposo con `pgcrypto`, clave fuera de la base — ver `CERT_ENCRYPTION_KEY` en §2), ambiente SRI, tasa de IVA, régimen contable, texto de pie de recibo. La subida del certificado pasa por `api/sri/upload-certificate.js` (service role, solo gerente/admin), no se escribe directo desde el navegador.
 
 ---
 
 ## 5. Facturación electrónica SRI — flujo completo
 
 1. **Venta en el POS** (`POSInterface.jsx`): el cajero arma la venta, se calcula IVA/descuentos, se crea la factura en estado **`borrador`** con sus líneas en `invoice_details`, y se descuenta `product_stock` de la sucursal correspondiente.
-2. **Envío al SRI**: dispara `api/sri/submit-invoice.js` (Vercel Function, Node), pasando `invoiceId`/`companyId`/`userId`.
+2. **Envío al SRI**: dispara `api/sri/submit-invoice.js` (Vercel Function, Node; solo `gerente`/`admin`, gateado en la UI por `invoices.approve`), pasando `invoiceId`/`companyId`/`userId`.
 3. Dentro de esa función:
    - Verifica que el `userId` pertenezca a la `companyId` y tenga rol habilitado.
    - Arma el XML oficial del comprobante (versión propia de `open-factura`).
-   - Descarga el certificado `.p12` desde el bucket privado `sri-certificates` de Supabase Storage y lo firma con **XAdES-BES** (`xadesjs`, canonicalización XML real vía WebCrypto).
-   - Genera la **clave de acceso** (49 dígitos) desde un objeto `Date` real.
+   - Descarga el certificado `.p12` desde el bucket privado `sri-certificates`, descifra su contraseña (`get_cert_password`, `pgcrypto` con la clave de `CERT_ENCRYPTION_KEY`), y lo firma con **XAdES-BES** (`xadesjs`, canonicalización XML real vía WebCrypto).
+   - Genera la **clave de acceso** (49 dígitos) desde un objeto `Date` real; se guarda en `invoices.authorization_number` tanto si el SRI autoriza como si rechaza.
    - Envía el XML firmado al webservice de **Recepción** SRI (SOAP). Si es `RECIBIDA`, consulta **Autorización** con reintentos (el SRI tarda unos segundos).
-   - Según el resultado, la factura queda `autorizada` (con XML autorizado y número de autorización) o `devuelta` (con motivo del rechazo, y dispara automáticamente un correo de alerta — ver §7).
-4. **`api/sri/status.js`** — endpoint separado para reconsultar el estado de autorización de una factura ya enviada (reintentos manuales).
+   - Según el resultado, la factura queda `autorizada` (con XML autorizado y número de autorización) o `devuelta` (con motivo del rechazo en `sri_response_message`, y dispara automáticamente un correo de alerta — ver §8).
+4. **Reconsulta de una factura `devuelta`**: `api/sri/reconcile-invoice.js` — consulta de nuevo el estado de autorización usando la clave de acceso ya guardada, **sin volver a firmar ni reenviar**. Cubre el caso real de que el SRI haya recibido el comprobante pero submit-invoice.js haya agotado sus reintentos mientras el SRI seguía "EN PROCESO" — al reconsultar más tarde puede aparecer autorizado. Distinto de `api/sri/status.js`, que solo hace ping a si las URLs del SRI están arriba (no consulta ningún comprobante puntual). Gateado por `invoices.resend_sri`, permitido también para `contador` (puede reconsultar, no reenviar).
 5. **PDF (RIDE)**: generado del lado del cliente con `jsPDF` + `jsbarcode` (código de barras de la clave de acceso), incluye el logo de la empresa. También puede generarse en `base64` server-side para adjuntarlo a un correo.
-6. **Envío del RIDE por correo**: `api/emails/send-invoice-ride.js` adjunta el PDF y lo envía al cliente final; se dispara manualmente desde `InvoiceManagement.jsx` o automáticamente en ambiente de producción.
+6. **Envío del RIDE por correo**: `api/emails/send-invoice-ride.js` (solo `gerente`/`admin`) adjunta el PDF y lo envía al cliente final; se dispara manualmente desde `InvoiceManagement.jsx` o automáticamente en ambiente de producción.
+7. **Descarga de XML autorizados**: individual (`downloadInvoiceXml`) o masiva por rango de fechas/sucursal (`downloadInvoicesXmlZip`, `src/lib/invoiceXmlExport.js`) — arma un `.zip` **100% en el navegador** (sin pasar por ninguna Vercel Function) con un `.xml` por factura autorizada, nombrado con su clave de acceso, más un `resumen.csv`. Gateado por `invoices.export`, accesible desde `InvoiceManagement.jsx` y desde la pestaña "Descarga de XML" de Contabilidad.
 
 Ambientes: cada empresa elige **Pruebas** o **Producción** en `billing_configs.sri_environment`; el endpoint apunta a las URLs SOAP correspondientes automáticamente.
 
 ---
 
-## 6. Módulos del panel del gerente (`StoreManagerLayout`)
+## 6. Módulos del panel del gerente / contador (`StoreManagerLayout`)
 
-- **Dashboard** (`StoreManagerDashboard.jsx`) — métricas del negocio agregadas de todas las sucursales.
-- **POS / Ventas** (`POSInterface.jsx`, dentro de `POSLayout` para cajeros) — pantalla de cobro.
-- **Inventario** (`InventoryManagement.jsx`) — catálogo (precio, descuento, promoción — compartido) y stock por sucursal o vista agregada.
-- **Clientes** (`CustomerManagement.jsx`) — base de clientes global de la empresa.
-- **Facturación / Comprobantes** (`InvoiceManagement.jsx`) — historial, filtro por sucursal y estado SRI, detalle, reenvío al SRI, reenvío del RIDE por correo.
-- **Cajeros** (`CashierManagement.jsx`) — alta de `vendedor`/`operario` con sucursal obligatoria, cambio de contraseña, reasignación de sucursal.
+El sidebar se arma dinámicamente según los permisos del rol (§3) — la lista de abajo es la vista completa del gerente; el contador ve un subconjunto (Contabilidad, Facturas, Reportes, Clientes).
+
+- **Dashboard** — `StoreManagerDashboard.jsx` (gerente: métricas comerciales) o `AccountantDashboard.jsx` (contador: resumen contable del mes en curso — ventas, IVA, comprobantes por estado, últimos cierres de caja; reutiliza los mismos helpers que Contabilidad, sin queries propias).
+- **POS / Ventas** (`POSInterface.jsx`, dentro de `POSLayout` para cajeros) — pantalla de cobro, y **cierre de caja** (`POSSettings.jsx`) — ver §7.
+- **Inventario** (`InventoryManagement.jsx`, permiso `inventory.read`) — catálogo (precio, descuento, promoción — compartido) y stock por sucursal o vista agregada. Solo gerente la ve (contador tiene `products.read` para otros fines, pero no `inventory.read`).
+- **Clientes** (`CustomerManagement.jsx`) — base de clientes global de la empresa, solo lectura (el alta de cliente ocurre en el POS).
+- **Facturación / Comprobantes** (`InvoiceManagement.jsx`) — historial, filtro por sucursal y estado SRI, detalle, descarga de XML, y en modo lectura+export para contador: aprobar/anular (`invoices.approve`/`invoices.void`) y enviar RIDE (`invoices.send_ride`) son solo-gerente.
+- **Contabilidad** (`Accounting.jsx`, permiso `accounting.read`) — nueva sección con 4 pestañas:
+  - **Libro de Ventas** — base imponible 0%/gravada, IVA generado, descuentos, totales por forma de pago y sucursal, conteo por estado. Cálculo en `src/lib/accountingHelpers.js` (`buildSalesLedger`), sobre `invoices.subtotal`/`tax_amount` (la cabecera, no la suma de líneas — ver nota técnica abajo). Ya resta notas de crédito de todos los totales si algún día existen (`invoice_type = 'nota_credito'`). Exportable a PDF/CSV.
+  - **Conciliación SRI** — tarjetas de conteo por estado, listado de no-autorizadas con motivo, botón "Reconsultar estados" (llama `api/sri/reconcile-invoice.js` en serie).
+  - **Cierres de Caja** (`CashClosures.jsx`) — historial de `cash_closures`, filtrable por sucursal/cajero/fecha, diferencias resaltadas, export CSV.
+  - **Descarga de XML** — mismo mecanismo que en Facturas, sobre el rango ya seleccionado en la página.
+- **Usuarios** (`UserManagement.jsx`, permiso `users.manage`) — alta de `vendedor`/`operario` (con sucursal obligatoria) y `contador` (sin sucursal), cambio de contraseña, reasignación de sucursal.
 - **Sucursales** (`Branches.jsx`) — CRUD de sucursales y sus puntos de venta.
 - **Reportes** (`Reports.jsx`) — 7 tipos (resumen, ventas, productos, clientes, cajeros, inventario, impuestos), filtro de fechas/sucursal, gráficos propios (`ReportCharts.jsx`, sin librería externa), exportación a PDF y CSV (BOM UTF-8 para Excel).
 - **Configuración** (`StoreSettings.jsx`) — datos de la empresa (logo) — y **Facturación SRI** (`BillingConfiguration.jsx`) — certificado, ambiente, tasa de IVA.
 
+**Nota técnica sobre el Libro de Ventas:** se detectó con datos reales que `invoices.subtotal`/`tax_amount` (cabecera) no siempre coincide centavo a centavo con la suma de sus `invoice_details` (descuentos con pequeñas diferencias de redondeo). El cálculo usa la cabecera como fuente de verdad de los totales (es lo que realmente se firmó y envió al SRI) y las líneas solo para determinar la proporción 0%/gravada — así el Libro de Ventas cuadra siempre contra el reporte "Impuestos/SRI" existente, verificado con datos reales.
+
 ---
 
-## 7. Panel de administración SaaS (`Layout`, rol `admin`)
+## 7. Cierre de caja / arqueo
+
+Tabla `cash_closures`, un registro **inmutable** por cierre (sin política RLS de `UPDATE` ni `DELETE` para ningún rol — correcciones se anotan en un cierre nuevo, no editando el viejo).
+
+- El cajero (`POSSettings.jsx`) ve lo esperado — calculado desde sus facturas en su punto de venta desde su último cierre (o desde que se creó su login, si nunca cerró caja), agrupado por forma de pago (`src/lib/cashClosureHelpers.js`) — ingresa lo contado, ve la diferencia en vivo, y registra. Solo puede insertar/leer sus propios cierres.
+- Gerente y contador leen todos los cierres de su empresa (`Contabilidad → Cierres de Caja`); contador sin escritura.
+- No se implementó el bloqueo de venta por "cierre pendiente de más de 24h" (opcional en la spec original): el diseño de un solo paso nunca produce un cierre realmente "pendiente" que bloquear.
+
+---
+
+## 8. Panel de administración SaaS (`Layout`, rol `admin`)
 
 - **Dashboard** (`Dashboard.jsx`) — visión general de la plataforma.
-- **Empresas** (`Companies.jsx`, `CompanyDetail.jsx`, `CompanyEdit.jsx`, `CompanyWizard.jsx`) — listado con **health score** por empresa (`healthScore.js`: puntaje 0-100 derivado de estado de suscripción, certificado en producción, sucursales configuradas, consumo de facturas vs. límite del plan, vencimiento de trial — calculado en el cliente, no persistido), alta guiada, edición de identidad fiscal, checklist de onboarding (certificado, sucursal con POS, cajero, primera factura autorizada), cambio de plan, suspensión/reactivación con motivo.
-  - **Pestaña de usuarios** (`CompanyUsersTab.jsx`, nueva) — el admin puede, desde el detalle de una empresa: crear el gerente si falta, agregar/gestionar cajeros, **resetear contraseñas** y **activar/desactivar** cualquier usuario de la empresa — todo vía endpoints `service_role` (`api/admin/reset-user-password.js`, `api/admin/set-user-active.js`) para que la lógica sensible nunca corra con la `anon key`.
+- **Empresas** (`Companies.jsx`, `CompanyDetail.jsx`, `CompanyEdit.jsx`, `CompanyWizard.jsx`) — listado con **health score** por empresa (`healthScore.js`), alta guiada, edición de identidad fiscal, checklist de onboarding, cambio de plan, suspensión/reactivación con motivo.
+  - **Pestaña de usuarios** (`CompanyUsersTab.jsx`) — el admin puede, desde el detalle de una empresa: crear el gerente si falta, agregar/gestionar `vendedor`/`operario`/`contador`, **resetear contraseñas** y **activar/desactivar** cualquier usuario — todo vía endpoints `service_role` (`api/admin/create-user.js`, `api/admin/reset-user-password.js`, `api/admin/set-user-active.js`). Las altas quedan registradas en `activity_log`.
 - **Planes** (`Subscriptions.jsx`) — catálogo de planes comerciales y sus precios/límites/features.
-- **Métricas** (`Metrics.jsx`, nueva) — panel agregado de indicadores de la plataforma (MRR, empresas activas, uso de facturación, etc.).
-- **Pagos** (`Payments.jsx`, nuevo) — dashboard dedicado de cobros: total recaudado histórico y del mes, empresas al día vs. pendientes, último pago por empresa, y alta manual de un pago vía `PaymentModal.jsx` (modal estructurado, reemplaza el registro ad-hoc anterior).
-- **Alertas** — generadas al cargar datos (`generateAlerts`), no persistidas: empresa en producción sin certificado, suscripción vencida/por vencer, consumo alto de comprobantes.
-- **Actividad** (`Activity.jsx`) — feed de acciones administrativas (alta de empresa, suspensión, cambio de plan, pago registrado, etc.), leído de `activity_log`.
+- **Métricas** (`Metrics.jsx`) — panel agregado de indicadores de la plataforma.
+- **Pagos** (`Payments.jsx`) — dashboard de cobros: total recaudado histórico y del mes, empresas al día vs. pendientes, alta manual de un pago vía `PaymentModal.jsx`.
+- **Alertas** — generadas al cargar datos (`generateAlerts`), no persistidas.
+- **Actividad** (`Activity.jsx`) — feed de acciones administrativas, leído de `activity_log`.
 - **Marca** (`BrandConfig.jsx`) — personalización de color/branding del panel.
 
 ---
 
-## 8. Sistema de correo transaccional (Resend)
+## 9. Sistema de correo transaccional (Resend)
 
-Servicio centralizado en `api/emails/*` y `api/admin/*` (Vercel Functions, Node), con disparos automáticos vía **Database Webhooks de Supabase** (`pg_net`) para no depender de que el frontend esté abierto.
+Servicio centralizado en `api/emails/*` y `api/admin/*` (Vercel Functions, Node), con disparos automáticos vía **Database Webhooks de Supabase** (`pg_net`).
 
 ```
 Frontend (React) ──► /api/emails/*        ─┐
@@ -145,18 +181,16 @@ Frontend (admin)  ─► /api/admin/create-*  ─┘
 | Evento | Disparo | Destinatario | Plantilla |
 |---|---|---|---|
 | Contraseña temporal (alta de gerente) | `api/admin/create-gerente.js` | Gerente nuevo | `tempPasswordEmail` |
-| Bienvenida cajero | `api/admin/create-cashier.js` | Vendedor/operario nuevo | `welcomeCashierEmail` |
+| Bienvenida usuario (vendedor/operario/contador) | `api/admin/create-user.js` | Usuario nuevo | `welcomeCashierEmail` (genérica, `roleLabel` variable — no se duplicó una plantilla nueva) |
 | Stock bajo | Trigger DB en `product_stock` → webhook | `companies.email` / `admin_email` | `lowStockEmail` |
 | Factura devuelta por el SRI | Trigger DB en `invoices` → webhook | Empresa | `invoiceReturnedEmail` |
 | Nueva factura emitida (RIDE adjunto) | `api/emails/send-invoice-ride.js` | Cliente (`customers.email`) | `newInvoiceEmail` |
 
-**Seguridad:** los endpoints públicos validan contra la BD con `service_role` — el navegador nunca elige el destinatario. Los webhooks se autentican con un secreto compartido (`x-webhook-secret`, comparación en tiempo constante). `create_company_gerente` fue revocada de `anon`/`authenticated`; solo es invocable desde el endpoint server-side que verifica que quien llama es admin. Ningún secreto (Resend/Supabase) viaja al navegador — ninguna de esas variables lleva prefijo `VITE_`.
-
-El trigger de stock bajo solo dispara al **cruzar** el mínimo hacia abajo (no en cada venta mientras siga bajo), y solo si `min_stock > 0`, para evitar spam.
+**Seguridad:** los endpoints públicos validan contra la BD con `service_role` y verifican el rol de quien llama (todos los endpoints sensibles de `api/sri/*`/`api/emails/*` exigen `gerente`/`admin`, salvo la reconsulta SRI que también admite `contador`) — el navegador nunca elige el destinatario. Los webhooks se autentican con un secreto compartido. Ningún secreto viaja al navegador.
 
 ---
 
-## 9. Estructura de carpetas
+## 10. Estructura de carpetas
 
 ```
 POST-PLAT/
@@ -164,37 +198,43 @@ POST-PLAT/
 │   ├── sri/                       # Firma y envío al SRI (Node/Vercel)
 │   │   ├── accessKey.js            # Clave de acceso (49 dígitos)
 │   │   ├── xadesSign.js            # Firma XAdES-BES
-│   │   ├── submit-invoice.js       # Orquesta el envío completo
-│   │   └── status.js               # Reconsulta estado de autorización
+│   │   ├── submit-invoice.js       # Orquesta el envío completo (solo gerente/admin)
+│   │   ├── reconcile-invoice.js    # Reconsulta una factura 'devuelta' puntual (gerente/admin/contador)
+│   │   ├── status.js               # Ping de disponibilidad de las URLs del SRI (no consulta comprobantes)
+│   │   └── upload-certificate.js   # Sube+cifra el certificado (service role, solo gerente/admin)
 │   ├── emails/                     # Notificaciones transaccionales (Resend)
-│   │   ├── _lib.js                 # Cliente Resend + Supabase service-role + verificación de secreto
-│   │   ├── _templates.js           # 5 plantillas HTML responsivas
-│   │   ├── webhook.js              # Receptor de Database Webhooks (stock bajo, factura devuelta)
-│   │   └── send-invoice-ride.js    # Adjunta y envía el RIDE al cliente
+│   │   ├── _lib.js / _templates.js / webhook.js
+│   │   └── send-invoice-ride.js    # Solo gerente/admin
 │   └── admin/                      # Mutaciones sensibles con service_role
 │       ├── create-gerente.js
-│       ├── create-cashier.js
-│       ├── reset-user-password.js
-│       └── set-user-active.js
+│       ├── create-user.js          # vendedor/operario/contador (generaliza el viejo create-cashier.js)
+│       ├── reset-user-password.js  # admin → cualquier usuario
+│       ├── reset-cashier-password.js # gerente → vendedor/operario/contador de su empresa
+│       └── set-user-active.js      # también banea/desbanea a nivel Auth
 ├── src/
 │   ├── components/
-│   │   ├── layout/                 # Layout + Sidebar + TopBar por rol (admin / gerente / cajero / contador-legado)
-│   │   ├── pages/                  # Una vista por pantalla
-│   │   └── ui/                     # Componentes reutilizables (Modal, ConfirmDialog, PaymentModal, ReportCharts, etc.)
+│   │   ├── layout/                 # Layout + Sidebar + TopBar por rol (admin / gerente+contador / cajero)
+│   │   ├── pages/                  # Una vista por pantalla (incluye Accounting.jsx, CashClosures.jsx,
+│   │   │                           # AccountantDashboard.jsx, UserManagement.jsx)
+│   │   └── ui/                     # Componentes reutilizables (Modal, ConfirmDialog, PaymentModal, ReportCharts, Tabs, etc.)
 │   ├── lib/
-│   │   ├── supabase.js             # Cliente Supabase (anon key)
+│   │   ├── supabase.js             # Cliente Supabase (anon key + sesión Auth)
 │   │   ├── supabaseHelpers.js      # Todas las queries/RPCs de la app
+│   │   ├── permissions.js          # Catálogo de permisos: fetchRolePermissions(), can()
+│   │   ├── accountingHelpers.js    # Libro de ventas + conciliación SRI (puro, testeable)
+│   │   ├── cashClosureHelpers.js   # Cálculo de esperado/diferencia de un cierre de caja (puro)
+│   │   ├── invoiceXmlExport.js     # Descarga individual/masiva de XML (jszip, 100% cliente)
 │   │   ├── transforms.js           # DB row → shape que usa la UI
-│   │   ├── healthScore.js          # Puntaje de salud + checklist de onboarding por empresa (derivado, no persistido)
+│   │   ├── healthScore.js          # Puntaje de salud + checklist de onboarding por empresa
 │   │   ├── planLimits.js           # Límites de plan + feature flags efectivos
 │   │   ├── reportsHelpers.js / csvExport.js / reportPdfGenerator.js
 │   │   ├── rideGenerator.js        # PDF de factura (RIDE), soporta salida base64
 │   │   └── alerts.js / dates.js / password.js / ruc.js / certValidation.js
-│   ├── store/useStore.js           # Estado global Zustand (única fuente de verdad del frontend)
+│   ├── store/useStore.js           # Estado global Zustand + sesión Auth + permisos
 │   ├── data/                       # Datos de demo — no usados, candidatos a borrar
 │   └── App.jsx / main.jsx
 ├── supabase/migrations/            # Migraciones SQL aplicadas vía MCP
-├── DATABASE_SCHEMA_V2.sql          # Esquema de referencia (parcialmente desactualizado frente al real)
+├── DATABASE_SCHEMA_V2.sql          # Esquema de referencia (desactualizado frente al real)
 ├── EMAILS_SETUP.md                 # Guía completa del sistema de correos
 ├── AUDITORIA_SISTEMA.md            # Riesgos y deuda técnica
 ├── .mcp.json                       # Config del MCP de Supabase para Claude Code
@@ -203,41 +243,45 @@ POST-PLAT/
 
 ---
 
-## 10. Base de datos — tablas actuales (21)
+## 11. Base de datos — tablas actuales (22)
 
 | Grupo | Tablas |
 |---|---|
 | Plataforma / SaaS | `companies`, `plans`, `feature_flags`, `company_feature_overrides` |
-| Identidad y permisos | `users`, `admin_users` *(legado, sin uso real)*, `permissions`, `role_permissions` *(sin filas — no se usa aún para autorización granular)* |
+| Identidad y permisos | `users` (perfil, FK a `auth.users`), `admin_users` *(legado, sin uso real)*, `permissions`, `role_permissions` *(activas desde esta sesión — catálogo `modulo.accion`, ver §3)* |
 | Sucursales | `branches`, `point_of_sales`, `product_stock` |
 | Catálogo y clientes | `products`, `customers` |
 | Facturación | `invoices`, `invoice_details`, `billing_configs`, `payment_methods` |
+| Contabilidad | `cash_closures` *(nueva — arqueo de caja, inmutable)* |
 | Cobros SaaS | `payments` (cobros a las empresas clientes por su suscripción) |
 | Movimientos | `inventory_movements` *(esquema presente, sin uso activo)* |
-| Auditoría | `audit_log` *(esquema presente, sin uso activo)*, `activity_log` (feed real del panel admin) |
+| Auditoría | `audit_log` *(esquema presente, sin uso activo)*, `activity_log` (feed real del panel admin, incluye altas de usuario) |
 
-Storage buckets: `sri-certificates` (privado, certificados `.p12`), `company-logos` (público, logos de empresas clientes).
+Además, esquema `auth` (Supabase Auth): `auth.users` es ahora la fuente de verdad de credenciales, `public.users.id` es FK a `auth.users.id`.
 
-RLS está habilitado en las 21 tablas. No hay Edge Functions de Supabase en uso (toda la lógica serverless vive en Vercel Functions, ver §2).
+Storage buckets: `sri-certificates` (privado, certificados `.p12` — subida solo vía endpoint service-role), `company-logos` (público, logos de empresas clientes).
 
----
-
-## 11. Roles válidos (enum `user_role`)
-
-| Rol | Uso típico |
-|---|---|
-| `admin` | Super-admin de la plataforma SaaS |
-| `gerente` | Dueño/administrador de una empresa cliente |
-| `vendedor` | Cajero, atado a una sucursal |
-| `operario` | Igual que `vendedor` (variante de nombre) |
-| `contador` | Contemplado en el esquema; hoy cae en el layout legado `StoreLayout` |
+RLS está habilitado en las 22 tablas de `public`, con políticas reales basadas en `auth.uid()` (no `USING(true)`) en las tablas operativas. No hay Edge Functions de Supabase en uso (toda la lógica serverless vive en Vercel Functions, ver §2).
 
 ---
 
-## 12. Notas para agentes AI que trabajen en este repo
+## 12. Roles válidos (enum `user_role`)
 
-- Al modificar la base de datos, usar siempre el MCP de Supabase (ver `CLAUDE.md`) y revisar/actualizar políticas RLS.
-- No se usa Supabase Auth: cualquier lógica de login o creación de usuarios pasa por RPCs custom o por los endpoints `api/admin/*` con `service_role` — nunca exponer una RPC sensible directo a `anon`/`authenticated`.
+| Rol | Uso típico | `branch_id` |
+|---|---|---|
+| `admin` | Super-admin de la plataforma SaaS | `NULL` |
+| `gerente` | Dueño/administrador de una empresa cliente | `NULL` |
+| `contador` | Solo lectura/exportación contable de una empresa | `NULL` |
+| `vendedor` | Cajero, atado a una sucursal | requerido |
+| `operario` | Igual que `vendedor` (variante de nombre) | requerido |
+
+---
+
+## 13. Notas para agentes AI que trabajen en este repo
+
+- Al modificar la base de datos, usar siempre el MCP de Supabase (ver `CLAUDE.md`) y revisar/actualizar políticas RLS — las tablas operativas usan `auth.uid()` real, no `USING(true)`.
+- El login/sesión es Supabase Auth real (`supabase.auth.signInWithPassword`, `useStore.js`). La creación de usuarios pasa por la Auth Admin API desde endpoints `api/admin/*` con `service_role` (`auth.admin.createUser`) — nunca insertar directo en `public.users` sin crear primero el `auth.users` correspondiente (hay una FK que lo exige).
+- La UI se condiciona con `can(permiso)` (`src/lib/permissions.js`), no con `role === '...'` — al agregar una pantalla o botón nuevo, sumar su permiso al catálogo (`permissions`/`role_permissions`) en vez de hardcodear el rol.
 - La firma XML (`xadesjs`) es frágil: no modificar las rutinas de canonicalización salvo estrictamente necesario, el SRI rechaza firmas inválidas sin mensajes claros.
-- Cualquier paquete Node nuevo en `api/*` debe ser compatible con el runtime y límites de tamaño/ejecución de Vercel Functions (~4.5 MB de body, por ejemplo, relevante para el envío de RIDE en base64).
+- Cualquier paquete Node nuevo en `api/*` debe ser compatible con el runtime y límites de tamaño/ejecución de Vercel Functions (~4.5 MB de body).
 - Para contexto de riesgos conocidos y roadmap, revisar `AUDITORIA_SISTEMA.md` y `MEJORAS_ADMIN_SAAS.md` antes de asumir que algo es un bug nuevo.

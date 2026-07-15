@@ -27,7 +27,7 @@ function credentialsMessage(name, email, password, emailStatus) {
 // used elsewhere (api/admin/*), so passwords get emailed and the underlying
 // RPCs stay unreachable with just the public anon key.
 export default function CompanyUsersTab({ company }) {
-  const { currentUser, showToast, openConfirm, plans } = useStore();
+  const { currentUser, showToast, openConfirm, plans, addActivityEvent } = useStore();
   const plan = plans.find(p => p.id === company.planId);
 
   const [users, setUsers] = useState([]);
@@ -92,10 +92,11 @@ export default function CompanyUsersTab({ company }) {
       });
       closeAddCajero();
       await load();
-      openConfirm('Cajero creado', credentialsMessage(name, email, tempPassword, result?.emailStatus), () => {});
+      await addActivityEvent(`Usuario ${ROLE_LABELS[newCajero.role] || newCajero.role} creado`, company.id, company.nombreComercial, `${name} (${email})`);
+      openConfirm('Usuario creado', credentialsMessage(name, email, tempPassword, result?.emailStatus), () => {});
     } catch (error) {
       console.error('Error creating cashier:', error);
-      showToast('error', error.message || 'Error al crear el cajero');
+      showToast('error', error.message || 'Error al crear el usuario');
     } finally {
       setCreatingCajero(false);
     }
@@ -120,6 +121,7 @@ export default function CompanyUsersTab({ company }) {
       });
       closeAddGerente();
       await load();
+      await addActivityEvent('Usuario Gerente creado', company.id, company.nombreComercial, `${name} (${email})`);
       openConfirm('Gerente creado', credentialsMessage(name, email, tempPassword, result?.emailStatus), () => {});
     } catch (error) {
       console.error('Error creating gerente:', error);
