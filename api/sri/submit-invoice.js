@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { signXml } from './xadesSign.js';
-import { generateAccessKey } from './accessKey.js';
+import { signXml } from './_xadesSign.js';
+import { generateAccessKey } from './_accessKey.js';
 
 const SRI_URLS = {
   test: {
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  // signXml is our own local implementation (see xadesSign.js) - open-factura's version
+  // signXml is our own local implementation (see _xadesSign.js) - open-factura's version
   // uses `import * as forge from "node-forge"`, which under native Node.js ESM/CJS interop
   // leaves forge.util/forge.pki/etc. undefined (only works when bundled by esbuild/webpack).
   let generateInvoiceXml, documentReception, documentAuthorization;
@@ -272,7 +272,7 @@ export default async function handler(req, res) {
     };
 
     // Generate the access key directly from the real Date object (not the dd/mm/yyyy
-    // string), see accessKey.js for why - avoids open-factura's date-transposition bug
+    // string), see _accessKey.js for why - avoids open-factura's date-transposition bug
     const accessKey = generateAccessKey({
       date: issueDate,
       codDoc: invoiceInput.infoTributaria.codDoc,
