@@ -1,6 +1,6 @@
 # 🔍 Auditoría del Sistema - POST-PLAT
 
-**Fecha:** 2026-07-09 (actualizado 2026-07-15 — ver [Actualización 2026-07-15](#actualización-2026-07-15))
+**Fecha:** 2026-07-09 (actualizado 2026-07-15 — ver [Actualización 2026-07-15](#actualización-2026-07-15), [Fase 0 — Supabase Auth](#actualización-2026-07-15-fase-0--supabase-auth) y [Personalización visual + incidente de login](#actualización-2026-07-15-personalización-visual--incidente-de-login))
 **Alcance:** Base de datos (Supabase/Postgres), API serverless (`api/sri/*`), frontend (React/Vite), configuración y despliegue.
 **Método:** Supabase Advisors (security + performance), lectura directa de `pg_policies`/`information_schema`, pruebas reales contra la API REST con la anon key (no solo simulación con rol privilegiado), lectura de código fuente y del historial de cambios de esta sesión.
 
@@ -72,6 +72,24 @@ Migración real a Supabase Auth, hecha como prerequisito de un proyecto de permi
 - `update_user_branch` ganó verificación real de quién llama (antes cualquiera que supiera `company_id`+`user_id`+`branch_id` podía reasignar — no estaba en la lista original de RPCs "ya bien resueltas").
 
 **Qué NO se tocó (seguimiento pendiente):** `api/sri/submit-invoice.js`, `api/sri/status.js`, `api/sri/upload-certificate.js`, `api/emails/send-invoice-ride.js` siguen validando un `userId` de body contra la tabla `users` con `service_role`, no un JWT real. Es el mismo nivel de seguridad que ya tenían (no es una regresión), pero ahora que hay sesiones reales, migrarlos a `Authorization: Bearer` + `supabase.auth.getUser()` cerraría la última pieza de este mismo problema.
+
+---
+
+## Actualización 2026-07-15 (Personalización visual + incidente de login)
+
+Proyecto de personalización visual completo (4 temas × 6 paletas del POS + modo claro/oscuro del panel gerente/contador — ver `RESUMEN_SISTEMA.md` §7). Sin hallazgos de seguridad nuevos más allá de las decisiones ya documentadas ahí (RPCs `SECURITY DEFINER` — `set_company_ui_settings`, `set_ui_preferences` — en vez de políticas RLS directas, mismo patrón que `record_login`/`get_cert_password`; verificadas en vivo antes de darlas por buenas). Sí produjo un incidente real en producción, ya resuelto:
+
+### 9. Login roto para el 100% de los usuarios por un `GRANT` de columna faltante (CRÍTICO — resuelto)
+
+Una migración de esa fase (`20260718_add_user_ui_preferences.sql`) agregó `users.ui_preferences` sin otorgarle `SELECT` a `authenticated`. `public.users` restringe `SELECT` con una **lista blanca de columnas** (no un grant de tabla completa) — a propósito, para mantener `password_hash`/`failed_login_attempts`/`locked_until` ocultas del cliente aunque sí sean escribibles vía RPC. `loginWithPassword()`/`restoreAuth()` (`supabaseHelpers.js`, `useStore.js`) seleccionan la fila completa del usuario, incluida `ui_preferences`, como parte del login — sin el grant, esa consulta **entera** fallaba con `permission denied for table users` (código Postgres `42501`). El código atrapa cualquier error de esa consulta con el mismo mensaje genérico ("Tu usuario está desactivado. Contacta a tu administrador."), sin distinguir "no tengo permiso para leer esto" de "esta cuenta está realmente desactivada" — así que el síntoma reportado fue login roto para **cualquier** usuario, no uno puntual.
+
+**Cómo se confirmó y corrigió:** reproducido con un usuario descartable contra la API REST real (`anon key` + `signInWithPassword`, no un rol privilegiado) — el mismo `select` fallaba exactamente así con `ui_preferences` en la lista de columnas, y funcionaba perfecto sin ella, confirmando que ninguna cuenta estaba realmente desactivada. Corregido con `GRANT SELECT (ui_preferences) ON public.users TO authenticated` (quirúrgico, una sola columna) — reverificado después que `password_hash`/`failed_login_attempts`/`locked_until` siguen bloqueadas (sin regresión de seguridad) y que el login funciona de nuevo, con el mismo usuario descartable.
+
+**Por qué pasó pese a que esa fase sí probó en vivo antes de cerrar:** la RPC `set_ui_preferences` se probó contra Supabase real antes de darla por buena — pero esa prueba usa `supabase.rpc(...)`, un camino distinto al `SELECT` directo sobre `users` que hace el login. Una RPC `SECURITY DEFINER` no depende de los grants de columna del rol que la llama; un `SELECT` normal sí. Verificar el camino de escritura nuevo no verificó el camino de lectura ya existente que la columna nueva afectaba de rebote.
+
+**Riesgo sistémico que queda (patrón a vigilar, no un bug puntual):** en esta base, `INSERT`/`UPDATE`/`REFERENCES` sobre `users` parecen aplicar por tabla completa (una columna nueva los hereda automáticamente), pero `SELECT` es una lista blanca explícita por columna — fácil de olvidar precisamente porque las otras tres operaciones sí "simplemente funcionan". No hay hoy ningún check automatizado que lo detecte antes de producción.
+
+**Corrección sugerida para que no se repita:** antes de cerrar cualquier migración que agregue una columna a `users` (o a otra tabla con este mismo patrón — verificable con `select * from information_schema.column_privileges where grantee = 'authenticated' and table_name = '<tabla>'`), probar el `SELECT` real que usará el frontend con la `anon key`, no solo el flujo de escritura/RPC nuevo. Candidato de bajo costo para la hoja de ruta: un smoke test de login real (anon key + `signInWithPassword` + el `select` exacto de `loginWithPassword()`) corrido después de cada migración que toque `users` o `companies`, antes de darla por desplegada.
 
 ---
 
