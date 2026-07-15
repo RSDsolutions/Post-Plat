@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, BarChart3, FileText, Users, Settings, LogOut, Building2, Receipt, X, MapPin } from 'lucide-react';
+import { LayoutDashboard, Package, BarChart3, FileText, Users, Settings, LogOut, Building2, Receipt, X, MapPin, Calculator } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 
 export default function StoreManagerSidebar() {
@@ -14,6 +14,7 @@ export default function StoreManagerSidebar() {
     { id: 'branches', label: 'Sucursales', icon: MapPin, permission: 'branches.manage' },
     { id: 'reports', label: 'Reportes', icon: BarChart3, permission: 'reports.read' },
     { id: 'invoices', label: 'Facturas', icon: FileText, permission: 'invoices.read' },
+    { id: 'accounting', label: 'Contabilidad', icon: Calculator, permission: 'accounting.read' },
     { id: 'inventory', label: 'Inventario', icon: Package, permission: 'products.read' },
     { id: 'customers', label: 'Clientes', icon: Users, permission: 'customers.read' },
     { id: 'cashiers', label: 'Cajas', icon: Building2, permission: 'users.manage' },

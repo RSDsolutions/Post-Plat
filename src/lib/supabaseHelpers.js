@@ -571,6 +571,21 @@ export async function resetCashierPassword({ companyId, userId, newPassword, cal
   return result.user;
 }
 
+// Reconsulta el estado de una factura 'devuelta' contra el SRI sin
+// reenviarla - ver api/sri/reconcile-invoice.js para por qué esto no podía
+// ser simplemente api/sri/status.js (ese endpoint no consulta comprobantes,
+// solo hace ping a las URLs del SRI).
+export async function reconcileInvoiceStatus({ invoiceId, companyId, userId }) {
+  const response = await fetch('/api/sri/reconcile-invoice', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invoiceId, companyId, userId })
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Error al reconsultar la factura');
+  return result;
+}
+
 // Admin-side password reset for any company user (gerente included) - goes
 // through api/admin/reset-user-password.js (service role), which emails the
 // new temp password to the user. The underlying RPC is not anon-executable.
