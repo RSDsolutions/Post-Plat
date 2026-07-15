@@ -8,17 +8,20 @@ import { downloadReportCsv } from '../../lib/csvExport.js';
 import { generateReportPdf } from '../../lib/reportPdfGenerator.js';
 import { downloadInvoicesXmlZip } from '../../lib/invoiceXmlExport.js';
 import Tabs from '../ui/Tabs.jsx';
+import CashClosures from './CashClosures.jsx';
 
 const KPI_TEXT_CLASSES = { emerald: 'text-emerald-400', blue: 'text-blue-400', amber: 'text-amber-400', purple: 'text-purple-400', pink: 'text-pink-400', red: 'text-red-400' };
 
-const ACCOUNTING_TABS = [
-  { id: 'ledger', label: 'Libro de Ventas' },
-  { id: 'reconciliation', label: 'Conciliación SRI' },
-  { id: 'xml', label: 'Descarga de XML' }
+const ALL_ACCOUNTING_TABS = [
+  { id: 'ledger', label: 'Libro de Ventas', permission: null },
+  { id: 'reconciliation', label: 'Conciliación SRI', permission: null },
+  { id: 'cashClosures', label: 'Cierres de Caja', permission: 'cash_closure.read' },
+  { id: 'xml', label: 'Descarga de XML', permission: null }
 ];
 
 export default function Accounting() {
   const { currentUser, showToast, can } = useStore();
+  const ACCOUNTING_TABS = ALL_ACCOUNTING_TABS.filter(t => !t.permission || can(t.permission));
   const [tab, setTab] = useState('ledger');
   const [datePreset, setDatePreset] = useState('month');
   const [customStart, setCustomStart] = useState('');
@@ -336,6 +339,8 @@ export default function Accounting() {
                 )}
               </>
             )}
+
+            {tab === 'cashClosures' && <CashClosures />}
 
             {tab === 'xml' && (
               <>

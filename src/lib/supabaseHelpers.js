@@ -183,6 +183,76 @@ export async function resolveCashierPointOfSale(userId) {
   return { branch, pointOfSale: posRows[0] };
 }
 
+// Punto de partida del turno a cerrar: el closed_at del último cierre de
+// este cajero en este punto de venta, o si nunca cerró caja, la fecha en que
+// se creó su login (no puede haber vendido antes de eso).
+export async function resolveClosurePeriodStart(userId, pointOfSaleId) {
+  const { data: lastClosure, error: closureError } = await supabase
+    .from('cash_closures')
+    .select('closed_at')
+    .eq('user_id', userId)
+    .eq('point_of_sale_id', pointOfSaleId)
+    .order('closed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (closureError) throw new Error(closureError.message);
+  if (lastClosure) return lastClosure.closed_at;
+
+  const { data: user, error: userError } = await supabase.from('users').select('created_at').eq('id', userId).single();
+  if (userError) throw new Error(userError.message);
+  return user.created_at;
+}
+
+// Facturas del turno a cerrar: de ESTE cajero, en ESTE punto de venta, desde
+// el último cierre - las anuladas no cuentan (nunca hubo dinero real de por
+// medio, igual que en el resto de los reportes de este proyecto).
+export async function fetchInvoicesForClosure(userId, pointOfSaleId, sinceISO) {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('id, total_amount, payment_method, issue_date, status')
+    .eq('user_id', userId)
+    .eq('pos_id', pointOfSaleId)
+    .neq('status', 'anulada')
+    .gt('issue_date', sinceISO)
+    .order('issue_date', { ascending: true });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+// El insert lo hace el propio cajero (RLS: user_id = auth.uid(), rol
+// vendedor/operario) - inmutable, no hay updateCashClosure.
+export async function createCashClosure({ companyId, branchId, pointOfSaleId, userId, openedAt, expectedTotals, countedTotals, difference, notes }) {
+  const { data, error } = await supabase
+    .from('cash_closures')
+    .insert({
+      company_id: companyId,
+      branch_id: branchId,
+      point_of_sale_id: pointOfSaleId,
+      user_id: userId,
+      opened_at: openedAt,
+      expected_totals: expectedTotals,
+      counted_totals: countedTotals,
+      difference,
+      notes: notes || null
+    })
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// Historial de cierres para la vista de lectura del gerente/contador -
+// embebe cajero/sucursal/POS para no hacer un join manual en el componente.
+export async function fetchCashClosures(companyId) {
+  const { data, error } = await supabase
+    .from('cash_closures')
+    .select('*, users(name, email), branches(name), point_of_sales(nombre)')
+    .eq('company_id', companyId)
+    .order('closed_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
 // Mirrors getNextInvoiceSequential's read-then-write pattern, scoped to a
 // single point of sale instead of the whole company - each POS now owns its
 // own SRI sequential counter.
