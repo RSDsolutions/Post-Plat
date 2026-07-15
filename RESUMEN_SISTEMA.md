@@ -1,6 +1,6 @@
 # 📘 Resumen del Sistema — POST-PLAT
 
-**Fecha de esta versión:** 2026-07-15
+**Fecha de esta versión:** 2026-07-15 (actualizado: personalización visual — temas del POS y modo claro/oscuro del panel)
 
 > Este documento explica **qué es el sistema y cómo funciona hoy**: infraestructura, base de datos, roles, módulos y flujos principales. Para riesgos conocidos y deuda técnica ver [`AUDITORIA_SISTEMA.md`](./AUDITORIA_SISTEMA.md); para el detalle del sistema de correos ver [`EMAILS_SETUP.md`](./EMAILS_SETUP.md).
 
@@ -138,13 +138,44 @@ El sidebar se arma dinámicamente según los permisos del rol (§3) — la lista
 - **Usuarios** (`UserManagement.jsx`, permiso `users.manage`) — alta de `vendedor`/`operario` (con sucursal obligatoria) y `contador` (sin sucursal), cambio de contraseña, reasignación de sucursal.
 - **Sucursales** (`Branches.jsx`) — CRUD de sucursales y sus puntos de venta.
 - **Reportes** (`Reports.jsx`) — 7 tipos (resumen, ventas, productos, clientes, cajeros, inventario, impuestos), filtro de fechas/sucursal, gráficos propios (`ReportCharts.jsx`, sin librería externa), exportación a PDF y CSV (BOM UTF-8 para Excel).
-- **Configuración** (`StoreSettings.jsx`) — datos de la empresa (logo) — y **Facturación SRI** (`BillingConfiguration.jsx`) — certificado, ambiente, tasa de IVA.
+- **Configuración** (`StoreSettings.jsx`) — datos de la empresa (logo), **Apariencia del POS** (`AppearanceSettings.jsx`, ver §7.1) — y **Facturación SRI** (`BillingConfiguration.jsx`) — certificado, ambiente, tasa de IVA.
+- **Modo claro/oscuro** — toggle personal en el TopBar del panel, independiente del tema del POS — ver §7.2.
 
 **Nota técnica sobre el Libro de Ventas:** se detectó con datos reales que `invoices.subtotal`/`tax_amount` (cabecera) no siempre coincide centavo a centavo con la suma de sus `invoice_details` (descuentos con pequeñas diferencias de redondeo). El cálculo usa la cabecera como fuente de verdad de los totales (es lo que realmente se firmó y envió al SRI) y las líneas solo para determinar la proporción 0%/gravada — así el Libro de Ventas cuadra siempre contra el reporte "Impuestos/SRI" existente, verificado con datos reales.
 
 ---
 
-## 7. Cierre de caja / arqueo
+## 7. Personalización visual (temas del POS y modo claro/oscuro del panel)
+
+Dos sistemas de theming independientes, ambos vía CSS custom properties + atributos `data-*` — Tailwind + `var()` únicamente, sin librería de theming nueva. Ninguno de los dos toca `rideGenerator.js`, `reportPdfGenerator.js` ni los recibos impresos — los documentos fiscales/formales quedan siempre fuera de este sistema.
+
+### 7.1 Temas del POS (por empresa)
+
+`companies.ui_settings jsonb` (`{"pos_theme", "pos_accent"}`, default `light-classic`+`blue`) — lo elige el gerente, aplica a todos los cajeros de la empresa.
+
+- **4 temas** (`src/styles/themes.css`, atributo `data-pos-theme` en `POSLayout.jsx`): `light-classic` (blanco, bordes suaves — default de fábrica para empresas nuevas), `light-soft` (crema cálido, tarjetas con sombra en vez de borde, radio y tipografía de totales más grandes), `dark-classic` (reproduce EXACTO el look que tenía el POS antes de esta fase — es el valor de backfill de las empresas que ya existían, para que su POS no cambiara), `dark-contrast` (negro puro, botones principales más grandes, pensado para uso rápido/táctil).
+- **6 paletas de acento** (`data-pos-accent`): blue, emerald, violet, amber, rose, slate. Cada paleta tiene un valor de fondo de botón (`--pos-accent`, igual en los 4 temas — un botón autocontenido no depende del fondo de la página) **y un segundo valor separado** (`--pos-accent-soft`) para cuando el acento se usa como texto/ícono directo sobre la página — un mismo color no sirve para los dos roles (verificado numéricamente: los tonos afinados para fondo de botón fallan como texto).
+- Catálogo único: `src/lib/themes.js` (`POS_THEMES`/`POS_ACCENTS`: id, nombre, descripción, colores de preview) — consumido por el paso "Diseño del POS" de `CompanyWizard.jsx` (opcional/saltable) y por `AppearanceSettings.jsx` (pantalla del gerente en Configuración, con vista previa en vivo que reutiliza el mismo `data-pos-theme`/`data-pos-accent`, sin duplicar lógica de color).
+- Feature flag comercial `pos_theming` (`feature_flags`/`company_feature_overrides`) — habilitado en los 3 planes ya existentes al introducirse, pensado como palanca para planes futuros más económicos.
+- Se guarda vía RPC `set_company_ui_settings` (`SECURITY DEFINER`, valida `role = 'gerente'` internamente), no con una política RLS directa: `gerente` y `admin` comparten el mismo rol de Postgres (`authenticated`), así que una política de `UPDATE` no podría restringirse a un rol de aplicación sin abrirle también la puerta a `admin` sobre cualquier empresa.
+
+### 7.2 Modo claro/oscuro del panel (gerente y contador)
+
+Preferencia **personal**, no de empresa — `users.ui_preferences jsonb` (`{"panel_mode"}`, default `light` para usuarios nuevos; los usuarios que ya existían al introducirse quedaron en `dark` vía backfill, para que su panel no cambiara). Aplica solo a `StoreManagerLayout` — **no** al POS ni al panel super-admin (`Layout`, siempre oscuro, con su propio sistema `.admin-theme` en `index.css`).
+
+- Tokens `--panel-*` en `src/styles/panel-theme.css`, atributo `data-panel-mode` en la raíz de `StoreManagerLayout`. Acento fijo azul en los dos modos — a diferencia del POS, acá no hay paleta elegible (es una preferencia personal simple, no una identidad de marca de la empresa).
+- Se guarda vía RPC `set_ui_preferences`. Se evaluó una política RLS directa (`id = auth.uid()`) pero se descartó al confirmar por consulta directa a Postgres que `authenticated` ya tenía `UPDATE` de tabla completa otorgado sobre `users` — con eso, cualquier política de `UPDATE` sin restricción de columna hubiera dejado a un usuario reescribir su propio `role`. Probado en vivo contra Supabase con datos descartables antes de darlo por bueno.
+- Toggle sol/luna en el TopBar (`StoreManagerTopBar.jsx`) — aplica al instante; si la RPC falla, revierte visualmente y avisa por toast.
+- `Modal.jsx`/`Toast.jsx`/`ConfirmDialog.jsx`/`Badge.jsx`/`Table.jsx`/`Tabs.jsx` (`src/components/ui/`) son compartidos entre el POS, el panel admin y este panel, y ya usaban variables genéricas `--surface-*`/`--text-*` (`index.css` `:root`, hoy sobreescritas solo por `.admin-theme`) — se extendió ese mismo mecanismo con un bloque `[data-panel-mode="light"]` en vez de migrarlos a nombrar `--panel-*` directamente, así no necesitan saber de qué layout cuelgan.
+- `color-scheme` (propiedad CSS) declarada explícitamente en los tres sistemas de tema (`:root`, `themes.css`, `panel-theme.css`): sin esto, los controles nativos del navegador (flecha de `<select>`, ícono de `<input type="date">`) renderizan con su chrome claro sin importar el tema activo.
+
+### 7.3 Verificación de contraste
+
+Todo el trabajo de color se verificó con la fórmula de luminancia relativa WCAG (no a ojo). Esto sacó a la luz varias fallas AA **ya presentes en producción antes de esta fase**, no introducidas por ella — entre otras, el botón principal de cobro del POS y tres botones de acción del dashboard del gerente usaban tonos que fallan 3.2–3.8:1 con texto blanco (necesitan ≥4.5:1), y casi todos los colores de acento/badge/KPI del panel solo estaban afinados para fondo oscuro (fallan 1.7–3:1 sobre fondo claro). Se corrigieron todos. Verificación final: 132 pares en las 24 combinaciones tema×paleta del POS + los pares equivalentes del panel en ambos modos, todos ≥4.5:1.
+
+---
+
+## 8. Cierre de caja / arqueo
 
 Tabla `cash_closures`, un registro **inmutable** por cierre (sin política RLS de `UPDATE` ni `DELETE` para ningún rol — correcciones se anotan en un cierre nuevo, no editando el viejo).
 
@@ -154,7 +185,7 @@ Tabla `cash_closures`, un registro **inmutable** por cierre (sin política RLS d
 
 ---
 
-## 8. Panel de administración SaaS (`Layout`, rol `admin`)
+## 9. Panel de administración SaaS (`Layout`, rol `admin`)
 
 - **Dashboard** (`Dashboard.jsx`) — visión general de la plataforma.
 - **Empresas** (`Companies.jsx`, `CompanyDetail.jsx`, `CompanyEdit.jsx`, `CompanyWizard.jsx`) — listado con **health score** por empresa (`healthScore.js`), alta guiada, edición de identidad fiscal, checklist de onboarding, cambio de plan, suspensión/reactivación con motivo.
@@ -168,7 +199,7 @@ Tabla `cash_closures`, un registro **inmutable** por cierre (sin política RLS d
 
 ---
 
-## 9. Sistema de correo transaccional (Resend)
+## 10. Sistema de correo transaccional (Resend)
 
 Servicio centralizado en `api/emails/*` y `api/admin/*` (Vercel Functions, Node), con disparos automáticos vía **Database Webhooks de Supabase** (`pg_net`).
 
@@ -190,7 +221,7 @@ Frontend (admin)  ─► /api/admin/create-*  ─┘
 
 ---
 
-## 10. Estructura de carpetas
+## 11. Estructura de carpetas
 
 ```
 POST-PLAT/
@@ -243,12 +274,12 @@ POST-PLAT/
 
 ---
 
-## 11. Base de datos — tablas actuales (22)
+## 12. Base de datos — tablas actuales (22)
 
 | Grupo | Tablas |
 |---|---|
-| Plataforma / SaaS | `companies`, `plans`, `feature_flags`, `company_feature_overrides` |
-| Identidad y permisos | `users` (perfil, FK a `auth.users`), `admin_users` *(legado, sin uso real)*, `permissions`, `role_permissions` *(activas desde esta sesión — catálogo `modulo.accion`, ver §3)* |
+| Plataforma / SaaS | `companies` (incluye `ui_settings jsonb` — tema/paleta del POS, ver §7.1), `plans`, `feature_flags` (incluye `pos_theming`), `company_feature_overrides` |
+| Identidad y permisos | `users` (perfil, FK a `auth.users`, incluye `ui_preferences jsonb` — modo claro/oscuro del panel, ver §7.2), `admin_users` *(legado, sin uso real)*, `permissions`, `role_permissions` *(catálogo `modulo.accion`, ver §3)* |
 | Sucursales | `branches`, `point_of_sales`, `product_stock` |
 | Catálogo y clientes | `products`, `customers` |
 | Facturación | `invoices`, `invoice_details`, `billing_configs`, `payment_methods` |
@@ -265,7 +296,7 @@ RLS está habilitado en las 22 tablas de `public`, con políticas reales basadas
 
 ---
 
-## 12. Roles válidos (enum `user_role`)
+## 13. Roles válidos (enum `user_role`)
 
 | Rol | Uso típico | `branch_id` |
 |---|---|---|
@@ -277,9 +308,10 @@ RLS está habilitado en las 22 tablas de `public`, con políticas reales basadas
 
 ---
 
-## 13. Notas para agentes AI que trabajen en este repo
+## 14. Notas para agentes AI que trabajen en este repo
 
 - Al modificar la base de datos, usar siempre el MCP de Supabase (ver `CLAUDE.md`) y revisar/actualizar políticas RLS — las tablas operativas usan `auth.uid()` real, no `USING(true)`.
+- **Colores del POS y del panel gerente/contador van SIEMPRE por los tokens `--pos-*`/`--panel-*`** (§7), nunca clases Tailwind de color hardcodeadas (`bg-zinc-900`, `text-emerald-400`, etc.) — un color nuevo que no pase por el token correspondiente probablemente falla WCAG AA en alguno de los 4 temas del POS o en modo claro del panel (ya pasó varias veces: verificar siempre con la fórmula de contraste real, no a ojo). El panel super-admin (`Layout`) es la excepción — sigue siendo siempre oscuro, vía `.admin-theme`/`index.css`.
 - El login/sesión es Supabase Auth real (`supabase.auth.signInWithPassword`, `useStore.js`). La creación de usuarios pasa por la Auth Admin API desde endpoints `api/admin/*` con `service_role` (`auth.admin.createUser`) — nunca insertar directo en `public.users` sin crear primero el `auth.users` correspondiente (hay una FK que lo exige).
 - La UI se condiciona con `can(permiso)` (`src/lib/permissions.js`), no con `role === '...'` — al agregar una pantalla o botón nuevo, sumar su permiso al catálogo (`permissions`/`role_permissions`) en vez de hardcodear el rol.
 - La firma XML (`xadesjs`) es frágil: no modificar las rutinas de canonicalización salvo estrictamente necesario, el SRI rechaza firmas inválidas sin mensajes claros.

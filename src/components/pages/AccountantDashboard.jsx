@@ -7,7 +7,13 @@ import { buildSalesLedger, buildSriReconciliation } from '../../lib/accountingHe
 import { totalOf, hasAnyDifference } from '../../lib/cashClosureHelpers.js';
 import { formatUSD } from '../../lib/format.js';
 
-const KPI_TEXT_CLASSES = { emerald: 'text-emerald-400', blue: 'text-blue-400', amber: 'text-amber-400', purple: 'text-purple-400', pink: 'text-pink-400' };
+const KPI_TEXT_CLASSES = {
+  emerald: 'text-panel-success',
+  blue: 'text-panel-accent-soft',
+  amber: 'text-panel-warning',
+  purple: 'text-[var(--kpi-purple)]',
+  pink: 'text-[var(--kpi-pink)]'
+};
 
 // Vista inicial del contador al hacer login - resumen contable del mes en
 // curso en vez del dashboard comercial del gerente (StoreManagerDashboard.jsx).
@@ -38,7 +44,7 @@ export default function AccountantDashboard() {
   const reconciliation = useMemo(() => buildSriReconciliation(invoices), [invoices]);
 
   return (
-    <div className="min-h-screen bg-zinc-950">
+    <div className="min-h-screen bg-panel-bg">
       <div className="bg-gradient-to-r from-purple-600 to-purple-700 text-white p-4 sm:p-6 shadow-lg">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -58,56 +64,56 @@ export default function AccountantDashboard() {
 
       <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
         {loading ? (
-          <p className="text-zinc-500 text-center py-12">Cargando...</p>
+          <p className="text-panel-text-muted text-center py-12">Cargando...</p>
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {ledger.kpis.map((kpi, i) => (
-                <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 min-w-0">
-                  <div className="text-xs text-zinc-500 uppercase tracking-wide font-medium mb-2 truncate">{kpi.label}</div>
-                  <div className={`text-xl font-bold truncate ${KPI_TEXT_CLASSES[kpi.accent] || 'text-zinc-100'}`}>{formatCellValue(kpi.value, kpi.format)}</div>
+                <div key={i} className="bg-panel-surface border border-panel-border rounded-2xl p-5 min-w-0">
+                  <div className="text-xs text-panel-text-muted uppercase tracking-wide font-medium mb-2 truncate">{kpi.label}</div>
+                  <div className={`text-xl font-bold truncate ${KPI_TEXT_CLASSES[kpi.accent] || 'text-panel-text'}`}>{formatCellValue(kpi.value, kpi.format)}</div>
                 </div>
               ))}
             </div>
 
             <div className="grid lg:grid-cols-2 gap-6">
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+              <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-bold text-zinc-100">Comprobantes por Estado</h2>
-                  <button onClick={() => setActivePage('accounting')} className="text-xs font-bold text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                  <h2 className="text-lg font-bold text-panel-text">Comprobantes por Estado</h2>
+                  <button onClick={() => setActivePage('accounting')} className="text-xs font-bold text-[var(--kpi-purple)] hover:opacity-80 flex items-center gap-1">
                     <Receipt size={14} /> Ver Contabilidad
                   </button>
                 </div>
                 <div className="space-y-2">
                   {ledger.byStatus.map(s => (
                     <div key={s.status} className="flex justify-between text-sm">
-                      <span className="text-zinc-400">{s.status}</span>
-                      <span className="font-bold text-zinc-100">{s.count}</span>
+                      <span className="text-panel-text-muted">{s.status}</span>
+                      <span className="font-bold text-panel-text">{s.count}</span>
                     </div>
                   ))}
                 </div>
                 {!reconciliation.allClear && (
-                  <div className="mt-4 flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 text-xs text-amber-400">
+                  <div className="mt-4 flex items-center gap-2 bg-panel-warning/10 border border-panel-warning/20 rounded-lg p-3 text-xs text-panel-warning">
                     <AlertTriangle size={14} /> {reconciliation.pending.length} comprobante(s) fuera de estado autorizada este mes
                   </div>
                 )}
               </div>
 
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-                <h2 className="text-lg font-bold text-zinc-100 mb-4">Últimos Cierres de Caja</h2>
+              <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
+                <h2 className="text-lg font-bold text-panel-text mb-4">Últimos Cierres de Caja</h2>
                 <div className="space-y-3">
                   {closures.length > 0 ? closures.map(c => (
-                    <div key={c.id} className={`flex items-center justify-between p-3 rounded-lg border ${hasAnyDifference(c.difference) ? 'bg-amber-500/5 border-amber-500/20' : 'bg-zinc-950/50 border-zinc-800/50'}`}>
+                    <div key={c.id} className={`flex items-center justify-between p-3 rounded-lg border ${hasAnyDifference(c.difference) ? 'bg-panel-warning/5 border-panel-warning/20' : 'bg-panel-bg/50 border-panel-border/50'}`}>
                       <div>
-                        <div className="text-sm font-bold text-zinc-200">{c.users?.name || '-'}</div>
-                        <div className="text-xs text-zinc-500">{formatCellValue(c.closed_at, 'datetime')} · {c.branches?.name}</div>
+                        <div className="text-sm font-bold text-panel-text">{c.users?.name || '-'}</div>
+                        <div className="text-xs text-panel-text-muted">{formatCellValue(c.closed_at, 'datetime')} · {c.branches?.name}</div>
                       </div>
-                      <div className={`text-sm font-bold ${hasAnyDifference(c.difference) ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      <div className={`text-sm font-bold ${hasAnyDifference(c.difference) ? 'text-panel-warning' : 'text-panel-success'}`}>
                         {formatUSD(totalOf(c.counted_totals))}
                       </div>
                     </div>
                   )) : (
-                    <p className="text-zinc-500 text-sm text-center py-6">Sin cierres de caja todavía</p>
+                    <p className="text-panel-text-muted text-sm text-center py-6">Sin cierres de caja todavía</p>
                   )}
                 </div>
               </div>

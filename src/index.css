@@ -5,6 +5,15 @@
 @tailwind utilities;
 
 :root {
+  /* Sin esto, los controles nativos (flecha de <select>, ícono de
+     <input type="date">, y en algunos navegadores el thumb de scrollbar)
+     renderizan con el chrome CLARO del navegador sin importar el fondo de
+     la página - un artefacto real de "modo claro colándose en oscuro".
+     Default oscuro porque el body de toda la app ya lo es (ver `body` más
+     abajo); el POS (themes.css) y el panel gerente/contador (panel-theme.css)
+     lo sobreescriben localmente cuando su tema/modo activo es claro. */
+  color-scheme: dark;
+
   --brand:      #10b981;
   --brand-dark: #059669;
   --brand-soft: rgba(16, 185, 129, 0.1);
@@ -21,6 +30,23 @@
   --text-primary: #f4f4f5;   /* zinc-100 */
   --text-muted: #71717a;     /* zinc-500 */
   --text-faint: #52525b;     /* zinc-600 */
+
+  /* Colores de texto de Badge.jsx (estado: activa/vencida/pendiente...) -
+     mismo principio que los surface/text de arriba: el default acá es el
+     *-400 que ya se usaba a mano, así que declarar esto es un no-op en todos
+     lados excepto donde algo los sobreescriba (panel-theme.css, modo claro
+     del panel gerente/contador). */
+  --status-success: #34d399; /* emerald-400 */
+  --status-warning: #fbbf24; /* amber-400 */
+  --status-danger:  #f87171; /* red-400 */
+  --status-info:    #60a5fa; /* blue-400 */
+
+  /* Acentos decorativos de tarjetas KPI (Accounting.jsx, AccountantDashboard.jsx) -
+     mismo principio: default = lo que ya se usaba a mano. */
+  --kpi-purple: #c084fc; /* purple-400 */
+  --kpi-pink:   #f472b6; /* pink-400 */
+  --kpi-cyan:   #22d3ee; /* cyan-400 */
+  --kpi-green:  #4ade80; /* green-400 */
 }
 
 .admin-theme {

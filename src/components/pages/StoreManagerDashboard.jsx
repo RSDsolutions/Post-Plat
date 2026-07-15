@@ -94,7 +94,7 @@ export default function StoreManagerDashboard() {
   }, [currentUser, showToast]);
 
   return (
-    <div className="min-h-screen bg-zinc-950">
+    <div className="min-h-screen bg-panel-bg">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sm:p-6 shadow-lg">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -120,15 +120,15 @@ export default function StoreManagerDashboard() {
             {stats.alerts.map((alert, idx) => (
               <div key={idx} className={`p-4 rounded-xl border flex items-start gap-4 ${
                 alert.severity === 'high'
-                  ? 'bg-red-500/10 border-red-500/30'
-                  : 'bg-amber-500/10 border-amber-500/30'
+                  ? 'bg-panel-danger/10 border-panel-danger/30'
+                  : 'bg-panel-warning/10 border-panel-warning/30'
               }`}>
-                <AlertTriangle size={24} className={alert.severity === 'high' ? 'text-red-500' : 'text-amber-500'} />
+                <AlertTriangle size={24} className={alert.severity === 'high' ? 'text-panel-danger' : 'text-panel-warning'} />
                 <div className="flex-1">
-                  <h3 className={`font-bold ${alert.severity === 'high' ? 'text-red-500' : 'text-amber-500'}`}>
+                  <h3 className={`font-bold ${alert.severity === 'high' ? 'text-panel-danger' : 'text-panel-warning'}`}>
                     {alert.type === 'stock' ? '📦 Stock Bajo' : '⚠️ Aprobaciones Pendientes'}
                   </h3>
-                  <p className={`text-sm mt-1 ${alert.severity === 'high' ? 'text-red-400' : 'text-amber-400'}`}>
+                  <p className={`text-sm mt-1 ${alert.severity === 'high' ? 'text-panel-danger' : 'text-panel-warning'}`}>
                     {alert.count} {alert.type === 'stock' ? 'producto(s)' : 'factura(s)'}
                   </p>
                 </div>
@@ -139,72 +139,72 @@ export default function StoreManagerDashboard() {
 
         {/* KPI Row 1 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-zinc-500 text-sm font-bold">VENTAS HOY</span>
-              <DollarSign className="text-emerald-500" size={24} />
+              <span className="text-panel-text-muted text-sm font-bold">VENTAS HOY</span>
+              <DollarSign className="text-panel-success" size={24} />
             </div>
-            <div className="text-3xl font-bold text-emerald-400">{formatUSD(stats.todaySales)}</div>
-            <div className="text-xs text-zinc-500 mt-2">{stats.invoiceCount} facturas</div>
+            <div className="text-3xl font-bold text-panel-success">{formatUSD(stats.todaySales)}</div>
+            <div className="text-xs text-panel-text-muted mt-2">{stats.invoiceCount} facturas</div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-zinc-500 text-sm font-bold">VENTAS MES</span>
-              <TrendingUp className="text-blue-500" size={24} />
+              <span className="text-panel-text-muted text-sm font-bold">VENTAS MES</span>
+              <TrendingUp className="text-panel-accent-soft" size={24} />
             </div>
-            <div className="text-3xl font-bold text-blue-400">{formatUSD(stats.monthSales)}</div>
-            <div className="text-xs text-zinc-500 mt-2">{stats.monthInvoices} facturas</div>
+            <div className="text-3xl font-bold text-panel-accent-soft">{formatUSD(stats.monthSales)}</div>
+            <div className="text-xs text-panel-text-muted mt-2">{stats.monthInvoices} facturas</div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-zinc-500 text-sm font-bold">PROMEDIO TICKET</span>
-              <BarChart3 className="text-purple-500" size={24} />
+              <span className="text-panel-text-muted text-sm font-bold">PROMEDIO TICKET</span>
+              <BarChart3 className="text-[var(--kpi-purple)]" size={24} />
             </div>
-            <div className="text-3xl font-bold text-purple-400">{formatUSD(stats.avgTicket)}</div>
-            <div className="text-xs text-zinc-500 mt-2">Por transacción</div>
+            <div className="text-3xl font-bold text-[var(--kpi-purple)]">{formatUSD(stats.avgTicket)}</div>
+            <div className="text-xs text-panel-text-muted mt-2">Por transacción</div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-zinc-500 text-sm font-bold">INGRESOS TOTALES</span>
-              <Zap className="text-amber-500" size={24} />
+              <span className="text-panel-text-muted text-sm font-bold">INGRESOS TOTALES</span>
+              <Zap className="text-panel-warning" size={24} />
             </div>
-            <div className="text-3xl font-bold text-amber-400">{formatUSD(stats.totalRevenue)}</div>
-            <div className="text-xs text-zinc-500 mt-2">Histórico</div>
+            <div className="text-3xl font-bold text-panel-warning">{formatUSD(stats.totalRevenue)}</div>
+            <div className="text-xs text-panel-text-muted mt-2">Histórico</div>
           </div>
         </div>
 
         {/* KPI Row 2 */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-zinc-500 text-sm font-bold">CLIENTES</span>
-              <Users className="text-pink-500" size={24} />
+              <span className="text-panel-text-muted text-sm font-bold">CLIENTES</span>
+              <Users className="text-[var(--kpi-pink)]" size={24} />
             </div>
-            <div className="text-3xl font-bold text-pink-400">{stats.customerCount}</div>
-            <div className="text-xs text-zinc-500 mt-2">Registrados</div>
+            <div className="text-3xl font-bold text-[var(--kpi-pink)]">{stats.customerCount}</div>
+            <div className="text-xs text-panel-text-muted mt-2">Registrados</div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-zinc-500 text-sm font-bold">PRODUCTOS</span>
-              <Package className="text-cyan-500" size={24} />
+              <span className="text-panel-text-muted text-sm font-bold">PRODUCTOS</span>
+              <Package className="text-[var(--kpi-cyan)]" size={24} />
             </div>
-            <div className="text-3xl font-bold text-cyan-400">{stats.productCount}</div>
-            <div className={`text-xs mt-2 ${stats.lowStockCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+            <div className="text-3xl font-bold text-[var(--kpi-cyan)]">{stats.productCount}</div>
+            <div className={`text-xs mt-2 ${stats.lowStockCount > 0 ? 'text-panel-danger' : 'text-panel-success'}`}>
               {stats.lowStockCount} bajo stock
             </div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-zinc-500 text-sm font-bold">OPERARIOS</span>
-              <Activity className="text-green-500" size={24} />
+              <span className="text-panel-text-muted text-sm font-bold">OPERARIOS</span>
+              <Activity className="text-[var(--kpi-green)]" size={24} />
             </div>
-            <div className="text-3xl font-bold text-green-400">{stats.onlineOperators}</div>
-            <div className="text-xs text-zinc-500 mt-2">Activos</div>
+            <div className="text-3xl font-bold text-[var(--kpi-green)]">{stats.onlineOperators}</div>
+            <div className="text-xs text-panel-text-muted mt-2">Activos</div>
           </div>
         </div>
 
@@ -212,11 +212,11 @@ export default function StoreManagerDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Controls */}
           <div className="space-y-4">
-            <h2 className="text-lg font-bold text-zinc-100">Controles Administrativos</h2>
+            <h2 className="text-lg font-bold text-panel-text">Controles Administrativos</h2>
 
             <button
               onClick={() => setActivePage('inventory')}
-              className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-bold py-3 rounded-xl transition-all text-sm"
+              className="w-full bg-gradient-to-r from-emerald-700 to-emerald-800 hover:from-emerald-800 hover:to-emerald-900 text-white font-bold py-3 rounded-xl transition-all text-sm"
             >
               📦 Gestionar Inventario
             </button>
@@ -244,7 +244,7 @@ export default function StoreManagerDashboard() {
 
             <button
               onClick={() => setActivePage('cashiers')}
-              className="w-full bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold py-3 rounded-xl transition-all text-sm"
+              className="w-full bg-gradient-to-r from-amber-700 to-amber-800 hover:from-amber-800 hover:to-amber-900 text-white font-bold py-3 rounded-xl transition-all text-sm"
             >
               🏪 Cajas & Operarios
             </button>
@@ -253,13 +253,13 @@ export default function StoreManagerDashboard() {
               🔒 Cierre de Caja
             </button>
 
-            <button className="w-full bg-gradient-to-r from-cyan-600 to-cyan-700 hover:from-cyan-700 hover:to-cyan-800 text-white font-bold py-3 rounded-xl transition-all text-sm">
+            <button className="w-full bg-gradient-to-r from-cyan-700 to-cyan-800 hover:from-cyan-800 hover:to-cyan-900 text-white font-bold py-3 rounded-xl transition-all text-sm">
               🔐 Firma Digital
             </button>
 
             <button
               onClick={() => setActivePage('settings')}
-              className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
+              className="w-full bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
             >
               <Settings size={18} />
               Configuración
@@ -269,59 +269,59 @@ export default function StoreManagerDashboard() {
           {/* Center & Right Columns - Data */}
           <div className="lg:col-span-2 space-y-6">
             {/* Recent Transactions */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-              <h2 className="text-lg font-bold text-zinc-100 mb-4">Últimas Transacciones</h2>
+            <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
+              <h2 className="text-lg font-bold text-panel-text mb-4">Últimas Transacciones</h2>
               <div className="space-y-3 max-h-96 overflow-y-auto">
                 {stats.recentTransactions.length > 0 ? (
                   stats.recentTransactions.map((inv, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-zinc-950/50 rounded-lg hover:bg-zinc-950 transition-colors border border-zinc-800/50">
+                    <div key={idx} className="flex items-center justify-between p-3 bg-panel-bg/50 rounded-lg hover:bg-panel-bg transition-colors border border-panel-border/50">
                       <div className="flex items-center gap-3 flex-1">
-                        <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                          <span className="text-blue-400 font-bold text-sm">{idx + 1}</span>
+                        <div className="w-10 h-10 rounded-lg bg-panel-accent/20 flex items-center justify-center">
+                          <span className="text-panel-accent-soft font-bold text-sm">{idx + 1}</span>
                         </div>
                         <div>
-                          <div className="font-bold text-zinc-100 text-sm">{inv.invoice_number}</div>
-                          <div className="text-xs text-zinc-500">{new Date(inv.issue_date).toLocaleString('es-ES')}</div>
+                          <div className="font-bold text-panel-text text-sm">{inv.invoice_number}</div>
+                          <div className="text-xs text-panel-text-muted">{new Date(inv.issue_date).toLocaleString('es-ES')}</div>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-emerald-400">{formatUSD(inv.total_amount)}</div>
-                        <div className={`text-xs font-bold ${inv.status === 'autorizada' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                        <div className="font-bold text-panel-success">{formatUSD(inv.total_amount)}</div>
+                        <div className={`text-xs font-bold ${inv.status === 'autorizada' ? 'text-panel-success' : 'text-panel-warning'}`}>
                           {inv.status}
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-zinc-500 text-center py-8">Sin transacciones</p>
+                  <p className="text-panel-text-muted text-center py-8">Sin transacciones</p>
                 )}
               </div>
             </div>
 
             {/* Top Operators & Users */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
-              <h2 className="text-lg font-bold text-zinc-100 mb-4">Personal de Tienda</h2>
+            <div className="bg-panel-surface border border-panel-border rounded-2xl p-6">
+              <h2 className="text-lg font-bold text-panel-text mb-4">Personal de Tienda</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {stats.userList.length > 0 ? (
                   stats.userList.map((user, idx) => (
-                    <div key={idx} className="bg-gradient-to-br from-blue-500/10 to-blue-600/10 border border-blue-500/20 rounded-lg p-3">
+                    <div key={idx} className="bg-gradient-to-br from-panel-accent/10 to-panel-accent-hover/10 border border-panel-accent/20 rounded-lg p-3">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm">
+                        <div className="w-8 h-8 rounded-full bg-panel-accent flex items-center justify-center text-panel-accent-text font-bold text-sm">
                           👤
                         </div>
                         <div>
-                          <div className="font-bold text-zinc-100 text-sm">{user.name}</div>
-                          <div className="text-xs text-blue-300 uppercase font-bold">{user.role}</div>
+                          <div className="font-bold text-panel-text text-sm">{user.name}</div>
+                          <div className="text-xs text-panel-accent-soft uppercase font-bold">{user.role}</div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-blue-200">
-                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      <div className="flex items-center gap-2 text-xs text-panel-accent-soft">
+                        <div className="w-2 h-2 bg-panel-success rounded-full animate-pulse" />
                         <span>Activo</span>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-zinc-500 text-center col-span-2 py-4">Sin personal registrado</p>
+                  <p className="text-panel-text-muted text-center col-span-2 py-4">Sin personal registrado</p>
                 )}
               </div>
             </div>

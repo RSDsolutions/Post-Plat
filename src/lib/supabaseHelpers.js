@@ -13,6 +13,46 @@ export async function fetchCompanies() {
   return data;
 }
 
+// Liviana a propósito (un solo campo jsonb, no la fila completa) - se llama
+// en login()/restoreAuth() para poder aplicar el tema del POS antes del
+// primer render de POSLayout, sin esperar al fetch completo de la empresa
+// que ya hace POSInterface.jsx por su cuenta.
+export async function fetchCompanyUiSettings(companyId) {
+  const { data, error } = await supabase
+    .from('companies')
+    .select('ui_settings')
+    .eq('id', companyId)
+    .single();
+  if (error) throw new Error(`Error fetching company ui_settings: ${error.message}`);
+  return data.ui_settings;
+}
+
+// Gerente-only: la RPC (set_company_ui_settings, migración
+// 20260716_add_company_ui_settings.sql) valida internamente que el caller
+// sea gerente de esa empresa - admin/gerente comparten el mismo rol de
+// Postgres, así que una política RLS directa de UPDATE no podría restringir
+// esto solo a esta columna. Un admin fijando el tema de una empresa NUEVA
+// no pasa por acá - va directo en el insert de createCompany (ver
+// CompanyWizard.jsx/submitWizard), sin restricción de rol.
+export async function updateCompanyUiSettings(companyId, posTheme, posAccent) {
+  const { data, error } = await supabase.rpc('set_company_ui_settings', {
+    p_company_id: companyId,
+    p_pos_theme: posTheme,
+    p_pos_accent: posAccent
+  });
+  if (error) throw new Error(`Error updating ui_settings: ${error.message}`);
+  return data;
+}
+
+// Cualquier rol puede fijar SU PROPIA preferencia (la RPC solo valida
+// auth.uid() = fila objetivo, sin chequeo de rol - a diferencia de
+// updateCompanyUiSettings, esto no es un dato compartido de la empresa).
+export async function updateUserUiPreferences(panelMode) {
+  const { data, error } = await supabase.rpc('set_ui_preferences', { p_panel_mode: panelMode });
+  if (error) throw new Error(`Error updating ui_preferences: ${error.message}`);
+  return data;
+}
+
 export async function fetchCompanyById(id) {
   const { data, error } = await supabase
     .from('companies')
@@ -522,7 +562,7 @@ export async function loginWithPassword(email, password) {
   // suyo, y .single() fallaría con "multiple rows".
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, name, role, company_id, is_active')
+    .select('id, email, name, role, company_id, is_active, ui_preferences')
     .eq('id', authData.user.id)
     .single();
 

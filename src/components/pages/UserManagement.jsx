@@ -155,10 +155,10 @@ export default function UserManagement() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Usuarios</h1>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-panel-text">Usuarios</h1>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+          className="flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-4 rounded-lg transition-colors"
         >
           <Plus size={20} />
           Agregar Usuario
@@ -166,57 +166,57 @@ export default function UserManagement() {
       </div>
 
       {!loading && branches.length === 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
-          <p className="text-sm text-amber-400">Crea primero una sucursal en "Sucursales" antes de agregar cajeros - cada cajero necesita una sucursal asignada para poder facturar (el contador no).</p>
+        <div className="bg-panel-warning/10 border border-panel-warning/30 rounded-2xl p-4">
+          <p className="text-sm text-panel-warning">Crea primero una sucursal en "Sucursales" antes de agregar cajeros - cada cajero necesita una sucursal asignada para poder facturar (el contador no).</p>
         </div>
       )}
 
       {loading ? (
-        <div className="text-center text-zinc-500 py-12">Cargando...</div>
+        <div className="text-center text-panel-text-muted py-12">Cargando...</div>
       ) : users.length === 0 ? (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
-          <Users className="mx-auto text-zinc-700 mb-3" size={40} />
-          <p className="text-zinc-500">Aún no hay usuarios registrados</p>
+        <div className="bg-panel-surface border border-panel-border rounded-2xl p-12 text-center">
+          <Users className="mx-auto text-panel-text-muted mb-3" size={40} />
+          <p className="text-panel-text-muted">Aún no hay usuarios registrados</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {users.map(u => (
-            <div key={u.id} className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+            <div key={u.id} className="bg-panel-surface rounded-xl border border-panel-border p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-bold text-zinc-100 truncate">{u.name}</div>
-                  <div className="text-sm text-zinc-500 truncate">{u.email}</div>
-                  {u.phone && <div className="text-xs text-zinc-600 mt-0.5">{u.phone}</div>}
-                  <div className="text-xs text-blue-400 mt-2 font-bold uppercase">{ROLE_LABELS[u.role] || u.role}</div>
+                  <div className="font-bold text-panel-text truncate">{u.name}</div>
+                  <div className="text-sm text-panel-text-muted truncate">{u.email}</div>
+                  {u.phone && <div className="text-xs text-panel-text-muted mt-0.5">{u.phone}</div>}
+                  <div className="text-xs text-panel-accent-soft mt-2 font-bold uppercase">{ROLE_LABELS[u.role] || u.role}</div>
                 </div>
-                <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded uppercase ${u.is_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded uppercase ${u.is_active ? 'bg-panel-success/10 text-panel-success' : 'bg-panel-surface-2 text-panel-text-muted'}`}>
                   {u.is_active ? 'Activo' : 'Inactivo'}
                 </span>
               </div>
 
               {u.role !== 'contador' && (
                 <div className="mt-3">
-                  <label className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase mb-1">
+                  <label className="flex items-center gap-1 text-[10px] font-bold text-panel-text-muted uppercase mb-1">
                     <MapPin size={11} /> Sucursal
                   </label>
                   <select
                     value={u.branch_id || ''}
                     onChange={(e) => handleReassignBranch(u, e.target.value)}
                     disabled={reassigningId === u.id}
-                    className={`w-full bg-zinc-800 border rounded px-2 py-1.5 text-sm ${u.branch_id ? 'text-zinc-200 border-zinc-700' : 'text-amber-400 border-amber-500/40'}`}
+                    className={`w-full bg-panel-surface-2 border rounded px-2 py-1.5 text-sm ${u.branch_id ? 'text-panel-text border-panel-border' : 'text-panel-warning border-panel-warning/40'}`}
                   >
                     <option value="">Sin asignar</option>
                     {branches.map(b => (
                       <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
                   </select>
-                  {!u.branch_id && <p className="text-[10px] text-amber-400 mt-1">No podrá facturar hasta que se le asigne una sucursal</p>}
+                  {!u.branch_id && <p className="text-[10px] text-panel-warning mt-1">No podrá facturar hasta que se le asigne una sucursal</p>}
                 </div>
               )}
 
               <button
                 onClick={() => openResetPassword(u)}
-                className="mt-3 w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold py-2 rounded-lg transition-colors"
+                className="mt-3 w-full flex items-center justify-center gap-2 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text-muted text-xs font-bold py-2 rounded-lg transition-colors"
               >
                 <Key size={14} />
                 Cambiar Contraseña
@@ -229,43 +229,43 @@ export default function UserManagement() {
       {/* Add User Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-zinc-100">Agregar Usuario</h2>
-              <button onClick={closeAddModal} className="text-zinc-500 hover:text-zinc-300">
+              <h2 className="text-2xl font-bold text-panel-text">Agregar Usuario</h2>
+              <button onClick={closeAddModal} className="text-panel-text-muted hover:text-panel-text">
                 <X size={24} />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Nombre Completo *</label>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Nombre Completo *</label>
                 <input
                   type="text"
                   placeholder="Juan Pérez"
                   value={newUser.name}
                   onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Correo Electrónico *</label>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Correo Electrónico *</label>
                 <input
                   type="email"
                   placeholder="usuario@tutienda.com"
                   value={newUser.email}
                   onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Rol *</label>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Rol *</label>
                 <select
                   value={newUser.role}
                   onChange={(e) => setNewUser({ ...newUser, role: e.target.value, branchId: e.target.value === 'contador' ? '' : newUser.branchId })}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                 >
                   <option value="vendedor">Vendedor</option>
                   <option value="operario">Operario</option>
@@ -275,75 +275,75 @@ export default function UserManagement() {
 
               {needsBranch ? (
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Sucursal *</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Sucursal *</label>
                   <select
                     value={newUser.branchId}
                     onChange={(e) => setNewUser({ ...newUser, branchId: e.target.value })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                   >
                     <option value="">Selecciona una sucursal</option>
                     {branches.map(b => (
                       <option key={b.id} value={b.id}>{b.name}</option>
                     ))}
                   </select>
-                  <p className="text-xs text-zinc-500 mt-1">Define desde qué punto de venta facturará este usuario</p>
+                  <p className="text-xs text-panel-text-muted mt-1">Define desde qué punto de venta facturará este usuario</p>
                 </div>
               ) : (
-                <p className="text-xs text-zinc-500">El contador es a nivel empresa, no necesita sucursal.</p>
+                <p className="text-xs text-panel-text-muted">El contador es a nivel empresa, no necesita sucursal.</p>
               )}
 
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono (Opcional)</label>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Teléfono (Opcional)</label>
                 <input
                   type="tel"
                   placeholder="+593 9 12345678"
                   value={newUser.phone}
                   onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Contraseña *</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Contraseña *</label>
                   <input
                     type="password"
                     placeholder="Mínimo 6 caracteres"
                     value={newUser.password}
                     onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Confirmar Contraseña *</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Confirmar Contraseña *</label>
                   <input
                     type="password"
                     placeholder="Repite la contraseña"
                     value={newUser.confirmPassword}
                     onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                   />
                 </div>
               </div>
 
-              <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
-                <p className="text-xs text-blue-300">
+              <div className="bg-panel-accent/10 border border-panel-accent/30 rounded-lg p-3">
+                <p className="text-xs text-panel-accent-soft">
                   Si el correo está configurado, se le envían estas credenciales automáticamente. También quedan visibles acá por si el envío falla.
                 </p>
               </div>
             </div>
 
-            <div className="flex gap-3 border-t border-zinc-800 pt-4 mt-6">
+            <div className="flex gap-3 border-t border-panel-border pt-4 mt-6">
               <button
                 onClick={closeAddModal}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+                className="flex-1 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-2 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleAddUser}
                 disabled={creating}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="flex-1 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 {creating ? <Loader size={18} className="animate-spin" /> : <Plus size={18} />}
                 {creating ? 'Creando...' : 'Crear Usuario'}
@@ -356,45 +356,45 @@ export default function UserManagement() {
       {/* Reset Password Modal */}
       {resetTarget && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-zinc-100">Cambiar Contraseña</h2>
-              <button onClick={() => setResetTarget(null)} className="text-zinc-500 hover:text-zinc-300">
+              <h2 className="text-xl font-bold text-panel-text">Cambiar Contraseña</h2>
+              <button onClick={() => setResetTarget(null)} className="text-panel-text-muted hover:text-panel-text">
                 <X size={24} />
               </button>
             </div>
 
-            <p className="text-sm text-zinc-400 mb-4">
-              Nueva contraseña para <span className="font-bold text-zinc-200">{resetTarget.name}</span>
+            <p className="text-sm text-panel-text-muted mb-4">
+              Nueva contraseña para <span className="font-bold text-panel-text">{resetTarget.name}</span>
             </p>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Nueva Contraseña</label>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Nueva Contraseña</label>
                 <input
                   type="password"
                   placeholder="Mínimo 6 caracteres"
                   value={resetForm.newPassword}
                   onChange={(e) => setResetForm({ ...resetForm, newPassword: e.target.value })}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Confirmar Contraseña</label>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Confirmar Contraseña</label>
                 <input
                   type="password"
                   placeholder="Repite la contraseña"
                   value={resetForm.confirmPassword}
                   onChange={(e) => setResetForm({ ...resetForm, confirmPassword: e.target.value })}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                 />
               </div>
             </div>
 
-            <div className="flex gap-3 border-t border-zinc-800 pt-4 mt-6">
+            <div className="flex gap-3 border-t border-panel-border pt-4 mt-6">
               <button
                 onClick={() => setResetTarget(null)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+                className="flex-1 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-2 rounded-lg transition-colors"
               >
                 Cancelar
               </button>

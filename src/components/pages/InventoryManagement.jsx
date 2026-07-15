@@ -224,16 +224,16 @@ export default function InventoryManagement() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Gestión de Inventario</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-panel-text">Gestión de Inventario</h1>
 
       {/* Branch selector */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-wrap items-center gap-2">
-        <MapPin size={16} className="text-zinc-500 flex-shrink-0" />
+      <div className="bg-panel-surface border border-panel-border rounded-2xl p-4 flex flex-wrap items-center gap-2">
+        <MapPin size={16} className="text-panel-text-muted flex-shrink-0" />
         <button
           onClick={() => multiSucursalEnabled ? setSelectedBranchId(ALL_BRANCHES) : showToast('warning', 'La vista de inventario multi-sucursal no está incluida en tu plan')}
           title={multiSucursalEnabled ? '' : 'No incluido en tu plan'}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
-            isAllBranches ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : multiSucursalEnabled ? 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent' : 'text-zinc-600 border border-transparent cursor-not-allowed'
+            isAllBranches ? 'bg-panel-accent/20 text-panel-accent-soft border border-panel-accent/40' : multiSucursalEnabled ? 'text-panel-text-muted hover:text-panel-text hover:bg-panel-text/10 border border-transparent' : 'text-panel-text-muted/60 border border-transparent cursor-not-allowed'
           }`}
         >
           Todas las sucursales {!multiSucursalEnabled && <Lock size={11} className="inline ml-1 -mt-0.5" />}
@@ -243,7 +243,7 @@ export default function InventoryManagement() {
             key={b.id}
             onClick={() => setSelectedBranchId(b.id)}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
-              selectedBranchId === b.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+              selectedBranchId === b.id ? 'bg-panel-accent/20 text-panel-accent-soft border border-panel-accent/40' : 'text-panel-text-muted hover:text-panel-text hover:bg-panel-text/10 border border-transparent'
             }`}
           >
             {b.name}
@@ -253,32 +253,32 @@ export default function InventoryManagement() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <div className="text-sm text-zinc-500">Total Productos</div>
-          <div className="text-3xl font-bold text-zinc-100">{filtered.length}</div>
+        <div className="bg-panel-surface rounded-xl border border-panel-border p-4">
+          <div className="text-sm text-panel-text-muted">Total Productos</div>
+          <div className="text-3xl font-bold text-panel-text">{filtered.length}</div>
         </div>
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <div className="text-sm text-zinc-500">Stock Total {isAllBranches && '(todas)'}</div>
-          <div className="text-3xl font-bold text-emerald-400">{filtered.reduce((sum, p) => sum + p.quantity, 0)}</div>
+        <div className="bg-panel-surface rounded-xl border border-panel-border p-4">
+          <div className="text-sm text-panel-text-muted">Stock Total {isAllBranches && '(todas)'}</div>
+          <div className="text-3xl font-bold text-panel-success">{filtered.reduce((sum, p) => sum + p.quantity, 0)}</div>
         </div>
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <div className="text-sm text-zinc-500">Valor Inventario</div>
-          <div className="text-3xl font-bold text-blue-400">{formatUSD(totalValue)}</div>
+        <div className="bg-panel-surface rounded-xl border border-panel-border p-4">
+          <div className="text-sm text-panel-text-muted">Valor Inventario</div>
+          <div className="text-3xl font-bold text-panel-accent-soft">{formatUSD(totalValue)}</div>
         </div>
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <div className="text-sm text-zinc-500">Stock Bajo</div>
-          <div className="text-3xl font-bold text-amber-400">{lowStock.length}</div>
+        <div className="bg-panel-surface rounded-xl border border-panel-border p-4">
+          <div className="text-sm text-panel-text-muted">Stock Bajo</div>
+          <div className="text-3xl font-bold text-panel-warning">{lowStock.length}</div>
         </div>
       </div>
 
       {/* Low Stock Alert */}
       {lowStock.length > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+        <div className="bg-panel-warning/10 border border-panel-warning/30 rounded-xl p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="text-amber-500 flex-shrink-0 mt-1" />
+            <AlertTriangle className="text-panel-warning flex-shrink-0 mt-1" />
             <div>
-              <h3 className="font-bold text-amber-500">{lowStock.length} Producto(s) con Stock Bajo</h3>
-              <p className="text-sm text-amber-400">Requieren reorden urgente</p>
+              <h3 className="font-bold text-panel-warning">{lowStock.length} Producto(s) con Stock Bajo</h3>
+              <p className="text-sm text-panel-warning">Requieren reorden urgente</p>
             </div>
           </div>
         </div>
@@ -289,7 +289,7 @@ export default function InventoryManagement() {
         <select
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-2 text-zinc-100"
+          className="bg-panel-surface border border-panel-border rounded-lg px-4 py-2 text-panel-text"
         >
           <option value="all">Todas las categorías</option>
           {categories.map(cat => (
@@ -301,7 +301,7 @@ export default function InventoryManagement() {
             onClick={() => isAllBranches ? showToast('warning', 'Selecciona una sucursal específica para agregar productos') : setShowAddModal(true)}
             disabled={isAllBranches}
             title={isAllBranches ? 'Selecciona una sucursal específica primero' : ''}
-            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
+            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
           >
             <Plus size={20} />
             Agregar Producto
@@ -310,7 +310,7 @@ export default function InventoryManagement() {
       </div>
 
       {/* Products Table */}
-      <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+      <div className="bg-panel-surface rounded-2xl border border-panel-border overflow-hidden">
         {!loading ? (
           <Table
             columns={['Código', 'Producto', 'Categoría', 'Stock', 'Precio', 'Descuento', 'Promoción', 'Editar', 'Eliminar']}
@@ -320,38 +320,38 @@ export default function InventoryManagement() {
               const discount = product.discount || 0;
               const finalPrice = getDiscountedPrice(product.sale_price, discount);
               return (
-                <tr key={product.id} className="hover:bg-zinc-800/50">
-                  <td className="px-4 py-3 font-mono text-sm text-zinc-400">{product.code}</td>
-                  <td className="px-4 py-3 font-bold text-zinc-100">{product.name}</td>
-                  <td className="px-4 py-3 text-sm text-zinc-400">{product.category}</td>
+                <tr key={product.id} className="hover:bg-panel-surface-2">
+                  <td className="px-4 py-3 font-mono text-sm text-panel-text-muted">{product.code}</td>
+                  <td className="px-4 py-3 font-bold text-panel-text">{product.name}</td>
+                  <td className="px-4 py-3 text-sm text-panel-text-muted">{product.category}</td>
                   <td className="px-4 py-3">
-                    <div className={`font-bold ${isLowStock ? 'text-amber-400' : 'text-zinc-100'}`}>{product.quantity}</div>
-                    <div className="text-xs text-zinc-500">Mín: {product.min_stock}</div>
+                    <div className={`font-bold ${isLowStock ? 'text-panel-warning' : 'text-panel-text'}`}>{product.quantity}</div>
+                    <div className="text-xs text-panel-text-muted">Mín: {product.min_stock}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-bold text-zinc-100">{formatUSD(product.sale_price)}</div>
+                    <div className="font-bold text-panel-text">{formatUSD(product.sale_price)}</div>
                     {discount > 0 && (
-                      <div className="text-xs text-emerald-400 font-bold">{formatUSD(finalPrice)}</div>
+                      <div className="text-xs text-panel-success font-bold">{formatUSD(finalPrice)}</div>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     {discount > 0 ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-xs font-bold">
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-panel-success/20 text-panel-success rounded text-xs font-bold">
                         <Percent size={14} />
                         {discount}%
                       </span>
                     ) : (
-                      <span className="text-xs text-zinc-500">Sin descuento</span>
+                      <span className="text-xs text-panel-text-muted">Sin descuento</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
                     {product.promotion ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-pink-500/20 text-pink-400 rounded text-xs font-bold truncate max-w-32">
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-[var(--kpi-pink)]/20 text-[var(--kpi-pink)] rounded text-xs font-bold truncate max-w-32">
                         <Tag size={14} />
                         {product.promotion}
                       </span>
                     ) : (
-                      <span className="text-xs text-zinc-500">Sin promoción</span>
+                      <span className="text-xs text-panel-text-muted">Sin promoción</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -381,19 +381,19 @@ export default function InventoryManagement() {
             }}
           />
         ) : (
-          <div className="p-8 text-center text-zinc-500">Cargando...</div>
+          <div className="p-8 text-center text-panel-text-muted">Cargando...</div>
         )}
       </div>
 
       {/* Edit Modal */}
       {editingProduct && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-zinc-100">Editar Producto</h2>
+              <h2 className="text-2xl font-bold text-panel-text">Editar Producto</h2>
               <button
                 onClick={() => setEditingProduct(null)}
-                className="text-zinc-500 hover:text-zinc-300"
+                className="text-panel-text-muted hover:text-panel-text"
               >
                 <X size={24} />
               </button>
@@ -401,49 +401,49 @@ export default function InventoryManagement() {
 
             <div className="space-y-4 mb-6">
               {/* Product Info */}
-              <div className="p-4 bg-zinc-950/50 rounded-lg border border-zinc-800">
+              <div className="p-4 bg-panel-bg/50 rounded-lg border border-panel-border">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <div className="text-xs font-bold text-zinc-500 mb-1">Nombre</div>
-                    <div className="font-bold text-zinc-100">{editingProduct.name}</div>
+                    <div className="text-xs font-bold text-panel-text-muted mb-1">Nombre</div>
+                    <div className="font-bold text-panel-text">{editingProduct.name}</div>
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-zinc-500 mb-1">Código</div>
-                    <div className="font-mono text-zinc-100">{editingProduct.code}</div>
+                    <div className="text-xs font-bold text-panel-text-muted mb-1">Código</div>
+                    <div className="font-mono text-panel-text">{editingProduct.code}</div>
                   </div>
                 </div>
               </div>
 
               {/* Stock Management */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300 flex items-center gap-2">
+                <h3 className="font-bold text-panel-text-muted flex items-center gap-2">
                   <MapPin size={16} />
                   Stock {isAllBranches ? '' : `- ${branches.find(b => b.id === selectedBranchId)?.name || ''}`}
                 </h3>
                 {isAllBranches ? (
-                  <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                  <p className="text-xs text-panel-warning bg-panel-warning/10 border border-panel-warning/30 rounded-lg p-3">
                     Estás viendo "Todas las sucursales". Selecciona una sucursal específica arriba para editar su stock.
                   </p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-xs font-bold text-zinc-400 mb-2">Cantidad Actual</label>
+                      <label className="block text-xs font-bold text-panel-text-muted mb-2">Cantidad Actual</label>
                       <input
                         type="number"
                         min="0"
                         value={editForm.quantity}
                         onChange={(e) => setEditForm({...editForm, quantity: e.target.value})}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                        className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-zinc-400 mb-2">Stock Mínimo</label>
+                      <label className="block text-xs font-bold text-panel-text-muted mb-2">Stock Mínimo</label>
                       <input
                         type="number"
                         min="0"
                         value={editForm.minStock}
                         onChange={(e) => setEditForm({...editForm, minStock: e.target.value})}
-                        className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                        className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                       />
                     </div>
                   </div>
@@ -452,34 +452,34 @@ export default function InventoryManagement() {
 
               {/* Pricing */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300">Precio</h3>
+                <h3 className="font-bold text-panel-text-muted">Precio</h3>
 
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Precio de Costo ($)</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Precio de Costo ($)</label>
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     value={editForm.costPrice}
                     onChange={(e) => setEditForm({...editForm, costPrice: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                   />
-                  <p className="text-xs text-zinc-500 mt-1">Lo que te cuesta a ti adquirir el producto (para calcular margen)</p>
+                  <p className="text-xs text-panel-text-muted mt-1">Lo que te cuesta a ti adquirir el producto (para calcular margen)</p>
                 </div>
 
                 {/* Price Includes VAT Toggle */}
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                <div className="bg-panel-accent/10 border border-panel-accent/30 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-2">
-                    <Info size={16} className="text-blue-400" />
-                    <label className="text-xs font-bold text-blue-400">¿El precio incluye IVA?</label>
+                    <Info size={16} className="text-panel-accent-soft" />
+                    <label className="text-xs font-bold text-panel-accent-soft">¿El precio incluye IVA?</label>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setEditForm({...editForm, priceIncludesVat: true})}
                       className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
                         editForm.priceIncludesVat
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                          ? 'bg-panel-accent text-panel-accent-text'
+                          : 'bg-panel-surface-2 text-panel-text-muted hover:bg-panel-text/10'
                       }`}
                     >
                       Sí, incluye IVA
@@ -488,14 +488,14 @@ export default function InventoryManagement() {
                       onClick={() => setEditForm({...editForm, priceIncludesVat: false})}
                       className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
                         !editForm.priceIncludesVat
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                          ? 'bg-panel-accent text-panel-accent-text'
+                          : 'bg-panel-surface-2 text-panel-text-muted hover:bg-panel-text/10'
                       }`}
                     >
                       No, sin IVA
                     </button>
                   </div>
-                  <p className="text-xs text-blue-300 mt-2">
+                  <p className="text-xs text-panel-accent-soft mt-2">
                     {editForm.priceIncludesVat
                       ? `El precio ingresado ya contiene el IVA del ${taxRate}%`
                       : `El IVA del ${taxRate}% se agregará al precio ingresado`}
@@ -503,7 +503,7 @@ export default function InventoryManagement() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">
                     {editForm.priceIncludesVat ? 'Precio Final (con IVA)' : 'Precio Base (sin IVA)'} ($)
                   </label>
                   <input
@@ -512,21 +512,21 @@ export default function InventoryManagement() {
                     step="0.01"
                     value={editForm.salePrice}
                     onChange={(e) => setEditForm({...editForm, salePrice: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                   />
                 </div>
 
                 {/* Price Preview */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-zinc-950/50 rounded border border-zinc-800">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-panel-bg/50 rounded border border-panel-border">
                   <div>
-                    <div className="text-xs text-zinc-500 font-bold">Precio sin IVA</div>
-                    <div className="text-lg font-bold text-zinc-100">
+                    <div className="text-xs text-panel-text-muted font-bold">Precio sin IVA</div>
+                    <div className="text-lg font-bold text-panel-text">
                       {formatUSD(getPriceWithoutVat(parseFloat(editForm.salePrice) || 0, editForm.priceIncludesVat))}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-zinc-500 font-bold">Precio con IVA ({taxRate}%)</div>
-                    <div className="text-lg font-bold text-emerald-400">
+                    <div className="text-xs text-panel-text-muted font-bold">Precio con IVA ({taxRate}%)</div>
+                    <div className="text-lg font-bold text-panel-success">
                       {formatUSD(getPriceWithVat(parseFloat(editForm.salePrice) || 0, editForm.priceIncludesVat))}
                     </div>
                   </div>
@@ -535,12 +535,12 @@ export default function InventoryManagement() {
 
               {/* Discount */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300 flex items-center gap-2">
+                <h3 className="font-bold text-panel-text-muted flex items-center gap-2">
                   <Percent size={18} />
                   Descuento
                 </h3>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Porcentaje de Descuento (%)</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Porcentaje de Descuento (%)</label>
                   <input
                     type="number"
                     min="0"
@@ -548,10 +548,10 @@ export default function InventoryManagement() {
                     step="0.1"
                     value={editForm.discount}
                     onChange={(e) => setEditForm({...editForm, discount: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                   />
                   {editForm.discount > 0 && (
-                    <div className="mt-2 p-2 bg-emerald-500/10 border border-emerald-500/30 rounded text-sm text-emerald-400">
+                    <div className="mt-2 p-2 bg-panel-success/10 border border-panel-success/30 rounded text-sm text-panel-success">
                       Precio con descuento: <span className="font-bold">{formatUSD(getDiscountedPrice(parseFloat(editForm.salePrice), parseFloat(editForm.discount)))}</span>
                     </div>
                   )}
@@ -560,35 +560,35 @@ export default function InventoryManagement() {
 
               {/* Promotion */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300 flex items-center gap-2">
+                <h3 className="font-bold text-panel-text-muted flex items-center gap-2">
                   <Tag size={18} />
                   Promoción
                 </h3>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Descripción de Promoción</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Descripción de Promoción</label>
                   <input
                     type="text"
                     placeholder="Ej: Compre 2 y lleve 3, Black Friday, etc"
                     value={editForm.promotion}
                     onChange={(e) => setEditForm({...editForm, promotion: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                   />
-                  <p className="text-xs text-zinc-500 mt-1">Ej: "Compre 2 lleve 3", "Black Friday 50%", "Promoción Flash"</p>
+                  <p className="text-xs text-panel-text-muted mt-1">Ej: "Compre 2 lleve 3", "Black Friday 50%", "Promoción Flash"</p>
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 border-t border-zinc-800 pt-4">
+            <div className="flex gap-3 border-t border-panel-border pt-4">
               <button
                 onClick={() => setEditingProduct(null)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+                className="flex-1 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-2 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSaveEdit}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <Save size={18} />
                 Guardar Cambios
@@ -601,20 +601,20 @@ export default function InventoryManagement() {
       {/* Add Product Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-zinc-100">Agregar Nuevo Producto</h2>
+              <h2 className="text-2xl font-bold text-panel-text">Agregar Nuevo Producto</h2>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-zinc-500 hover:text-zinc-300"
+                className="text-panel-text-muted hover:text-panel-text"
               >
                 <X size={24} />
               </button>
             </div>
 
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4 flex items-center gap-2">
-              <MapPin size={16} className="text-blue-400 flex-shrink-0" />
-              <p className="text-xs text-blue-300">
+            <div className="bg-panel-accent/10 border border-panel-accent/30 rounded-lg p-3 mb-4 flex items-center gap-2">
+              <MapPin size={16} className="text-panel-accent-soft flex-shrink-0" />
+              <p className="text-xs text-panel-accent-soft">
                 Se agregará a <span className="font-bold">{branches.find(b => b.id === selectedBranchId)?.name}</span> con la cantidad inicial indicada. Otras sucursales lo verán con stock 0 hasta que ajustes su inventario ahí.
               </p>
             </div>
@@ -622,63 +622,63 @@ export default function InventoryManagement() {
             <div className="space-y-4 mb-6">
               {/* Basic Info */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300">Información Básica</h3>
+                <h3 className="font-bold text-panel-text-muted">Información Básica</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Código (Requerido)</label>
+                    <label className="block text-xs font-bold text-panel-text-muted mb-2">Código (Requerido)</label>
                     <input
                       type="text"
                       placeholder="SKU-001"
                       value={newProduct.code}
                       onChange={(e) => setNewProduct({...newProduct, code: e.target.value})}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                      className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Nombre (Requerido)</label>
+                    <label className="block text-xs font-bold text-panel-text-muted mb-2">Nombre (Requerido)</label>
                     <input
                       type="text"
                       placeholder="Nombre del producto"
                       value={newProduct.name}
                       onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                      className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Categoría (Requerido)</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Categoría (Requerido)</label>
                   <input
                     type="text"
                     placeholder="Ej: Electrónica, Ropa, Alimentos..."
                     value={newProduct.category}
                     onChange={(e) => setNewProduct({...newProduct, category: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                   />
                 </div>
               </div>
 
               {/* Stock Management */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300">Stock</h3>
+                <h3 className="font-bold text-panel-text-muted">Stock</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Cantidad Inicial</label>
+                    <label className="block text-xs font-bold text-panel-text-muted mb-2">Cantidad Inicial</label>
                     <input
                       type="number"
                       min="0"
                       value={newProduct.quantity}
                       onChange={(e) => setNewProduct({...newProduct, quantity: e.target.value})}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                      className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Stock Mínimo</label>
+                    <label className="block text-xs font-bold text-panel-text-muted mb-2">Stock Mínimo</label>
                     <input
                       type="number"
                       min="1"
                       value={newProduct.minStock}
                       onChange={(e) => setNewProduct({...newProduct, minStock: e.target.value})}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                      className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                     />
                   </div>
                 </div>
@@ -686,34 +686,34 @@ export default function InventoryManagement() {
 
               {/* Pricing */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300">Precio</h3>
+                <h3 className="font-bold text-panel-text-muted">Precio</h3>
 
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Precio de Costo ($)</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Precio de Costo ($)</label>
                   <input
                     type="number"
                     min="0"
                     step="0.01"
                     value={newProduct.costPrice}
                     onChange={(e) => setNewProduct({...newProduct, costPrice: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                   />
-                  <p className="text-xs text-zinc-500 mt-1">Lo que te cuesta a ti adquirir el producto (para calcular margen)</p>
+                  <p className="text-xs text-panel-text-muted mt-1">Lo que te cuesta a ti adquirir el producto (para calcular margen)</p>
                 </div>
 
                 {/* Price Includes VAT Toggle */}
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                <div className="bg-panel-accent/10 border border-panel-accent/30 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-2">
-                    <Info size={16} className="text-blue-400" />
-                    <label className="text-xs font-bold text-blue-400">¿El precio incluye IVA?</label>
+                    <Info size={16} className="text-panel-accent-soft" />
+                    <label className="text-xs font-bold text-panel-accent-soft">¿El precio incluye IVA?</label>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => setNewProduct({...newProduct, priceIncludesVat: true})}
                       className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
                         newProduct.priceIncludesVat
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                          ? 'bg-panel-accent text-panel-accent-text'
+                          : 'bg-panel-surface-2 text-panel-text-muted hover:bg-panel-text/10'
                       }`}
                     >
                       Sí, incluye IVA
@@ -722,14 +722,14 @@ export default function InventoryManagement() {
                       onClick={() => setNewProduct({...newProduct, priceIncludesVat: false})}
                       className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
                         !newProduct.priceIncludesVat
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                          ? 'bg-panel-accent text-panel-accent-text'
+                          : 'bg-panel-surface-2 text-panel-text-muted hover:bg-panel-text/10'
                       }`}
                     >
                       No, sin IVA
                     </button>
                   </div>
-                  <p className="text-xs text-blue-300 mt-2">
+                  <p className="text-xs text-panel-accent-soft mt-2">
                     {newProduct.priceIncludesVat
                       ? `El precio ingresado ya contiene el IVA del ${taxRate}%`
                       : `El IVA del ${taxRate}% se agregará al precio ingresado`}
@@ -737,7 +737,7 @@ export default function InventoryManagement() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">
                     {newProduct.priceIncludesVat ? 'Precio Final (con IVA)' : 'Precio Base (sin IVA)'} ($)
                   </label>
                   <input
@@ -746,21 +746,21 @@ export default function InventoryManagement() {
                     step="0.01"
                     value={newProduct.salePrice}
                     onChange={(e) => setNewProduct({...newProduct, salePrice: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                   />
                 </div>
 
                 {/* Price Preview */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-zinc-950/50 rounded border border-zinc-800">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-panel-bg/50 rounded border border-panel-border">
                   <div>
-                    <div className="text-xs text-zinc-500 font-bold">Precio sin IVA</div>
-                    <div className="text-lg font-bold text-zinc-100">
+                    <div className="text-xs text-panel-text-muted font-bold">Precio sin IVA</div>
+                    <div className="text-lg font-bold text-panel-text">
                       {formatUSD(getPriceWithoutVat(parseFloat(newProduct.salePrice) || 0, newProduct.priceIncludesVat))}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-zinc-500 font-bold">Precio con IVA ({taxRate}%)</div>
-                    <div className="text-lg font-bold text-emerald-400">
+                    <div className="text-xs text-panel-text-muted font-bold">Precio con IVA ({taxRate}%)</div>
+                    <div className="text-lg font-bold text-panel-success">
                       {formatUSD(getPriceWithVat(parseFloat(newProduct.salePrice) || 0, newProduct.priceIncludesVat))}
                     </div>
                   </div>
@@ -769,12 +769,12 @@ export default function InventoryManagement() {
 
               {/* Discount */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300 flex items-center gap-2">
+                <h3 className="font-bold text-panel-text-muted flex items-center gap-2">
                   <Percent size={18} />
                   Descuento (Opcional)
                 </h3>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Porcentaje de Descuento (%)</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Porcentaje de Descuento (%)</label>
                   <input
                     type="number"
                     min="0"
@@ -782,10 +782,10 @@ export default function InventoryManagement() {
                     step="0.1"
                     value={newProduct.discount}
                     onChange={(e) => setNewProduct({...newProduct, discount: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
                   />
                   {parseFloat(newProduct.discount) > 0 && (
-                    <div className="mt-2 p-2 bg-emerald-500/10 border border-emerald-500/30 rounded text-sm text-emerald-400">
+                    <div className="mt-2 p-2 bg-panel-success/10 border border-panel-success/30 rounded text-sm text-panel-success">
                       Precio con descuento: <span className="font-bold">{formatUSD(getDiscountedPrice(parseFloat(newProduct.salePrice), parseFloat(newProduct.discount)))}</span>
                     </div>
                   )}
@@ -794,35 +794,35 @@ export default function InventoryManagement() {
 
               {/* Promotion */}
               <div className="space-y-3">
-                <h3 className="font-bold text-zinc-300 flex items-center gap-2">
+                <h3 className="font-bold text-panel-text-muted flex items-center gap-2">
                   <Tag size={18} />
                   Promoción (Opcional)
                 </h3>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Descripción de Promoción</label>
+                  <label className="block text-xs font-bold text-panel-text-muted mb-2">Descripción de Promoción</label>
                   <input
                     type="text"
                     placeholder="Ej: Compre 2 y lleve 3, Black Friday, etc"
                     value={newProduct.promotion}
                     onChange={(e) => setNewProduct({...newProduct, promotion: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                    className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
                   />
-                  <p className="text-xs text-zinc-500 mt-1">Ej: "Compre 2 lleve 3", "Black Friday 50%", "Promoción Flash"</p>
+                  <p className="text-xs text-panel-text-muted mt-1">Ej: "Compre 2 lleve 3", "Black Friday 50%", "Promoción Flash"</p>
                 </div>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3 border-t border-zinc-800 pt-4">
+            <div className="flex gap-3 border-t border-panel-border pt-4">
               <button
                 onClick={() => setShowAddModal(false)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+                className="flex-1 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-2 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleAddProduct}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 <Plus size={18} />
                 Agregar Producto

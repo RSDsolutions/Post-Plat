@@ -1,0 +1,224 @@
+/* ---------------------------------------------------------------------------
+ * Temas del POS - Fase 1 (infraestructura) + Fase 2 (los 4 temas y 6 paletas).
+ *
+ * Mecanismo: el contenedor raíz de POSLayout lleva data-pos-theme="<tema>" y
+ * data-pos-accent="<paleta>". Estos custom properties (--pos-*) son la única
+ * fuente de color/estructura que usan POSInterface.jsx/POSLayout.jsx/
+ * POSSettings.jsx/POSHistory.jsx - mapeados a clases Tailwind normales en
+ * tailwind.config.js (pos-bg, pos-surface, etc.), así que en el JSX se usan
+ * como cualquier otra clase (bg-pos-bg, text-pos-text-muted...), nunca
+ * var(--pos-x) directo, salvo un puñado de propiedades que Tailwind no
+ * expone como color (radio/sombra/tamaño, ver sección estructural al final).
+ *
+ * Estructura: un bloque de tokens "base" por tema exacto (4 bloques - bg,
+ * superficies, bordes, texto, success/danger/warning) + un bloque de acento
+ * por paleta (6 bloques, no 12: se verificó con la fórmula de contraste WCAG
+ * que cada paleta de acento (color + accent-text) pasa 4.5:1 igual sobre
+ * cualquiera de los 4 temas, porque el acento ahí se usa como fondo de botón
+ * autocontenido, no depende del fondo de la página).
+ *
+ * Todos los pares texto/fondo fueron verificados >=4.5:1 (WCAG AA texto
+ * normal) con la fórmula de luminancia relativa real, no a ojo.
+ * ------------------------------------------------------------------------- */
+
+/* ============ TEMAS (bg / superficies / bordes / texto) ============ */
+
+/* light-classic: el look de referencia "clásico" claro - fondos blancos,
+   tarjetas con borde suave. Default de fábrica para empresas NUEVAS
+   (ver migración ui_settings). */
+/* color-scheme por familia de tema (ver el comentario en index.css :root
+   sobre por qué esto hace falta) - por prefijo, no por tema exacto, mismo
+   razonamiento que --pos-accent-soft: light-classic/light-soft comparten
+   chrome nativo claro, dark-classic/dark-contrast comparten chrome oscuro. */
+[data-pos-theme^="light"] { color-scheme: light; }
+[data-pos-theme^="dark"] { color-scheme: dark; }
+
+[data-pos-theme="light-classic"] {
+  --pos-bg: #ffffff;
+  --pos-surface: #ffffff;
+  --pos-surface-2: #f4f4f5;
+  --pos-border: #e4e4e7;
+  --pos-text: #18181b;
+  --pos-text-muted: #52525b;
+  --pos-success: #047857;
+  --pos-danger: #dc2626;
+  --pos-warning: #b45309;
+  --pos-radius: 0.75rem;
+  --pos-card-shadow: none;
+  --pos-card-border-w: 1px;
+  --pos-btn-py: 0.75rem;
+  --pos-btn-text-size: 1rem;
+}
+
+/* light-soft: claro cálido para locales con mucha luz - fondo crema (no
+   blanco puro), tarjetas elevadas con sombra en vez de borde, esquinas más
+   redondeadas y totales un punto más grandes (ver .pos-card/.pos-total-amount
+   al final - la sombra y el tamaño no son "color" así que no caben en el
+   modelo --pos-*, se aplican como reglas CSS scoped a este tema). */
+[data-pos-theme="light-soft"] {
+  --pos-bg: #faf7f2;
+  --pos-surface: #ffffff;
+  --pos-surface-2: #f3ede4;
+  --pos-border: #e7ddd0;
+  --pos-text: #292420;
+  --pos-text-muted: #6b6259;
+  --pos-success: #047857;
+  --pos-danger: #dc2626;
+  --pos-warning: #b45309;
+  --pos-radius: 1.25rem;
+  --pos-card-shadow: 0 10px 30px -10px rgba(41, 36, 32, 0.18), 0 4px 10px -4px rgba(41, 36, 32, 0.08);
+  --pos-card-border-w: 0px;
+  --pos-btn-py: 0.75rem;
+  --pos-btn-text-size: 1rem;
+}
+
+/* dark-classic: oscuro sobrio para poca luz - reproduce EXACTO la paleta
+   zinc-950/900/800 que ya usaba el POS antes de esta fase (bg/superficies/
+   bordes/texto sin cambios). Es el valor de backfill para las empresas que
+   ya existían antes de esta migración, para que su POS se vea idéntico.
+   (El spec original describía este tema en abstracto como "cerca de
+   #111318" - se descartó a propósito esa sugerencia en favor del tono EXACTO
+   que ya está en producción, por la decisión de backfill de la Fase 1: las
+   empresas existentes no deben notar ningún cambio de fondo.)
+   Única desviación real vs. el código viejo: --pos-text-muted sube de
+   zinc-500 (#71717a, fallaba AA: 4.12:1) a zinc-400 (#a1a1aa, 7.76:1) -
+   ver el resumen de la fase para el detalle. */
+[data-pos-theme="dark-classic"] {
+  --pos-bg: #09090b;
+  --pos-surface: #18181b;
+  --pos-surface-2: #27272a;
+  --pos-border: #27272a;
+  --pos-text: #f4f4f5;
+  --pos-text-muted: #a1a1aa;
+  --pos-success: #34d399;
+  --pos-danger: #f87171;
+  --pos-warning: #fbbf24;
+  --pos-radius: 0.75rem;
+  --pos-card-shadow: none;
+  --pos-card-border-w: 1px;
+  --pos-btn-py: 0.75rem;
+  --pos-btn-text-size: 1rem;
+}
+
+/* dark-contrast: oscuro de alto contraste para uso rápido/táctil - fondo
+   casi negro, texto blanco puro, botones grandes con relleno sólido (más
+   padding/tamaño de fuente en los botones principales, ver .pos-btn-primary
+   al final). */
+[data-pos-theme="dark-contrast"] {
+  --pos-bg: #000000;
+  --pos-surface: #0a0a0a;
+  --pos-surface-2: #1a1a1a;
+  --pos-border: #2e2e2e;
+  --pos-text: #ffffff;
+  --pos-text-muted: #b8b8b8;
+  --pos-success: #4ade80;
+  --pos-danger: #f87171;
+  --pos-warning: #fbbf24;
+  --pos-radius: 0.75rem;
+  --pos-card-shadow: none;
+  --pos-card-border-w: 1px;
+  --pos-btn-py: 1.125rem;
+  --pos-btn-text-size: 1.0625rem;
+}
+
+/* ============ PALETAS DE ACENTO (6, ver nota arriba) ============ */
+
+[data-pos-accent="blue"] {
+  --pos-accent: #2563eb;
+  --pos-accent-hover: #1d4ed8;
+  --pos-accent-text: #ffffff;
+}
+
+[data-pos-accent="emerald"] {
+  /* emerald-600 (#059669), el tono original del botón de cobro, falla AA
+     con texto blanco (3.77:1) - se sube un escalón a emerald-700. */
+  --pos-accent: #047857;
+  --pos-accent-hover: #065f46;
+  --pos-accent-text: #ffffff;
+}
+
+[data-pos-accent="violet"] {
+  --pos-accent: #6d28d9;
+  --pos-accent-hover: #5b21b6;
+  --pos-accent-text: #ffffff;
+}
+
+[data-pos-accent="amber"] {
+  /* amber es una paleta clara incluso en su tono 500/600 - con texto blanco
+     nunca pasa AA (3.19:1 en el 600). Se invierte a texto oscuro, tal como
+     anticipaba la spec ("el texto sobre acento puede necesitar invertirse"). */
+  --pos-accent: #f59e0b;
+  --pos-accent-hover: #d97706;
+  --pos-accent-text: #09090b;
+}
+
+[data-pos-accent="rose"] {
+  --pos-accent: #e11d48;
+  --pos-accent-hover: #be123c;
+  --pos-accent-text: #ffffff;
+}
+
+[data-pos-accent="slate"] {
+  --pos-accent: #475569;
+  --pos-accent-hover: #334155;
+  --pos-accent-text: #ffffff;
+}
+
+/* ============ ACENTO COMO TEXTO (--pos-accent-soft) ============
+ * Gap encontrado en la verificación de la Fase 2: --pos-accent está afinado
+ * para servir de FONDO de botón con --pos-accent-text encima (blanco u
+ * oscuro según la paleta) - varios de esos mismos tonos, usados DIRECTO como
+ * texto/ícono sobre --pos-bg/--pos-surface (links tipo "Editar Cliente",
+ * hints, íconos), fallan AA. Verificado numéricamente: blue/emerald/violet/
+ * rose/slate como texto sobre fondo oscuro dan 2.3-4.2:1 (fallan), y amber
+ * como texto en cualquier fondo da ~2:1 (falla siempre, es demasiado claro
+ * incluso en su tono 500/600).
+ *
+ * --pos-accent-soft SÍ depende de si el tema es claro u oscuro (a diferencia
+ * de --pos-accent, que es el mismo en los 4 temas) - de ahí el selector por
+ * prefijo [data-pos-theme^="light"/"dark"] en vez de por tema exacto:
+ * light-classic y light-soft comparten fondo lo bastante claro para necesitar
+ * el mismo tono "oscuro" de acento; dark-classic y dark-contrast comparten
+ * fondo lo bastante oscuro para necesitar el mismo tono "claro". Todos los
+ * pares verificados >=4.5:1 contra bg Y surface de sus dos temas. */
+[data-pos-theme^="light"][data-pos-accent="blue"] { --pos-accent-soft: #2563eb; }
+[data-pos-theme^="light"][data-pos-accent="emerald"] { --pos-accent-soft: #047857; }
+[data-pos-theme^="light"][data-pos-accent="violet"] { --pos-accent-soft: #6d28d9; }
+[data-pos-theme^="light"][data-pos-accent="amber"] { --pos-accent-soft: #92400e; }
+[data-pos-theme^="light"][data-pos-accent="rose"] { --pos-accent-soft: #be123c; }
+[data-pos-theme^="light"][data-pos-accent="slate"] { --pos-accent-soft: #475569; }
+
+[data-pos-theme^="dark"][data-pos-accent="blue"] { --pos-accent-soft: #60a5fa; }
+[data-pos-theme^="dark"][data-pos-accent="emerald"] { --pos-accent-soft: #34d399; }
+[data-pos-theme^="dark"][data-pos-accent="violet"] { --pos-accent-soft: #a78bfa; }
+[data-pos-theme^="dark"][data-pos-accent="amber"] { --pos-accent-soft: #fbbf24; }
+[data-pos-theme^="dark"][data-pos-accent="rose"] { --pos-accent-soft: #fb7185; }
+[data-pos-theme^="dark"][data-pos-accent="slate"] { --pos-accent-soft: #94a3b8; }
+
+/* ============ ESTRUCTURA POR TEMA (radio / sombra / tamaño de botón) ============
+ * No son colores, así que no usan --pos-* directo en el JSX vía clases
+ * Tailwind normales - se aplican como reglas CSS scoped a data-pos-theme
+ * sobre clases marcador (pos-card, pos-total-amount, pos-btn-primary)
+ * agregadas en el JSX sin ningún efecto visual propio (no tienen reglas
+ * fuera de este archivo). La base (light-classic/dark-classic) es
+ * exactamente el look actual sin ninguna de estas reglas - solo light-soft
+ * y dark-contrast se apartan de la base, así que solo ellos tienen bloques
+ * acá. dark-contrast reusa --pos-radius/--pos-card-shadow por defecto
+ * (definidos arriba, iguales a light-classic/dark-classic) porque su única
+ * desviación estructural pedida por la spec es el tamaño de botón. */
+
+[data-pos-theme="light-soft"] .pos-card {
+  border-radius: var(--pos-radius);
+  border-color: transparent;
+  box-shadow: var(--pos-card-shadow);
+}
+
+[data-pos-theme="light-soft"] .pos-total-amount {
+  font-size: 1.25rem; /* un paso arriba de text-lg (1.125rem), escala Tailwind */
+}
+
+[data-pos-theme="dark-contrast"] .pos-btn-primary {
+  padding-top: var(--pos-btn-py);
+  padding-bottom: var(--pos-btn-py);
+  font-size: var(--pos-btn-text-size);
+}

@@ -1,14 +1,30 @@
 import React, { useState } from 'react';
+import { Check } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import Modal from '../ui/Modal.jsx';
+import ThemeMiniPreview from '../ui/ThemeMiniPreview.jsx';
 import { validateRUC } from '../../lib/ruc.js';
 import { DEMO_DATE, formatDate } from '../../lib/dates.js';
+import { POS_THEMES, POS_ACCENTS, DEFAULT_UI_SETTINGS } from '../../lib/themes.js';
+import { hasFeature } from '../../lib/planLimits.js';
+
+const TOTAL_STEPS = 5;
 
 export default function CompanyWizard() {
   const { wizardStep, setWizardStep, wizardData, setWizardData, submitWizard, closeWizard, plans } = useStore();
   const [errors, setErrors] = useState({});
   const [cajeroDraft, setCajeroDraft] = useState({ name: '', email: '', role: 'vendedor' });
   const cajeros = wizardData.cajeros || [];
+
+  const selectedPlan = plans.find(p => p.id === wizardData.planId);
+  // Sin overrides todavía (la empresa no existe) - solo importa lo que trae
+  // el plan elegido. Si el plan no incluye pos_theming, el paso se muestra
+  // bloqueado y useStore.js/submitWizard fuerza el default sin importar lo
+  // que haya quedado seleccionado acá (defensa contra ida-y-vuelta entre
+  // pasos con un cambio de plan de por medio).
+  const posThemingAllowed = hasFeature(selectedPlan, [], 'pos_theming');
+  const selectedThemeId = wizardData.pos_theme || DEFAULT_UI_SETTINGS.pos_theme;
+  const selectedAccentId = wizardData.pos_accent || DEFAULT_UI_SETTINGS.pos_accent;
 
   const addCajero = () => {
     const name = cajeroDraft.name.trim();
@@ -43,9 +59,11 @@ export default function CompanyWizard() {
       if (!wizardData.planId) { setErrors({ planId: 'Debe seleccionar un plan' }); return; }
       if (!wizardData.adminEmail) { setErrors({ adminEmail: 'Correo requerido' }); return; }
     }
+    // Paso 4 (Diseño del POS) no tiene validación - ya viene con default
+    // preseleccionado (Claro Clásico + Azul), así que es saltable.
 
     setErrors({});
-    if (wizardStep < 4) {
+    if (wizardStep < TOTAL_STEPS) {
       setWizardStep(wizardStep + 1);
     } else {
       submitWizard();
@@ -62,15 +80,15 @@ export default function CompanyWizard() {
         </button>
       ) : <div />}
       <button onClick={handleNext} className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors ml-auto">
-        {wizardStep === 4 ? 'Crear empresa' : 'Siguiente'}
+        {wizardStep === TOTAL_STEPS ? 'Crear empresa' : 'Siguiente'}
       </button>
     </div>
   );
 
   return (
-    <Modal title={`Nueva Empresa — Paso ${wizardStep} de 4`} onClose={closeWizard} footer={footer}>
+    <Modal title={`Nueva Empresa — Paso ${wizardStep} de ${TOTAL_STEPS}`} onClose={closeWizard} footer={footer}>
       <div className="mb-6 flex space-x-2">
-        {[1, 2, 3, 4].map(i => (
+        {[1, 2, 3, 4, 5].map(i => (
           <div key={i} className={`flex-1 h-2 rounded-full ${wizardStep >= i ? 'bg-[var(--brand)]' : 'bg-[var(--surface-2)]'}`} />
         ))}
       </div>
@@ -82,7 +100,7 @@ export default function CompanyWizard() {
             <div>
               <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">RUC *</label>
               <input type="text" value={wizardData.ruc || ''} onChange={e => setField('ruc', e.target.value)}
-                className={`w-full border ${errors.ruc ? 'border-red-500' : 'border-[var(--border-subtle)]'} bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] placeholder-zinc-600`} 
+                className={`w-full border ${errors.ruc ? 'border-red-500' : 'border-[var(--border-subtle)]'} bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] placeholder-zinc-600`}
                 placeholder="13 dígitos terminados en 001" maxLength={13} />
               {errors.ruc && <p className="text-red-500 text-xs mt-1">{errors.ruc}</p>}
             </div>
@@ -136,7 +154,7 @@ export default function CompanyWizard() {
                 </label>
               </div>
             </div>
-            
+
             <div>
               <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Establecimiento</label>
               <input type="text" value={wizardData.establishment || '001'} onChange={e => setField('establishment', e.target.value)}
@@ -165,12 +183,12 @@ export default function CompanyWizard() {
       {wizardStep === 3 && (
         <div className="space-y-6">
           <h3 className="text-lg font-bold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-2">Plan y acceso</h3>
-          
+
           <div>
             <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-3">Seleccionar Plan *</label>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {plans.map(p => (
-                <div 
+                <div
                   key={p.id}
                   onClick={() => setField('planId', p.id)}
                   className={`border rounded-3xl p-5 cursor-pointer transition-all ${wizardData.planId === p.id ? 'border-[var(--brand)] bg-[var(--brand)]/10 ring-1 ring-[var(--brand)]' : 'border-[var(--border-subtle)] bg-[var(--surface-0)]/50 hover:border-zinc-700'}`}
@@ -204,7 +222,7 @@ export default function CompanyWizard() {
             <div className="md:col-span-2">
               <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Correo del administrador *</label>
               <input type="email" value={wizardData.adminEmail || ''} onChange={e => setField('adminEmail', e.target.value)}
-                className={`w-full border ${errors.adminEmail ? 'border-red-500' : 'border-[var(--border-subtle)]'} bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] placeholder-zinc-600`} 
+                className={`w-full border ${errors.adminEmail ? 'border-red-500' : 'border-[var(--border-subtle)]'} bg-[var(--surface-0)] text-[var(--text-primary)] rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] placeholder-zinc-600`}
                 placeholder="admin@empresa.com" />
               <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-2">Se enviarán las credenciales de acceso a este correo</p>
             </div>
@@ -213,6 +231,75 @@ export default function CompanyWizard() {
       )}
 
       {wizardStep === 4 && (
+        <div className="space-y-6">
+          <h3 className="text-lg font-bold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-2">Diseño del POS</h3>
+
+          {!posThemingAllowed ? (
+            <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4">
+              <p className="text-xs font-medium text-amber-300">
+                El plan seleccionado no incluye personalización visual del POS - esta empresa usará el diseño por defecto (Claro Clásico, acento Azul). Se puede activar más adelante cambiando de plan.
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs font-medium text-[var(--text-muted)]">
+                Este paso es opcional - viene preseleccionado con el diseño por defecto. El gerente puede cambiarlo después desde Configuración → Apariencia.
+              </p>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-3">Tema</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {POS_THEMES.map(theme => {
+                    const isSelected = selectedThemeId === theme.id;
+                    return (
+                      <button
+                        key={theme.id}
+                        type="button"
+                        onClick={() => setField('pos_theme', theme.id)}
+                        className={`text-left rounded-2xl border p-3 transition-all ${
+                          isSelected ? 'border-[var(--brand)] bg-[var(--brand)]/10 ring-1 ring-[var(--brand)]' : 'border-[var(--border-subtle)] bg-[var(--surface-0)]/50 hover:border-zinc-700'
+                        }`}
+                      >
+                        <ThemeMiniPreview preview={theme.preview} />
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <span className="text-sm font-bold text-[var(--text-primary)]">{theme.name}</span>
+                          {isSelected && <Check size={14} className="text-[var(--brand)]" />}
+                        </div>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{theme.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-3">Paleta de acento</label>
+                <div className="flex flex-wrap gap-3">
+                  {POS_ACCENTS.map(accent => {
+                    const isSelected = selectedAccentId === accent.id;
+                    return (
+                      <button
+                        key={accent.id}
+                        type="button"
+                        onClick={() => setField('pos_accent', accent.id)}
+                        title={accent.name}
+                        className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
+                          isSelected ? 'border-[var(--text-primary)] scale-110' : 'border-transparent'
+                        }`}
+                        style={{ backgroundColor: accent.preview }}
+                      >
+                        {isSelected && <Check size={16} className="text-white drop-shadow" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {wizardStep === 5 && (
         <div className="space-y-6">
           <h3 className="text-lg font-bold text-[var(--text-primary)] border-b border-[var(--border-subtle)] pb-2">Cajeros iniciales (opcional)</h3>
           <p className="text-xs font-medium text-[var(--text-muted)]">Puedes agregar cajeros ahora o hacerlo después desde la ficha de la empresa. Todos quedan asignados a la sucursal matriz que se crea con esta empresa.</p>

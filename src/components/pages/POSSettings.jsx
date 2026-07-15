@@ -83,70 +83,70 @@ export default function POSSettings() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
-        <Loader className="animate-spin text-zinc-600" size={32} />
+      <div className="min-h-screen bg-pos-bg flex items-center justify-center">
+        <Loader className="animate-spin text-pos-text-muted" size={32} />
       </div>
     );
   }
 
   if (!posContext) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-6">
+      <div className="min-h-screen bg-pos-bg flex items-center justify-center p-6">
         <div className="text-center max-w-md">
-          <Lock className="mx-auto text-zinc-600 mb-4" size={40} />
-          <p className="text-zinc-300 font-bold">No tienes una sucursal o punto de venta asignado.</p>
-          <p className="text-zinc-500 text-sm mt-2">Contacta a tu gerente para poder cerrar caja.</p>
+          <Lock className="mx-auto text-pos-text-muted mb-4" size={40} />
+          <p className="text-pos-text font-bold">No tienes una sucursal o punto de venta asignado.</p>
+          <p className="text-pos-text-muted text-sm mt-2">Contacta a tu gerente para poder cerrar caja.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white p-6 max-w-2xl mx-auto space-y-6">
+    <div className="min-h-screen bg-pos-bg text-pos-text p-6 max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Cerrar Caja</h1>
-          <p className="text-zinc-500 text-sm">{posContext.branch.name} · {posContext.pointOfSale.nombre}</p>
+          <p className="text-pos-text-muted text-sm">{posContext.branch.name} · {posContext.pointOfSale.nombre}</p>
         </div>
-        <button onClick={logout} className="flex items-center gap-2 text-zinc-500 hover:text-red-400 text-sm">
+        <button onClick={logout} className="flex items-center gap-2 text-pos-text-muted hover:text-pos-danger text-sm">
           <LogOut size={16} /> Salir
         </button>
       </div>
 
       {lastResult && (
-        <div className={`rounded-2xl p-4 border ${hasAnyDifference(lastResult.difference) ? 'bg-amber-500/10 border-amber-500/30' : 'bg-emerald-500/10 border-emerald-500/30'}`}>
+        <div className={`rounded-2xl p-4 border ${hasAnyDifference(lastResult.difference) ? 'bg-pos-warning/10 border-pos-warning/30' : 'bg-pos-success/10 border-pos-success/30'}`}>
           <div className="flex items-center gap-2 font-bold">
-            {hasAnyDifference(lastResult.difference) ? <AlertCircle className="text-amber-400" size={18} /> : <CheckCircle2 className="text-emerald-400" size={18} />}
-            <span className={hasAnyDifference(lastResult.difference) ? 'text-amber-400' : 'text-emerald-400'}>
+            {hasAnyDifference(lastResult.difference) ? <AlertCircle className="text-pos-warning" size={18} /> : <CheckCircle2 className="text-pos-success" size={18} />}
+            <span className={hasAnyDifference(lastResult.difference) ? 'text-pos-warning' : 'text-pos-success'}>
               Último cierre: {formatUSD(totalOf(lastResult.counted_totals))} contado, diferencia {formatUSD(totalOf(lastResult.difference))}
             </span>
           </div>
         </div>
       )}
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-        <h2 className="text-sm font-bold text-zinc-400 uppercase mb-3">Ventas del turno (desde {new Date(openedAt).toLocaleString('es-EC')})</h2>
-        <p className="text-xs text-zinc-500 mb-4">{invoices.length} factura{invoices.length === 1 ? '' : 's'}</p>
+      <div className="bg-pos-surface border border-pos-border rounded-2xl p-5">
+        <h2 className="text-sm font-bold text-pos-text-muted uppercase mb-3">Ventas del turno (desde {new Date(openedAt).toLocaleString('es-EC')})</h2>
+        <p className="text-xs text-pos-text-muted mb-4">{invoices.length} factura{invoices.length === 1 ? '' : 's'}</p>
         <div className="space-y-2">
           {PAYMENT_METHOD_KEYS.map(k => (
             <div key={k} className="flex justify-between text-sm">
-              <span className="text-zinc-400">{PAYMENT_METHOD_LABELS[k]}</span>
-              <span className="font-bold text-zinc-100">{formatUSD(expectedTotals[k])}</span>
+              <span className="text-pos-text-muted">{PAYMENT_METHOD_LABELS[k]}</span>
+              <span className="font-bold text-pos-text">{formatUSD(expectedTotals[k])}</span>
             </div>
           ))}
-          <div className="flex justify-between text-base pt-2 border-t border-zinc-800">
-            <span className="font-bold text-zinc-300">Total esperado</span>
-            <span className="font-bold text-emerald-400">{formatUSD(expectedTotal)}</span>
+          <div className="flex justify-between text-base pt-2 border-t border-pos-border">
+            <span className="font-bold text-pos-text-muted">Total esperado</span>
+            <span className="font-bold text-pos-success">{formatUSD(expectedTotal)}</span>
           </div>
         </div>
       </div>
 
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5">
-        <h2 className="text-sm font-bold text-zinc-400 uppercase mb-3">Contado por el cajero</h2>
+      <div className="bg-pos-surface border border-pos-border rounded-2xl p-5">
+        <h2 className="text-sm font-bold text-pos-text-muted uppercase mb-3">Contado por el cajero</h2>
         <div className="space-y-3">
           {PAYMENT_METHOD_KEYS.map(k => (
             <div key={k} className="flex items-center justify-between gap-3">
-              <label className="text-sm text-zinc-400 flex-1">{PAYMENT_METHOD_LABELS[k]}</label>
+              <label className="text-sm text-pos-text-muted flex-1">{PAYMENT_METHOD_LABELS[k]}</label>
               <input
                 type="number"
                 step="0.01"
@@ -154,20 +154,20 @@ export default function POSSettings() {
                 value={counted[k]}
                 onChange={e => setCounted({ ...counted, [k]: e.target.value })}
                 placeholder="0.00"
-                className="w-32 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-right text-zinc-100"
+                className="w-32 bg-pos-bg border border-pos-border rounded-lg px-3 py-2 text-right text-pos-text"
               />
             </div>
           ))}
         </div>
 
-        <div className="mt-4 pt-4 border-t border-zinc-800 space-y-2">
+        <div className="mt-4 pt-4 border-t border-pos-border space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-zinc-400">Total contado</span>
-            <span className="font-bold text-zinc-100">{formatUSD(countedTotal)}</span>
+            <span className="text-pos-text-muted">Total contado</span>
+            <span className="font-bold text-pos-text">{formatUSD(countedTotal)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-zinc-400">Diferencia</span>
-            <span className={`font-bold ${Math.abs(totalDifference) < 0.01 ? 'text-emerald-400' : totalDifference > 0 ? 'text-blue-400' : 'text-red-400'}`}>
+            <span className="text-pos-text-muted">Diferencia</span>
+            <span className={`font-bold ${Math.abs(totalDifference) < 0.01 ? 'text-pos-success' : totalDifference > 0 ? 'text-pos-warning' : 'text-pos-danger'}`}>
               {totalDifference > 0 ? '+' : ''}{formatUSD(totalDifference)}
             </span>
           </div>
@@ -177,19 +177,19 @@ export default function POSSettings() {
           value={notes}
           onChange={e => setNotes(e.target.value)}
           placeholder="Notas (opcional) - explica cualquier diferencia"
-          className="w-full mt-4 bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-200 resize-none"
+          className="w-full mt-4 bg-pos-bg border border-pos-border rounded-lg px-3 py-2 text-sm text-pos-text resize-none"
           rows={2}
         />
 
         <button
           onClick={handleSubmit}
           disabled={submitting}
-          className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+          className="w-full mt-4 bg-pos-accent hover:bg-pos-accent-hover disabled:opacity-60 text-pos-accent-text font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
         >
           {submitting ? <Loader size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
           {submitting ? 'Registrando...' : 'Registrar cierre de caja'}
         </button>
-        <p className="text-xs text-zinc-600 mt-2 text-center">Una vez registrado, el cierre no se puede editar - las correcciones se anotan en el siguiente cierre.</p>
+        <p className="text-xs text-pos-text-muted mt-2 text-center">Una vez registrado, el cierre no se puede editar - las correcciones se anotan en el siguiente cierre.</p>
       </div>
     </div>
   );

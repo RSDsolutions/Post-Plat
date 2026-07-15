@@ -1,14 +1,18 @@
 import React from 'react';
 
 const BAR_ACCENT_CLASSES = {
-  emerald: { bar: 'bg-emerald-500', text: 'text-emerald-400' },
-  blue: { bar: 'bg-blue-500', text: 'text-blue-400' },
-  amber: { bar: 'bg-amber-500', text: 'text-amber-400' },
-  purple: { bar: 'bg-purple-500', text: 'text-purple-400' },
-  pink: { bar: 'bg-pink-500', text: 'text-pink-400' },
-  red: { bar: 'bg-red-500', text: 'text-red-400' }
+  emerald: { bar: 'bg-emerald-500', text: 'text-panel-success' },
+  blue: { bar: 'bg-blue-500', text: 'text-panel-accent-soft' },
+  amber: { bar: 'bg-amber-500', text: 'text-panel-warning' },
+  purple: { bar: 'bg-purple-500', text: 'text-[var(--kpi-purple)]' },
+  pink: { bar: 'bg-pink-500', text: 'text-[var(--kpi-pink)]' },
+  red: { bar: 'bg-red-500', text: 'text-panel-danger' }
 };
 
+// Colores de línea/relleno del SVG (elementos gráficos, no texto - el umbral
+// WCAG de 3:1 para gráficos ya lo cumplen holgadamente contra cualquier
+// fondo del panel) - se mantienen fijos entre modos, es un código de color
+// categórico, no texto que necesite recalcularse.
 const TREND_COLORS = { emerald: '#10b981', blue: '#3b82f6', amber: '#f59e0b', purple: '#a855f7', pink: '#ec4899', red: '#ef4444' };
 
 const EMPTY_MESSAGE = 'Sin datos para este período';
@@ -18,7 +22,7 @@ const EMPTY_MESSAGE = 'Sin datos para este período';
 // generalized for reuse.
 export function BarList({ data, accent = 'emerald', emptyMessage = EMPTY_MESSAGE }) {
   if (!data || data.length === 0) {
-    return <p className="text-zinc-500 text-center py-10 text-sm">{emptyMessage}</p>;
+    return <p className="text-panel-text-muted text-center py-10 text-sm">{emptyMessage}</p>;
   }
   const max = Math.max(...data.map(d => d.value), 1);
   const cls = BAR_ACCENT_CLASSES[accent] || BAR_ACCENT_CLASSES.emerald;
@@ -26,15 +30,15 @@ export function BarList({ data, accent = 'emerald', emptyMessage = EMPTY_MESSAGE
     <div className="space-y-3">
       {data.map((d, i) => (
         <div key={i} className="flex items-center gap-4">
-          <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-panel-surface-2 flex items-center justify-center flex-shrink-0">
             <span className={`font-bold text-xs ${cls.text}`}>{i + 1}</span>
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2 mb-1.5">
-              <span className="text-sm font-medium text-zinc-200 truncate">{d.label}</span>
-              <span className="text-sm font-bold text-zinc-100 flex-shrink-0">{d.formatted ?? d.value}</span>
+              <span className="text-sm font-medium text-panel-text truncate">{d.label}</span>
+              <span className="text-sm font-bold text-panel-text flex-shrink-0">{d.formatted ?? d.value}</span>
             </div>
-            <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-2 bg-panel-surface-2 rounded-full overflow-hidden">
               <div className={`h-full rounded-full ${cls.bar}`} style={{ width: `${Math.max(3, (d.value / max) * 100)}%` }} />
             </div>
           </div>
@@ -50,7 +54,7 @@ export function BarList({ data, accent = 'emerald', emptyMessage = EMPTY_MESSAGE
 export function DonutChart({ data, centerLabel, formatValue = (v) => String(v), emptyMessage = EMPTY_MESSAGE }) {
   const total = (data || []).reduce((s, d) => s + (d.value || 0), 0);
   if (!data || data.length === 0 || total <= 0) {
-    return <p className="text-zinc-500 text-center py-10 text-sm">{emptyMessage}</p>;
+    return <p className="text-panel-text-muted text-center py-10 text-sm">{emptyMessage}</p>;
   }
   const size = 180;
   const strokeWidth = 26;
@@ -62,7 +66,7 @@ export function DonutChart({ data, centerLabel, formatValue = (v) => String(v), 
     <div className="flex flex-col sm:flex-row items-center gap-6">
       <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#27272a" strokeWidth={strokeWidth} />
+          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--panel-border)" strokeWidth={strokeWidth} />
           {data.map((d, i) => {
             const fraction = d.value / total;
             const dash = fraction * circumference;
@@ -85,8 +89,8 @@ export function DonutChart({ data, centerLabel, formatValue = (v) => String(v), 
         </svg>
         {centerLabel && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4 text-center">
-            <span className="text-[10px] text-zinc-500 uppercase tracking-wide">{centerLabel.label}</span>
-            <span className="text-lg font-bold text-zinc-100">{centerLabel.value}</span>
+            <span className="text-[10px] text-panel-text-muted uppercase tracking-wide">{centerLabel.label}</span>
+            <span className="text-lg font-bold text-panel-text">{centerLabel.value}</span>
           </div>
         )}
       </div>
@@ -95,11 +99,11 @@ export function DonutChart({ data, centerLabel, formatValue = (v) => String(v), 
           <div key={i} className="flex items-center justify-between gap-3 text-sm">
             <div className="flex items-center gap-2 min-w-0">
               <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
-              <span className="text-zinc-300 truncate">{d.label}</span>
+              <span className="text-panel-text truncate">{d.label}</span>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className="font-bold text-zinc-100">{formatValue(d.value)}</span>
-              <span className="text-zinc-500 text-xs w-9 text-right">{((d.value / total) * 100).toFixed(0)}%</span>
+              <span className="font-bold text-panel-text">{formatValue(d.value)}</span>
+              <span className="text-panel-text-muted text-xs w-9 text-right">{((d.value / total) * 100).toFixed(0)}%</span>
             </div>
           </div>
         ))}
@@ -113,7 +117,7 @@ export function DonutChart({ data, centerLabel, formatValue = (v) => String(v), 
 // handful of points, not something needing a full charting engine.
 export function TrendLineChart({ data, accent = 'emerald', formatValue = (v) => String(v), emptyMessage = EMPTY_MESSAGE }) {
   if (!data || data.length === 0) {
-    return <p className="text-zinc-500 text-center py-10 text-sm">{emptyMessage}</p>;
+    return <p className="text-panel-text-muted text-center py-10 text-sm">{emptyMessage}</p>;
   }
   const width = 640, height = 200;
   const padding = { top: 14, right: 14, bottom: 24, left: 14 };
@@ -148,7 +152,7 @@ export function TrendLineChart({ data, accent = 'emerald', formatValue = (v) => 
             key={f}
             x1={padding.left} x2={width - padding.right}
             y1={padding.top + innerH * (1 - f)} y2={padding.top + innerH * (1 - f)}
-            stroke="#27272a" strokeWidth="1"
+            stroke="var(--panel-border)" strokeWidth="1"
           />
         ))}
         <path d={areaPath} fill={`url(#${gradientId})`} stroke="none" />
@@ -160,7 +164,7 @@ export function TrendLineChart({ data, accent = 'emerald', formatValue = (v) => 
         ))}
         {points.map((p, i) => (
           i % labelStep === 0 ? (
-            <text key={i} x={p.x} y={height - 6} fontSize="9" fill="#71717a" textAnchor="middle">{p.label}</text>
+            <text key={i} x={p.x} y={height - 6} fontSize="9" fill="var(--panel-text-muted)" textAnchor="middle">{p.label}</text>
           ) : null
         ))}
       </svg>

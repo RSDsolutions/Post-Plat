@@ -17,7 +17,7 @@ import Toast from '../ui/Toast.jsx';
 import ConfirmDialog from '../ui/ConfirmDialog.jsx';
 
 export default function StoreManagerLayout() {
-  const { activePage, userRole } = useStore();
+  const { activePage, userRole, panelMode } = useStore();
 
   // El contador entra al mismo layout que el gerente (Fase 5) pero con un
   // dashboard de entrada distinto - resumen contable en vez de comercial.
@@ -41,7 +41,10 @@ export default function StoreManagerLayout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-zinc-950 text-zinc-100 font-sans p-3 sm:p-4 lg:p-6 lg:gap-4">
+    <div
+      data-panel-mode={panelMode}
+      className="flex h-screen overflow-hidden bg-panel-bg text-panel-text font-sans p-3 sm:p-4 lg:p-6 lg:gap-4"
+    >
       <StoreManagerSidebar />
       <div className="flex flex-col flex-1 overflow-hidden w-full min-w-0 relative">
         <StoreManagerTopBar />

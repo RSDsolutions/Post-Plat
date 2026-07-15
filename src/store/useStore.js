@@ -6,11 +6,27 @@ import { transformCompany } from '../lib/transforms.js';
 import { generateTempPassword } from '../lib/password.js';
 import { supabase } from '../lib/supabase.js';
 import { fetchRolePermissions, can as canPermission } from '../lib/permissions.js';
+import { DEFAULT_UI_SETTINGS, getSafeUiSettings } from '../lib/themes.js';
+import { DEFAULT_UI_PREFERENCES, getSafePanelMode } from '../lib/panelTheme.js';
+import { hasFeature } from '../lib/planLimits.js';
 import {
   createCompany, updateCompany, createBranch, createPointOfSale,
   createCompanyGerente, createCompanyUser, logActivity, updatePlan as updatePlanInDb,
-  fetchCompanyGerente, createPaymentRecord, loginWithPassword
+  fetchCompanyGerente, createPaymentRecord, loginWithPassword, fetchCompanyUiSettings,
+  updateUserUiPreferences
 } from '../lib/supabaseHelpers.js';
+
+// Best-effort: nunca debe bloquear el login si falla (empresa recién creada
+// sin fila todavía visible, error de red, etc.) - cae al default seguro.
+async function resolveUiSettings(companyId) {
+  if (!companyId) return DEFAULT_UI_SETTINGS;
+  try {
+    return getSafeUiSettings(await fetchCompanyUiSettings(companyId));
+  } catch (error) {
+    console.error('Error loading ui_settings:', error);
+    return DEFAULT_UI_SETTINGS;
+  }
+}
 
 export const useStore = create((set, get) => ({
   brand: {
@@ -30,6 +46,15 @@ export const useStore = create((set, get) => ({
   // restricciones" mientras carga.
   permissions: new Set(),
   can: (key) => canPermission(get().permissions, key),
+  // Tema/paleta del POS de la empresa del usuario (companies.ui_settings) -
+  // se resuelve en login()/restoreAuth() para que POSLayout lo tenga listo
+  // en su primer render, sin flash del tema default mientras carga.
+  posTheme: DEFAULT_UI_SETTINGS,
+  // Modo claro/oscuro del panel gerente/contador (users.ui_preferences) -
+  // preferencia personal, no de empresa. Mismo motivo de resolverlo en
+  // login()/restoreAuth(): que StoreManagerLayout lo tenga listo en su
+  // primer render.
+  panelMode: DEFAULT_UI_PREFERENCES.panel_mode,
   // Set while an admin is impersonating a company's gerente ("ver como
   // cliente") - holds who to restore on exitImpersonation. Deliberately
   // never written to localStorage (see impersonateCompany), so a hard
@@ -61,9 +86,14 @@ export const useStore = create((set, get) => ({
   // Auth actions - sesión real de Supabase Auth (JWT, persistida y refrescada
   // por el propio supabase-js, ya no a mano en localStorage).
   login: async (email, password) => {
-    const user = await loginWithPassword(email, password);
-    const permissions = await fetchRolePermissions(user.role);
-    set({ currentUser: user, userRole: user.role, permissions, isAuthenticated: true, isAuthenticating: false });
+    const rawUser = await loginWithPassword(email, password);
+    const { ui_preferences, ...user } = rawUser;
+    const panelMode = getSafePanelMode(ui_preferences);
+    const [permissions, posTheme] = await Promise.all([
+      fetchRolePermissions(user.role),
+      resolveUiSettings(user.company_id)
+    ]);
+    set({ currentUser: user, userRole: user.role, permissions, posTheme, panelMode, isAuthenticated: true, isAuthenticating: false });
     return user;
   },
   // Sigue existiendo para impersonación (swap de estado local, nunca crea
@@ -75,7 +105,7 @@ export const useStore = create((set, get) => ({
   },
   logout: () => {
     supabase.auth.signOut();
-    set({ currentUser: null, userRole: null, permissions: new Set(), isAuthenticated: false, activePage: 'dashboard' });
+    set({ currentUser: null, userRole: null, permissions: new Set(), posTheme: DEFAULT_UI_SETTINGS, panelMode: DEFAULT_UI_PREFERENCES.panel_mode, isAuthenticated: false, activePage: 'dashboard' });
   },
   setIsAuthenticating: (authenticating) => set({ isAuthenticating: authenticating }),
   // Restaura la sesión al abrir la app. supabase-js ya persiste su propia
@@ -87,7 +117,7 @@ export const useStore = create((set, get) => ({
 
     const { data, error } = await supabase
       .from('users')
-      .select('id, email, name, role, company_id, is_active')
+      .select('id, email, name, role, company_id, is_active, ui_preferences')
       .eq('id', session.user.id)
       .single();
 
@@ -97,10 +127,31 @@ export const useStore = create((set, get) => ({
       return false;
     }
 
-    const { is_active, ...user } = data;
-    const permissions = await fetchRolePermissions(user.role);
-    set({ currentUser: user, userRole: user.role, permissions, isAuthenticated: true, isAuthenticating: false });
+    const { is_active, ui_preferences, ...user } = data;
+    const panelMode = getSafePanelMode(ui_preferences);
+    const [permissions, posTheme] = await Promise.all([
+      fetchRolePermissions(user.role),
+      resolveUiSettings(user.company_id)
+    ]);
+    set({ currentUser: user, userRole: user.role, permissions, posTheme, panelMode, isAuthenticated: true, isAuthenticating: false });
     return true;
+  },
+
+  // Toggle del modo claro/oscuro en el TopBar de StoreManagerLayout. Aplica
+  // primero en pantalla (el toggle debe sentirse instantáneo) y recién
+  // después persiste - si la RPC falla, se revierte y se avisa por toast en
+  // vez de dejar la UI mostrando algo que no se guardó.
+  togglePanelMode: async () => {
+    const { panelMode, showToast } = get();
+    const next = panelMode === 'dark' ? 'light' : 'dark';
+    set({ panelMode: next });
+    try {
+      await updateUserUiPreferences(next);
+    } catch (error) {
+      console.error('Error saving panel mode:', error);
+      set({ panelMode });
+      showToast('error', 'No se pudo guardar la preferencia de apariencia');
+    }
   },
 
   // "Ver como cliente" - lets an admin drop into a company's gerente view
@@ -164,6 +215,14 @@ export const useStore = create((set, get) => ({
     const renewalDays = isAnnual ? 365 : 30;
     const environmentType = wizardData.environment === 'Produccion' ? 'produccion' : 'pruebas';
     const now = new Date();
+    // Defensa contra ida-y-vuelta en el wizard: si el usuario eligió un tema
+    // en el paso 4 y LUEGO volvió al paso 3 a cambiar a un plan sin
+    // pos_theming, wizardData.pos_theme/pos_accent podría seguir teniendo el
+    // valor viejo aunque la UI ya mostraba el paso bloqueado. Se revalida acá
+    // con el plan FINAL, no se confía en lo que haya quedado en wizardData.
+    const uiSettings = hasFeature(selectedPlan, [], 'pos_theming')
+      ? getSafeUiSettings({ pos_theme: wizardData.pos_theme, pos_accent: wizardData.pos_accent })
+      : DEFAULT_UI_SETTINGS;
 
     try {
       const dbCompany = await createCompany({
@@ -180,7 +239,8 @@ export const useStore = create((set, get) => ({
         subscription_start: now.toISOString(),
         subscription_renewal: addDays(now, renewalDays).toISOString(),
         payment_status: 'Al día',
-        admin_email: wizardData.adminEmail
+        admin_email: wizardData.adminEmail,
+        ui_settings: uiSettings
       });
 
       // First branch + point of sale so the new client can actually invoice

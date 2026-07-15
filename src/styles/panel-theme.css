@@ -1,0 +1,99 @@
+/* ---------------------------------------------------------------------------
+ * Modo claro/oscuro del panel de gerente/contador (Fase 4) - StoreManagerLayout
+ * ÚNICAMENTE. No aplica al panel super-admin (Layout.jsx, su propio sistema
+ * de variables en index.css) ni al POS (src/styles/themes.css, temas/paletas
+ * independientes elegidos por la empresa, no por el usuario).
+ *
+ * Mismo mecanismo que el POS: data-panel-mode="light|dark" en la raíz de
+ * StoreManagerLayout resuelve estas variables --panel-*, mapeadas a clases
+ * Tailwind normales (panel-bg, panel-text-muted...) en tailwind.config.js.
+ * A diferencia del POS, acá NO hay paleta de acento elegible - el acento es
+ * azul fijo en los dos modos (es una preferencia personal simple, no una
+ * identidad de marca configurable por empresa).
+ *
+ * Los valores oscuros son EXACTAMENTE los que ya estaban hardcodeados en
+ * StoreManagerLayout/Sidebar/TopBar y en cada página (zinc-950/900/800,
+ * blue-600/400, emerald-400, red-400, amber-400) - con data-panel-mode="dark"
+ * el panel se ve idéntico a como se veía antes de esta fase. El modo claro es
+ * lo nuevo, con los mismos tokens neutros ya verificados AA en la Fase 1/2
+ * del POS (misma familia zinc, reutilizada a propósito por consistencia).
+ * Todos los pares texto/fondo verificados >=4.5:1 con la fórmula de
+ * luminancia relativa real. */
+
+/* color-scheme (ver el comentario correspondiente en index.css :root y en
+   themes.css) - los <select> e <input type="date"> de todo el panel
+   necesitan esto para que su chrome nativo siga el modo activo. */
+[data-panel-mode="light"] { color-scheme: light; }
+[data-panel-mode="dark"] { color-scheme: dark; }
+
+[data-panel-mode="light"] {
+  --panel-bg: #ffffff;
+  --panel-surface: #ffffff;
+  --panel-surface-2: #f4f4f5;
+  --panel-border: #e4e4e7;
+  --panel-text: #18181b;
+  --panel-text-muted: #52525b;
+  --panel-accent: #2563eb;
+  --panel-accent-hover: #1d4ed8;
+  --panel-accent-text: #ffffff;
+  --panel-accent-soft: #2563eb;
+  --panel-success: #047857;
+  --panel-danger: #dc2626;
+  --panel-warning: #b45309;
+}
+
+[data-panel-mode="dark"] {
+  --panel-bg: #09090b;
+  --panel-surface: #18181b;
+  --panel-surface-2: #27272a;
+  --panel-border: #27272a;
+  --panel-text: #f4f4f5;
+  --panel-text-muted: #a1a1aa;
+  --panel-accent: #2563eb;
+  --panel-accent-hover: #1d4ed8;
+  --panel-accent-text: #ffffff;
+  --panel-accent-soft: #60a5fa;
+  --panel-success: #34d399;
+  --panel-danger: #f87171;
+  --panel-warning: #fbbf24;
+}
+
+/* src/components/ui/Modal.jsx, Toast.jsx, ConfirmDialog.jsx y Badge.jsx son
+ * compartidos entre el panel super-admin, el POS y este panel - ya usan las
+ * variables GENÉRICAS --surface-0/1/2/--border-subtle/--text-primary/muted/
+ * faint definidas en :root (index.css), con el panel super-admin
+ * sobreescribiéndolas vía la clase .admin-theme. Se extiende el MISMO
+ * mecanismo acá en vez de migrar esos componentes a nombrar --panel-*
+ * directamente - así no necesitan saber de qué layout cuelgan. Dark no
+ * necesita bloque propio (coincide con el default de :root). Al estar scoped
+ * a [data-panel-mode="light"], no afecta ni al POS (Toast/ConfirmDialog ahí
+ * siguen con el default de :root, fuera del alcance de esta fase) ni al
+ * panel super-admin (.admin-theme sigue intacto). */
+[data-panel-mode="light"] {
+  --surface-0: #f4f4f5;
+  --surface-1: #ffffff;
+  --surface-2: #e4e4e7;
+  --border-subtle: #e4e4e7;
+  --text-primary: #18181b;
+  --text-muted: #52525b;
+  --text-faint: #71717a;
+
+  /* Los *-400 de :root (index.css) fallan feo en fondo claro (verificado:
+     1.67-2.98:1) - se invierte a las variantes oscuras/saturadas de cada
+     color, igual que se hizo con --pos-accent-soft en la Fase 2. */
+  --status-success: #047857; /* emerald-700 */
+  --status-warning: #b45309; /* amber-700 */
+  --status-danger:  #dc2626; /* red-600 */
+  --status-info:    #2563eb; /* blue-600 */
+  --kpi-purple: #7e22ce; /* purple-700 */
+  --kpi-pink:   #be185d; /* pink-700 */
+  --kpi-cyan:   #0e7490; /* cyan-700 */
+  --kpi-green:  #15803d; /* green-700 */
+
+  /* --brand (index.css) es emerald-500 (#10b981) - funciona bien como fondo
+     de botón (con texto blanco/oscuro encima) pero falla como TEXTO directo
+     sobre fondo claro (2.54:1, verificado) - Tabs.jsx lo usa así para la
+     pestaña activa. Mismo ajuste que el resto: más oscuro en modo claro. */
+  --brand: #047857;      /* emerald-700 */
+  --brand-dark: #065f46; /* emerald-800 */
+}

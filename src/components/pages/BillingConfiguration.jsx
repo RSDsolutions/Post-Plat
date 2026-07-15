@@ -222,7 +222,7 @@ export default function BillingConfiguration() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <Loader className="animate-spin" size={48} />
+        <Loader className="animate-spin text-panel-text" size={48} />
       </div>
     );
   }
@@ -230,41 +230,41 @@ export default function BillingConfiguration() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center gap-3 mb-8">
-        <FileText className="text-emerald-500" size={32} />
-        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Configuración de Facturación Electrónica</h1>
+        <FileText className="text-panel-success" size={32} />
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-panel-text">Configuración de Facturación Electrónica</h1>
       </div>
 
       {/* Warning */}
-      <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-4 flex items-start gap-3">
-        <AlertCircle className="text-amber-500 flex-shrink-0 mt-1" size={20} />
+      <div className="bg-panel-warning/10 border border-panel-warning/30 rounded-lg p-4 flex items-start gap-3">
+        <AlertCircle className="text-panel-warning flex-shrink-0 mt-1" size={20} />
         <div>
-          <h3 className="font-bold text-amber-400">Información Importante</h3>
-          <p className="text-sm text-amber-300 mt-1">
+          <h3 className="font-bold text-panel-warning">Información Importante</h3>
+          <p className="text-sm text-panel-warning mt-1">
             Los datos aquí configurados deben ser precisos y válidos ante el SRI. Cualquier error puede causar rechazo de facturas.
           </p>
         </div>
       </div>
 
       {/* Company Logo */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
-        <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
-          <ImageIcon size={24} className="text-blue-500" />
+      <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 space-y-4">
+        <h2 className="text-xl font-bold text-panel-text flex items-center gap-2">
+          <ImageIcon size={24} className="text-panel-accent-soft" />
           Logo de la Empresa
         </h2>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-panel-text-muted">
           Aparecerá en el encabezado de las facturas (RIDE) y recibos generados. Recomendado: imagen cuadrada o rectangular, fondo transparente o blanco, máx. 2MB.
         </p>
 
         <div className="flex items-center gap-5">
-          <div className="w-24 h-24 bg-zinc-950 border border-zinc-800 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
+          <div className="w-24 h-24 bg-panel-bg border border-panel-border rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0">
             {(logoPreview || company?.logo_url) ? (
               <img src={logoPreview || company.logo_url} alt="Logo" className="w-full h-full object-contain" />
             ) : (
-              <ImageIcon size={28} className="text-zinc-700" />
+              <ImageIcon size={28} className="text-panel-text-muted" />
             )}
           </div>
           <div className="flex-1">
-            <label className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-white text-sm font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors">
+            <label className="inline-flex items-center gap-2 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text text-sm font-bold px-4 py-2 rounded-lg cursor-pointer transition-colors">
               {uploadingLogo ? <Loader size={16} className="animate-spin" /> : <Upload size={16} />}
               {uploadingLogo ? 'Subiendo...' : company?.logo_url ? 'Cambiar Logo' : 'Subir Logo'}
               <input
@@ -280,33 +280,33 @@ export default function BillingConfiguration() {
       </div>
 
       {/* Identification Data */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
-        <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
-          <CheckCircle size={24} className="text-blue-500" />
+      <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 space-y-4">
+        <h2 className="text-xl font-bold text-panel-text flex items-center gap-2">
+          <CheckCircle size={24} className="text-panel-accent-soft" />
           Identificación Tributaria
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">RUC (13 dígitos) *</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">RUC (13 dígitos) *</label>
             <input
               type="text"
               maxLength="13"
               placeholder="1723456789001"
               value={config.ruc}
               onChange={(e) => setConfig({...config, ruc: e.target.value})}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 font-mono"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted font-mono"
             />
             {config.ruc && validateRUC(config.ruc) && (
-              <p className="text-xs text-emerald-400 mt-1">✓ RUC válido</p>
+              <p className="text-xs text-panel-success mt-1">✓ RUC válido</p>
             )}
           </div>
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Regimen Contable</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Regimen Contable</label>
             <select
               value={config.accountingRegime}
               onChange={(e) => setConfig({...config, accountingRegime: e.target.value})}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
             >
               <option value="general">General</option>
               <option value="special">Régimen Especial</option>
@@ -318,57 +318,57 @@ export default function BillingConfiguration() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Razón Social *</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Razón Social *</label>
             <input
               type="text"
               placeholder="Mi Empresa S.A."
               value={config.razonSocial}
               onChange={(e) => setConfig({...config, razonSocial: e.target.value})}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Nombre Comercial *</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Nombre Comercial *</label>
             <input
               type="text"
               placeholder="Mi Tienda"
               value={config.nombreComercial}
               onChange={(e) => setConfig({...config, nombreComercial: e.target.value})}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-zinc-400 mb-2">Dirección Comercial *</label>
+          <label className="block text-xs font-bold text-panel-text-muted mb-2">Dirección Comercial *</label>
           <input
             type="text"
             placeholder="Calle Principal 123, Piso 2"
             value={config.address}
             onChange={(e) => setConfig({...config, address: e.target.value})}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+            className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
           />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono *</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Teléfono *</label>
             <input
               type="tel"
               placeholder="+593 2 1234567"
               value={config.phone}
               onChange={(e) => setConfig({...config, phone: e.target.value})}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Email *</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Email *</label>
             <input
               type="email"
               placeholder="info@empresa.com"
               value={config.email}
               onChange={(e) => setConfig({...config, email: e.target.value})}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
             />
           </div>
         </div>
@@ -381,57 +381,57 @@ export default function BillingConfiguration() {
             onChange={(e) => setConfig({...config, llevaContabilidad: e.target.checked})}
             className="w-4 h-4 rounded"
           />
-          <label htmlFor="llevaContabilidad" className="text-sm text-zinc-300">
+          <label htmlFor="llevaContabilidad" className="text-sm text-panel-text">
             La empresa lleva contabilidad formal
           </label>
         </div>
       </div>
 
       {/* Punto de Venta Configuration */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
-        <h2 className="text-xl font-bold text-zinc-100">Punto de Venta</h2>
+      <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 space-y-4">
+        <h2 className="text-xl font-bold text-panel-text">Punto de Venta</h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Establecimiento (3 dígitos)</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Establecimiento (3 dígitos)</label>
             <input
               type="text"
               maxLength="3"
               placeholder="001"
               value={config.establishment}
               onChange={(e) => setConfig({...config, establishment: e.target.value})}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 font-mono"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted font-mono"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Punto de Venta (3 dígitos)</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Punto de Venta (3 dígitos)</label>
             <input
               type="text"
               maxLength="3"
               placeholder="001"
               value={config.pointOfSale}
               onChange={(e) => setConfig({...config, pointOfSale: e.target.value})}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 font-mono"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted font-mono"
             />
           </div>
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-zinc-400 mb-2">Secuencial Actual</label>
+          <label className="block text-xs font-bold text-panel-text-muted mb-2">Secuencial Actual</label>
           <input
             type="number"
             min="1"
             value={config.currentSequential}
             onChange={(e) => setConfig({...config, currentSequential: parseInt(e.target.value) || 1})}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white font-mono"
+            className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text font-mono"
           />
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-xs text-panel-text-muted mt-1">
             Próxima factura será: {config.ruc}-{config.establishment}-{config.pointOfSale}-{String(config.currentSequential).padStart(9, '0')}
           </p>
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-zinc-400 mb-2">Tasa IVA (%)</label>
+          <label className="block text-xs font-bold text-panel-text-muted mb-2">Tasa IVA (%)</label>
           <input
             type="number"
             min="0"
@@ -439,26 +439,26 @@ export default function BillingConfiguration() {
             step="0.01"
             value={config.taxRate}
             onChange={(e) => setConfig({...config, taxRate: parseFloat(e.target.value) || 12})}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+            className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
           />
         </div>
       </div>
 
       {/* SRI Configuration */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
-        <h2 className="text-xl font-bold text-zinc-100">Configuración del SRI</h2>
+      <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 space-y-4">
+        <h2 className="text-xl font-bold text-panel-text">Configuración del SRI</h2>
 
         <div>
-          <label className="block text-xs font-bold text-zinc-400 mb-2">Ambiente</label>
+          <label className="block text-xs font-bold text-panel-text-muted mb-2">Ambiente</label>
           <select
             value={config.environment}
             onChange={(e) => setConfig({...config, environment: e.target.value})}
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
+            className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
           >
             <option value="production">Producción (Real)</option>
             <option value="test">Pruebas (Test)</option>
           </select>
-          <p className="text-xs text-zinc-500 mt-1">
+          <p className="text-xs text-panel-text-muted mt-1">
             {config.environment === 'production'
               ? '⚠️ Ambiente real: las facturas se enviarán al SRI'
               : '✓ Ambiente de pruebas: no genera obligación legal'}
@@ -466,67 +466,67 @@ export default function BillingConfiguration() {
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-zinc-400 mb-2">Pie de Recibo (Opcional)</label>
+          <label className="block text-xs font-bold text-panel-text-muted mb-2">Pie de Recibo (Opcional)</label>
           <textarea
             placeholder="Ej: Gracias por su compra. Retenciones según LRTI."
             value={config.receiptFooterText}
             onChange={(e) => setConfig({...config, receiptFooterText: e.target.value})}
             rows="3"
-            className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+            className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
           />
         </div>
       </div>
 
       {/* Certificado de Firma Electrónica */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
-        <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
-          <ShieldCheck size={24} className="text-emerald-500" />
+      <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 space-y-4">
+        <h2 className="text-xl font-bold text-panel-text flex items-center gap-2">
+          <ShieldCheck size={24} className="text-panel-success" />
           Certificado de Firma Electrónica
         </h2>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-panel-text-muted">
           Necesario para firmar y enviar facturas electrónicas reales al SRI. Debe ser un archivo .p12 emitido por una entidad certificadora autorizada (Banco Central, Security Data, ANF, etc.)
         </p>
 
         {config.certStoragePath ? (
-          <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-4 flex items-center gap-3">
-            <CheckCircle className="text-emerald-400" size={20} />
+          <div className="bg-panel-success/10 border border-panel-success/30 rounded-lg p-4 flex items-center gap-3">
+            <CheckCircle className="text-panel-success" size={20} />
             <div>
-              <div className="text-sm font-bold text-emerald-300">Certificado cargado y validado</div>
+              <div className="text-sm font-bold text-panel-success">Certificado cargado y validado</div>
               {config.certHolderName && (
-                <div className="text-xs text-emerald-300">Titular: {config.certHolderName}</div>
+                <div className="text-xs text-panel-success">Titular: {config.certHolderName}</div>
               )}
               {config.certExpiresAt && (
-                <div className="text-xs text-emerald-400">Vence: {new Date(config.certExpiresAt).toLocaleDateString()}</div>
+                <div className="text-xs text-panel-success">Vence: {new Date(config.certExpiresAt).toLocaleDateString()}</div>
               )}
-              <div className="text-xs text-emerald-400">
+              <div className="text-xs text-panel-success">
                 {config.certUploadedAt ? `Subido: ${new Date(config.certUploadedAt).toLocaleString()}` : ''}
               </div>
             </div>
           </div>
         ) : (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
-            <p className="text-xs text-amber-400 font-bold">⚠️ Aún no has cargado un certificado. No podrás enviar facturas reales al SRI hasta hacerlo.</p>
+          <div className="bg-panel-warning/10 border border-panel-warning/30 rounded-lg p-3">
+            <p className="text-xs text-panel-warning font-bold">⚠️ Aún no has cargado un certificado. No podrás enviar facturas reales al SRI hasta hacerlo.</p>
           </div>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Archivo del certificado (.p12 / .pfx)</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Archivo del certificado (.p12 / .pfx)</label>
             <input
               type="file"
               accept=".p12,.pfx"
               onChange={(e) => setCertFile(e.target.files?.[0] || null)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white text-sm file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:bg-zinc-700 file:text-zinc-200 file:text-xs"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text text-sm file:mr-3 file:py-1 file:px-2 file:rounded file:border-0 file:bg-panel-border file:text-panel-text file:text-xs"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-zinc-400 mb-2">Contraseña del certificado</label>
+            <label className="block text-xs font-bold text-panel-text-muted mb-2">Contraseña del certificado</label>
             <input
               type="password"
               placeholder="••••••••"
               value={certPassword}
               onChange={(e) => setCertPassword(e.target.value)}
-              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
             />
           </div>
         </div>
@@ -534,7 +534,7 @@ export default function BillingConfiguration() {
         <button
           onClick={handleUploadCert}
           disabled={uploadingCert || !certFile}
-          className="w-full bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800/50 disabled:text-zinc-600 disabled:cursor-not-allowed text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
+          className="w-full bg-panel-surface-2 hover:bg-panel-text/10 disabled:opacity-50 disabled:cursor-not-allowed text-panel-text font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm"
         >
           <Upload size={16} />
           {uploadingCert ? 'Subiendo...' : config.certStoragePath ? 'Reemplazar Certificado' : 'Subir Certificado'}
@@ -542,13 +542,13 @@ export default function BillingConfiguration() {
       </div>
 
       {/* Métodos de Pago */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
-        <h2 className="text-xl font-bold text-zinc-100">Métodos de Pago Disponibles</h2>
+      <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 space-y-4">
+        <h2 className="text-xl font-bold text-panel-text">Métodos de Pago Disponibles</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           {paymentMethods.map(method => (
-            <div key={method.id} className="bg-zinc-950 rounded p-2 text-center border border-zinc-800">
-              <div className="font-bold text-sm text-zinc-100">{method.name}</div>
-              <div className="text-xs text-zinc-500">(SRI: {method.sri_code})</div>
+            <div key={method.id} className="bg-panel-bg rounded p-2 text-center border border-panel-border">
+              <div className="font-bold text-sm text-panel-text">{method.name}</div>
+              <div className="text-xs text-panel-text-muted">(SRI: {method.sri_code})</div>
             </div>
           ))}
         </div>
@@ -558,16 +558,16 @@ export default function BillingConfiguration() {
       <button
         onClick={handleSave}
         disabled={saving || loading}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+        className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
       >
         <Save size={20} />
         {saving ? 'Guardando...' : 'Guardar Configuración de Facturación'}
       </button>
 
       {/* Info Box */}
-      <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-        <h3 className="font-bold text-blue-400 mb-2">¿Necesitas Ayuda?</h3>
-        <ul className="text-xs text-blue-300 space-y-1">
+      <div className="bg-panel-accent/10 border border-panel-accent/30 rounded-lg p-4">
+        <h3 className="font-bold text-panel-accent-soft mb-2">¿Necesitas Ayuda?</h3>
+        <ul className="text-xs text-panel-accent-soft space-y-1">
           <li>• El RUC debe tener exactamente 13 dígitos (ej: 1706111505001)</li>
           <li>• El SRI es quien valida finalmente el RUC cuando envíes facturas</li>
           <li>• Los datos aquí configurados aparecerán en todas las facturas</li>

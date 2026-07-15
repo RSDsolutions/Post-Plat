@@ -614,18 +614,18 @@ export default function POSInterface() {
   // stays blocked instead of guessing one.
   if (!loading && posContextChecked && !posContext) {
     return (
-      <div className="flex items-center justify-center h-screen bg-zinc-950 p-4">
+      <div className="flex items-center justify-center h-screen bg-pos-bg p-4">
         <div className="text-center max-w-md">
-          <div className="w-16 h-16 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto mb-4">
-            <Store className="text-amber-400" size={28} />
+          <div className="w-16 h-16 rounded-full bg-pos-warning/15 border border-pos-warning/30 flex items-center justify-center mx-auto mb-4">
+            <Store className="text-pos-warning" size={28} />
           </div>
-          <h2 className="text-xl font-bold text-zinc-100 mb-2">Sin sucursal asignada</h2>
-          <p className="text-zinc-400 text-sm mb-6">
+          <h2 className="text-xl font-bold text-pos-text mb-2">Sin sucursal asignada</h2>
+          <p className="text-pos-text-muted text-sm mb-6">
             Tu usuario no tiene una sucursal o caja activa asignada, así que no puedes facturar todavía. Contacta a tu gerente para que te asigne una desde "Gestión de Cajas".
           </p>
           <button
             onClick={logout}
-            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-2 px-6 rounded-lg transition-colors"
+            className="bg-pos-surface-2 hover:bg-pos-text/10 text-pos-text font-bold py-2 px-6 rounded-lg transition-colors"
           >
             Cerrar sesión
           </button>
@@ -635,32 +635,32 @@ export default function POSInterface() {
   }
 
   return (
-    <div className="flex h-screen bg-zinc-950">
+    <div className="flex h-screen bg-pos-bg">
       {/* Product Panel */}
-      <div className="flex-1 flex flex-col border-r border-zinc-800 min-w-0">
+      <div className="flex-1 flex flex-col border-r border-pos-border min-w-0">
         {/* Top Bar */}
-        <div className="bg-zinc-900 border-b border-zinc-800 px-5 py-4">
+        <div className="bg-pos-surface border-b border-pos-border px-5 py-4">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-600/15 border border-emerald-600/30 flex items-center justify-center">
-                <Store className="text-emerald-400" size={20} />
+              <div className="w-10 h-10 rounded-lg bg-pos-accent/15 border border-pos-accent/30 flex items-center justify-center">
+                <Store className="text-pos-accent-soft" size={20} />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-zinc-100 leading-tight">Punto de Venta</h1>
-                <p className="text-xs text-zinc-500">{currentUser?.name}</p>
+                <h1 className="text-lg font-bold text-pos-text leading-tight">Punto de Venta</h1>
+                <p className="text-xs text-pos-text-muted">{currentUser?.name}</p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowHeldSales(true)}
-                className="relative bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
+                className="relative bg-pos-surface-2 hover:bg-pos-text/10 text-pos-text px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
                 title="Ventas en espera"
               >
                 <PauseCircle size={16} />
                 En espera
                 {heldSales.length > 0 && (
-                  <span className="bg-amber-500 text-zinc-950 text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">
+                  <span className="bg-pos-accent text-pos-accent-text text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center">
                     {heldSales.length}
                   </span>
                 )}
@@ -668,7 +668,7 @@ export default function POSInterface() {
               <button
                 onClick={() => lastCompletedSale ? setShowReceiptModal(true) : null}
                 disabled={!lastCompletedSale}
-                className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed text-zinc-300 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
+                className="bg-pos-surface-2 hover:bg-pos-text/10 disabled:opacity-40 disabled:cursor-not-allowed text-pos-text px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
                 title="Último comprobante"
               >
                 <Printer size={16} />
@@ -676,7 +676,7 @@ export default function POSInterface() {
               </button>
               <button
                 onClick={logout}
-                className="bg-zinc-800 hover:bg-red-600/20 hover:text-red-400 text-zinc-300 px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
+                className="bg-pos-surface-2 hover:bg-pos-danger/20 hover:text-pos-danger text-pos-text px-3 py-2 rounded-lg flex items-center gap-2 transition-colors text-sm font-bold"
               >
                 <LogOut size={16} />
                 Salir
@@ -686,29 +686,29 @@ export default function POSInterface() {
 
           {/* Search */}
           <div className="relative mb-3">
-            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-pos-text-muted" />
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Buscar producto por nombre o código...  (F2)"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-10 pr-4 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/50 focus:border-emerald-600"
+              className="w-full bg-pos-bg border border-pos-border rounded-lg pl-10 pr-4 py-2.5 text-sm text-pos-text placeholder-pos-text-muted focus:outline-none focus:ring-2 focus:ring-pos-accent/50 focus:border-pos-accent"
             />
           </div>
 
           {/* Category pills */}
           {categories.length > 1 && (
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              <Tag size={14} className="text-zinc-600 flex-shrink-0" />
+              <Tag size={14} className="text-pos-text-muted flex-shrink-0" />
               {categories.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setCategoryFilter(cat)}
                   className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${
                     categoryFilter === cat
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                      ? 'bg-pos-accent text-pos-accent-text'
+                      : 'bg-pos-surface-2 text-pos-text-muted hover:bg-pos-text/10'
                   }`}
                 >
                   {cat === 'all' ? 'Todas' : cat}
@@ -722,10 +722,10 @@ export default function POSInterface() {
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="animate-spin inline-block w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full" />
+              <div className="animate-spin inline-block w-10 h-10 border-4 border-pos-accent border-t-transparent rounded-full" />
             </div>
           ) : filteredProducts.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-zinc-600 text-sm">
+            <div className="flex items-center justify-center h-full text-pos-text-muted text-sm">
               No se encontraron productos
             </div>
           ) : (
@@ -735,33 +735,33 @@ export default function POSInterface() {
                   key={product.id}
                   onClick={() => addToCart(product)}
                   disabled={product.quantity <= 0}
-                  className="text-left bg-zinc-900 border border-zinc-800 hover:border-emerald-600/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl p-3 transition-colors"
+                  className="pos-card text-left bg-pos-surface border border-pos-border hover:border-pos-accent/50 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl p-3 transition-colors"
                 >
                   <div className="mb-2">
-                    <div className="text-sm font-bold text-zinc-100 line-clamp-2">
+                    <div className="text-sm font-bold text-pos-text line-clamp-2">
                       {product.name}
                     </div>
-                    <div className="text-xs text-zinc-500 font-mono">{product.code}</div>
+                    <div className="text-xs text-pos-text-muted font-mono">{product.code}</div>
                   </div>
-                  <div className="flex items-end justify-between border-t border-zinc-800 pt-2">
+                  <div className="flex items-end justify-between border-t border-pos-border pt-2">
                     <div>
                       {product.discount > 0 ? (
                         <>
-                          <div className="text-[10px] text-zinc-500 line-through">{formatUSD(product.sale_price)}</div>
-                          <div className="text-lg font-bold text-pink-400">{formatUSD(getDiscountedPrice(product))}</div>
-                          <div className="text-[10px] text-pink-400 font-bold">-{product.discount}% dto.</div>
+                          <div className="text-[10px] text-pos-text-muted line-through">{formatUSD(product.sale_price)}</div>
+                          <div className="text-lg font-bold text-pos-danger">{formatUSD(getDiscountedPrice(product))}</div>
+                          <div className="text-[10px] text-pos-danger font-bold">-{product.discount}% dto.</div>
                         </>
                       ) : (
                         <>
-                          <div className="text-lg font-bold text-emerald-400">{formatUSD(product.sale_price)}</div>
-                          <div className="text-[10px] text-zinc-500">
+                          <div className="text-lg font-bold text-pos-success">{formatUSD(product.sale_price)}</div>
+                          <div className="text-[10px] text-pos-text-muted">
                             {product.price_includes_vat !== false ? 'IVA incl.' : 'Sin IVA'}
                           </div>
                         </>
                       )}
                     </div>
                     <div className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                      product.quantity > 10 ? 'bg-emerald-500/10 text-emerald-400' : product.quantity > 0 ? 'bg-amber-500/10 text-amber-400' : 'bg-red-500/10 text-red-400'
+                      product.quantity > 10 ? 'bg-pos-success/10 text-pos-success' : product.quantity > 0 ? 'bg-pos-warning/10 text-pos-warning' : 'bg-pos-danger/10 text-pos-danger'
                     }`}>
                       {product.quantity > 0 ? `Stock: ${product.quantity}` : 'Agotado'}
                     </div>
@@ -774,13 +774,13 @@ export default function POSInterface() {
       </div>
 
       {/* Cart Panel */}
-      <div className="w-96 bg-zinc-900 flex flex-col flex-shrink-0">
-        <div className="border-b border-zinc-800 px-5 py-4">
+      <div className="w-96 bg-pos-surface flex flex-col flex-shrink-0">
+        <div className="border-b border-pos-border px-5 py-4">
           <div className="flex items-center gap-2 mb-1">
-            <ShoppingCart size={18} className="text-zinc-400" />
-            <h2 className="text-base font-bold text-zinc-100">Carrito</h2>
+            <ShoppingCart size={18} className="text-pos-text-muted" />
+            <h2 className="text-base font-bold text-pos-text">Carrito</h2>
           </div>
-          <div className="text-xs text-zinc-500">
+          <div className="text-xs text-pos-text-muted">
             {cart.length} {cart.length === 1 ? 'producto' : 'productos'} · {cart.reduce((sum, item) => sum + item.quantity, 0)} unidades
           </div>
         </div>
@@ -790,28 +790,28 @@ export default function POSInterface() {
           {cart.length === 0 ? (
             <div className="flex items-center justify-center h-full text-center">
               <div>
-                <ShoppingCart size={40} className="text-zinc-800 mx-auto mb-2" />
-                <p className="text-zinc-600 text-sm">Carrito vacío</p>
+                <ShoppingCart size={40} className="text-pos-border mx-auto mb-2" />
+                <p className="text-pos-text-muted text-sm">Carrito vacío</p>
               </div>
             </div>
           ) : (
             cart.map(item => (
-              <div key={item.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-3">
+              <div key={item.id} className="pos-card bg-pos-bg border border-pos-border rounded-lg p-3">
                 <div className="flex justify-between items-start mb-2">
                   <div className="min-w-0">
-                    <div className="font-bold text-zinc-100 text-sm truncate">{item.name}</div>
+                    <div className="font-bold text-pos-text text-sm truncate">{item.name}</div>
                     {item.discount > 0 ? (
                       <div className="text-xs">
-                        <span className="text-zinc-600 line-through">{formatUSD(item.sale_price)}</span>{' '}
-                        <span className="text-pink-400 font-bold">{formatUSD(getDiscountedPrice(item))} c/u</span>
+                        <span className="text-pos-text-muted line-through">{formatUSD(item.sale_price)}</span>{' '}
+                        <span className="text-pos-danger font-bold">{formatUSD(getDiscountedPrice(item))} c/u</span>
                       </div>
                     ) : (
-                      <div className="text-xs text-zinc-500">{formatUSD(item.sale_price)} c/u</div>
+                      <div className="text-xs text-pos-text-muted">{formatUSD(item.sale_price)} c/u</div>
                     )}
                   </div>
                   <button
                     onClick={() => removeFromCart(item.id)}
-                    className="text-zinc-600 hover:text-red-400 p-1 flex-shrink-0"
+                    className="text-pos-text-muted hover:text-pos-danger p-1 flex-shrink-0"
                   >
                     <Trash2 size={15} />
                   </button>
@@ -819,7 +819,7 @@ export default function POSInterface() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity - 1)}
-                    className="bg-zinc-800 hover:bg-zinc-700 p-1.5 rounded text-zinc-300"
+                    className="bg-pos-surface-2 hover:bg-pos-text/10 p-1.5 rounded text-pos-text"
                   >
                     <Minus size={13} />
                   </button>
@@ -827,15 +827,15 @@ export default function POSInterface() {
                     type="number"
                     value={item.quantity}
                     onChange={(e) => updateQuantity(item.id, parseInt(e.target.value) || 1)}
-                    className="w-10 bg-zinc-800 border border-zinc-700 rounded text-center text-sm text-zinc-100 py-1"
+                    className="w-10 bg-pos-surface-2 border border-pos-border rounded text-center text-sm text-pos-text py-1"
                   />
                   <button
                     onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                    className="bg-zinc-800 hover:bg-zinc-700 p-1.5 rounded text-zinc-300"
+                    className="bg-pos-surface-2 hover:bg-pos-text/10 p-1.5 rounded text-pos-text"
                   >
                     <Plus size={13} />
                   </button>
-                  <div className="flex-1 text-right font-bold text-emerald-400 text-sm">
+                  <div className="flex-1 text-right font-bold text-pos-success text-sm">
                     {formatUSD(getPriceBase(item) * item.quantity)}
                   </div>
                 </div>
@@ -846,48 +846,48 @@ export default function POSInterface() {
 
         {/* Discount */}
         {cart.length > 0 && (
-          <div className="border-t border-zinc-800 px-4 py-3">
-            <label className="block text-[11px] font-bold text-zinc-500 mb-1.5 uppercase tracking-wide">Descuento %</label>
+          <div className="border-t border-pos-border px-4 py-3">
+            <label className="block text-[11px] font-bold text-pos-text-muted mb-1.5 uppercase tracking-wide">Descuento %</label>
             <input
               type="number"
               value={discountPercent}
               onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
               min="0"
               max="100"
-              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600/50"
+              className="w-full bg-pos-bg border border-pos-border rounded-lg px-3 py-2 text-pos-text text-sm focus:outline-none focus:ring-2 focus:ring-pos-accent/50"
             />
           </div>
         )}
 
         {/* Totals */}
-        <div className="border-t border-zinc-800 px-4 py-4 space-y-3">
+        <div className="border-t border-pos-border px-4 py-4 space-y-3">
           <div className="space-y-1.5 text-sm">
-            <div className="flex justify-between text-zinc-400">
+            <div className="flex justify-between text-pos-text-muted">
               <span>Subtotal</span>
               <span>{formatUSD(subtotal)}</span>
             </div>
             {cartProductSavings > 0 && (
-              <div className="flex justify-between text-pink-400">
+              <div className="flex justify-between text-pos-danger">
                 <span>Ahorro en promociones</span>
                 <span>-{formatUSD(cartProductSavings)}</span>
               </div>
             )}
             {discountPercent > 0 && (
-              <div className="flex justify-between text-red-400">
+              <div className="flex justify-between text-pos-danger">
                 <span>Descuento adicional ({discountPercent}%)</span>
                 <span>-{formatUSD(discount)}</span>
               </div>
             )}
-            <div className="flex justify-between text-zinc-400">
+            <div className="flex justify-between text-pos-text-muted">
               <span>IVA ({taxRate}%)</span>
               <span>{formatUSD(tax)}</span>
             </div>
-            <div className="border-t border-zinc-800 pt-2 flex justify-between font-bold text-lg text-zinc-100">
+            <div className="pos-total-amount border-t border-pos-border pt-2 flex justify-between font-bold text-lg text-pos-text">
               <span>Total</span>
-              <span className="text-emerald-400">{formatUSD(total)}</span>
+              <span className="text-pos-success">{formatUSD(total)}</span>
             </div>
             {(cartProductSavings + discount) > 0 && (
-              <div className="flex justify-between text-xs font-bold text-pink-400 pt-1">
+              <div className="flex justify-between text-xs font-bold text-pos-danger pt-1">
                 <span>¡Estás ahorrando!</span>
                 <span>{formatUSD(cartProductSavings + discount)}</span>
               </div>
@@ -898,7 +898,7 @@ export default function POSInterface() {
             <button
               onClick={holdCurrentSale}
               disabled={cart.length === 0}
-              className="bg-zinc-800 hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-300 font-bold py-3 px-3 rounded-lg transition-colors flex items-center justify-center"
+              className="bg-pos-surface-2 hover:bg-pos-text/10 disabled:opacity-30 disabled:cursor-not-allowed text-pos-text font-bold py-3 px-3 rounded-lg transition-colors flex items-center justify-center"
               title="Poner en espera"
             >
               <PauseCircle size={20} />
@@ -906,7 +906,7 @@ export default function POSInterface() {
             <button
               onClick={handleCheckout}
               disabled={cart.length === 0}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="pos-btn-primary flex-1 bg-pos-accent hover:bg-pos-accent-hover disabled:bg-pos-surface-2 disabled:text-pos-text-muted disabled:cursor-not-allowed text-pos-accent-text font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               <Send size={18} />
               Cobrar (F4)
@@ -918,44 +918,44 @@ export default function POSInterface() {
       {/* Held Sales Modal */}
       {showHeldSales && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto">
+          <div className="bg-pos-surface border border-pos-border rounded-2xl p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <PauseCircle size={22} className="text-amber-400" />
+              <h3 className="text-xl font-bold text-pos-text flex items-center gap-2">
+                <PauseCircle size={22} className="text-pos-warning" />
                 Ventas en Espera
               </h3>
-              <button onClick={() => setShowHeldSales(false)} className="text-zinc-500 hover:text-zinc-300">
+              <button onClick={() => setShowHeldSales(false)} className="text-pos-text-muted hover:text-pos-text">
                 <X size={22} />
               </button>
             </div>
 
             {heldSales.length === 0 ? (
-              <p className="text-zinc-500 text-sm text-center py-8">No hay ventas en espera</p>
+              <p className="text-pos-text-muted text-sm text-center py-8">No hay ventas en espera</p>
             ) : (
               <div className="space-y-2">
                 {heldSales.map(held => {
                   const heldTotal = held.cart.reduce((sum, item) => sum + item.sale_price * item.quantity, 0);
                   return (
-                    <div key={held.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 flex items-center justify-between gap-3">
+                    <div key={held.id} className="bg-pos-bg border border-pos-border rounded-lg p-3 flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-bold text-zinc-100">
+                        <div className="text-sm font-bold text-pos-text">
                           {held.cart.length} {held.cart.length === 1 ? 'producto' : 'productos'}
                         </div>
-                        <div className="text-xs text-zinc-500">
+                        <div className="text-xs text-pos-text-muted">
                           {new Date(held.heldAt).toLocaleTimeString()} · {formatUSD(heldTotal)}
                         </div>
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={() => discardHeldSale(held.id)}
-                          className="text-red-400 hover:text-red-300 p-2"
+                          className="text-pos-danger hover:opacity-80 p-2"
                           title="Descartar"
                         >
                           <Trash2 size={16} />
                         </button>
                         <button
                           onClick={() => resumeHeldSale(held.id)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-2 rounded-lg"
+                          className="bg-pos-accent hover:bg-pos-accent-hover text-pos-accent-text text-xs font-bold px-3 py-2 rounded-lg"
                         >
                           Retomar
                         </button>
@@ -972,36 +972,36 @@ export default function POSInterface() {
       {/* Last Receipt Modal */}
       {showReceiptModal && lastCompletedSale && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+          <div className="bg-pos-surface border border-pos-border rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <Printer size={22} className="text-blue-400" />
+              <h3 className="text-xl font-bold text-pos-text flex items-center gap-2">
+                <Printer size={22} className="text-pos-accent-soft" />
                 Último Comprobante
               </h3>
-              <button onClick={() => setShowReceiptModal(false)} className="text-zinc-500 hover:text-zinc-300">
+              <button onClick={() => setShowReceiptModal(false)} className="text-pos-text-muted hover:text-pos-text">
                 <X size={22} />
               </button>
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-2 mb-5">
+            <div className="bg-pos-bg border border-pos-border rounded-lg p-4 space-y-2 mb-5">
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">No. de factura</span>
-                <span className="text-zinc-100 font-mono font-bold">{lastCompletedSale.invoiceNumber}</span>
+                <span className="text-pos-text-muted">No. de factura</span>
+                <span className="text-pos-text font-mono font-bold">{lastCompletedSale.invoiceNumber}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Cliente</span>
-                <span className="text-zinc-100">{lastCompletedSale.customerName || 'Consumidor Final'}</span>
+                <span className="text-pos-text-muted">Cliente</span>
+                <span className="text-pos-text">{lastCompletedSale.customerName || 'Consumidor Final'}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-zinc-500">Hora</span>
-                <span className="text-zinc-100">{new Date(lastCompletedSale.completedAt).toLocaleTimeString()}</span>
+                <span className="text-pos-text-muted">Hora</span>
+                <span className="text-pos-text">{new Date(lastCompletedSale.completedAt).toLocaleTimeString()}</span>
               </div>
-              <div className="flex justify-between text-base font-bold pt-2 border-t border-zinc-800">
-                <span className="text-zinc-300">Total</span>
-                <span className="text-emerald-400">{formatUSD(lastCompletedSale.total)}</span>
+              <div className="flex justify-between text-base font-bold pt-2 border-t border-pos-border">
+                <span className="text-pos-text">Total</span>
+                <span className="text-pos-success">{formatUSD(lastCompletedSale.total)}</span>
               </div>
               {lastCompletedSale.totalSavings > 0 && (
-                <div className="flex justify-between text-xs font-bold text-pink-400 bg-pink-500/10 -mx-4 -mb-2 px-4 py-2 rounded-b-lg">
+                <div className="flex justify-between text-xs font-bold text-pos-danger bg-pos-danger/10 -mx-4 -mb-2 px-4 py-2 rounded-b-lg">
                   <span>Ahorro del cliente</span>
                   <span>{formatUSD(lastCompletedSale.totalSavings)}</span>
                 </div>
@@ -1010,7 +1010,7 @@ export default function POSInterface() {
 
             <button
               onClick={downloadLastReceipt}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="w-full bg-pos-accent hover:bg-pos-accent-hover text-pos-accent-text font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
               <Printer size={18} />
               Descargar Recibo (PDF)
@@ -1022,19 +1022,19 @@ export default function POSInterface() {
       {/* Payment Modal */}
       {showPayment && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-2 sm:p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 sm:p-6 lg:p-8 w-[95vw] sm:w-[90vw] md:w-full max-w-3xl max-h-[95vh] overflow-y-auto">
-            <h3 className="text-xl sm:text-2xl font-bold text-white mb-5">Confirmar Pago</h3>
+          <div className="bg-pos-surface border border-pos-border rounded-2xl p-4 sm:p-6 lg:p-8 w-[95vw] sm:w-[90vw] md:w-full max-w-3xl max-h-[95vh] overflow-y-auto">
+            <h3 className="text-xl sm:text-2xl font-bold text-pos-text mb-5">Confirmar Pago</h3>
 
             <div className="space-y-5">
               {/* Total Display */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-5">
-                <div className="text-xs text-zinc-500 mb-1">Total a cobrar</div>
-                <div className="text-4xl sm:text-5xl font-bold text-emerald-400">{formatUSD(total)}</div>
+              <div className="bg-pos-bg border border-pos-border rounded-xl p-5">
+                <div className="text-xs text-pos-text-muted mb-1">Total a cobrar</div>
+                <div className="text-4xl sm:text-5xl font-bold text-pos-success">{formatUSD(total)}</div>
               </div>
 
               {/* Payment Method */}
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-wide">Método de Pago</label>
+                <label className="block text-xs font-bold text-pos-text-muted mb-2 uppercase tracking-wide">Método de Pago</label>
                 <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {PAYMENT_METHODS.map(method => {
                     const Icon = method.icon;
@@ -1044,8 +1044,8 @@ export default function POSInterface() {
                         onClick={() => { setPaymentMethod(method.value); setCashReceived(''); }}
                         className={`py-3 px-2 rounded-lg font-bold text-xs sm:text-sm transition-colors flex flex-col items-center gap-1.5 ${
                           paymentMethod === method.value
-                            ? 'bg-emerald-600 text-white'
-                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                            ? 'bg-pos-accent text-pos-accent-text'
+                            : 'bg-pos-surface-2 text-pos-text-muted hover:bg-pos-text/10'
                         }`}
                       >
                         <Icon size={20} />
@@ -1058,16 +1058,16 @@ export default function POSInterface() {
 
               {/* Cash received / change */}
               {paymentMethod === 'cash' && (
-                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
+                <div className="bg-pos-bg border border-pos-border rounded-lg p-4 space-y-3">
                   <div>
-                    <label className="block text-xs font-bold text-zinc-400 mb-2">Monto Recibido</label>
+                    <label className="block text-xs font-bold text-pos-text-muted mb-2">Monto Recibido</label>
                     <input
                       type="number"
                       step="0.01"
                       value={cashReceived}
                       onChange={(e) => setCashReceived(e.target.value)}
                       placeholder="0.00"
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-white text-lg font-bold focus:outline-none focus:ring-2 focus:ring-emerald-600/50"
+                      className="w-full bg-pos-surface-2 border border-pos-border rounded-lg px-3 py-2 text-pos-text text-lg font-bold focus:outline-none focus:ring-2 focus:ring-pos-accent/50"
                     />
                   </div>
                   {quickCashAmounts.length > 0 && (
@@ -1076,55 +1076,55 @@ export default function POSInterface() {
                         <button
                           key={amount}
                           onClick={() => setCashReceived(String(amount))}
-                          className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold px-3 py-1.5 rounded"
+                          className="bg-pos-surface-2 hover:bg-pos-text/10 text-pos-text-muted text-xs font-bold px-3 py-1.5 rounded"
                         >
                           {formatUSD(amount)}
                         </button>
                       ))}
                     </div>
                   )}
-                  <div className={`flex justify-between items-center pt-2 border-t border-zinc-800 ${cashInsufficient && cashReceivedNum > 0 ? 'text-red-400' : 'text-zinc-300'}`}>
+                  <div className={`flex justify-between items-center pt-2 border-t border-pos-border ${cashInsufficient && cashReceivedNum > 0 ? 'text-pos-danger' : 'text-pos-text'}`}>
                     <span className="text-sm font-bold">Vuelto</span>
                     <span className="text-xl font-bold">{formatUSD(change)}</span>
                   </div>
                   {cashInsufficient && cashReceivedNum > 0 && (
-                    <p className="text-xs text-red-400">El monto recibido es menor al total</p>
+                    <p className="text-xs text-pos-danger">El monto recibido es menor al total</p>
                   )}
                 </div>
               )}
 
               {/* Customer Info - Show based on invoice type */}
               {invoiceType === 'final' ? (
-                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 flex items-center gap-3">
-                  <User size={20} className="text-blue-400" />
-                  <span className="text-sm text-blue-200 font-bold">Consumidor Final</span>
+                <div className="bg-pos-accent/10 border border-pos-accent/30 rounded-lg p-4 flex items-center gap-3">
+                  <User size={20} className="text-pos-accent-soft" />
+                  <span className="text-sm text-pos-text font-bold">Consumidor Final</span>
                 </div>
               ) : invoiceType === 'factura' ? (
-                <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-3">
-                  <h4 className="font-bold text-zinc-100 flex items-center gap-2 text-sm">
-                    <FileText size={16} className="text-emerald-400" />
+                <div className="bg-pos-bg border border-pos-border rounded-lg p-4 space-y-3">
+                  <h4 className="font-bold text-pos-text flex items-center gap-2 text-sm">
+                    <FileText size={16} className="text-pos-success" />
                     Datos de la Factura
                   </h4>
                   <div>
-                    <div className="text-xs font-bold text-zinc-500">
+                    <div className="text-xs font-bold text-pos-text-muted">
                       {invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}
                     </div>
-                    <div className="text-sm text-zinc-200 font-mono">{invoiceData.identification}</div>
+                    <div className="text-sm text-pos-text font-mono">{invoiceData.identification}</div>
                   </div>
                   <div>
-                    <div className="text-xs font-bold text-zinc-500">
+                    <div className="text-xs font-bold text-pos-text-muted">
                       {invoiceData.identificationType === 'ruc' ? 'Razón Social' : 'Nombre'}
                     </div>
-                    <div className="text-sm text-zinc-200">{customerDisplay.name}</div>
+                    <div className="text-sm text-pos-text">{customerDisplay.name}</div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <div className="text-xs font-bold text-zinc-500">Email</div>
-                      <div className="text-xs text-zinc-300">{customerDisplay.email || '-'}</div>
+                      <div className="text-xs font-bold text-pos-text-muted">Email</div>
+                      <div className="text-xs text-pos-text-muted">{customerDisplay.email || '-'}</div>
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-zinc-500">Teléfono</div>
-                      <div className="text-xs text-zinc-300">{customerDisplay.phone || '-'}</div>
+                      <div className="text-xs font-bold text-pos-text-muted">Teléfono</div>
+                      <div className="text-xs text-pos-text-muted">{customerDisplay.phone || '-'}</div>
                     </div>
                   </div>
                 </div>
@@ -1132,38 +1132,38 @@ export default function POSInterface() {
 
               {/* Transaction Success Display */}
               {transactionID && (
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 text-center">
-                  <CheckCircle size={40} className="text-emerald-400 mx-auto mb-3" />
-                  <div className="text-base sm:text-lg text-emerald-100 mb-1 font-bold">¡Venta completada!</div>
-                  <div className="text-xs sm:text-sm text-emerald-300 mb-4">
+                <div className="bg-pos-success/10 border border-pos-success/30 rounded-xl p-6 text-center">
+                  <CheckCircle size={40} className="text-pos-success mx-auto mb-3" />
+                  <div className="text-base sm:text-lg text-pos-text mb-1 font-bold">¡Venta completada!</div>
+                  <div className="text-xs sm:text-sm text-pos-text-muted mb-4">
                     {invoiceType === 'final' ? 'Consumidor Final' : customerDisplay.name}
                   </div>
-                  <div className="bg-emerald-950/50 rounded p-3">
-                    <div className="text-xs text-emerald-400 mb-1">Número de Factura</div>
-                    <div className="text-base font-bold text-emerald-300 font-mono break-all">{lastCompletedSale?.invoiceNumber}</div>
+                  <div className="bg-pos-bg rounded p-3">
+                    <div className="text-xs text-pos-success mb-1">Número de Factura</div>
+                    <div className="text-base font-bold text-pos-success font-mono break-all">{lastCompletedSale?.invoiceNumber}</div>
                   </div>
                   {lastCompletedSale?.totalSavings > 0 && (
-                    <div className="bg-pink-500/10 border border-pink-500/30 rounded p-2 mt-3">
-                      <span className="text-sm font-bold text-pink-400">¡Ahorraste {formatUSD(lastCompletedSale.totalSavings)}!</span>
+                    <div className="bg-pos-danger/10 border border-pos-danger/30 rounded p-2 mt-3">
+                      <span className="text-sm font-bold text-pos-danger">¡Ahorraste {formatUSD(lastCompletedSale.totalSavings)}!</span>
                     </div>
                   )}
-                  <div className="text-xs text-emerald-400 mt-3">Pendiente de aprobación por el gerente</div>
+                  <div className="text-xs text-pos-success mt-3">Pendiente de aprobación por el gerente</div>
                 </div>
               )}
 
               {/* Action Buttons */}
               {!transactionID && (
-                <div className="flex gap-3 pt-2 border-t border-zinc-800 flex-col sm:flex-row">
+                <div className="flex gap-3 pt-2 border-t border-pos-border flex-col sm:flex-row">
                   <button
                     onClick={() => setShowPayment(false)}
-                    className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-lg transition-colors"
+                    className="flex-1 bg-pos-surface-2 hover:bg-pos-text/10 text-pos-text font-bold py-3 rounded-lg transition-colors"
                   >
                     Cancelar
                   </button>
                   <button
                     onClick={completeSale}
                     disabled={cashInsufficient}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    className="pos-btn-primary flex-1 bg-pos-accent hover:bg-pos-accent-hover disabled:bg-pos-surface-2 disabled:cursor-not-allowed text-pos-accent-text font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
                   >
                     <Send size={18} />
                     Confirmar Pago
@@ -1178,44 +1178,44 @@ export default function POSInterface() {
       {/* Invoice Type Selection Modal */}
       {showInvoiceType && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 w-full max-w-2xl">
-            <h3 className="text-xl sm:text-2xl font-bold text-white mb-6">Tipo de Venta</h3>
+          <div className="bg-pos-surface border border-pos-border rounded-2xl p-6 sm:p-8 w-full max-w-2xl">
+            <h3 className="text-xl sm:text-2xl font-bold text-pos-text mb-6">Tipo de Venta</h3>
 
             {invoiceType === null ? (
               <div className="space-y-4">
-                <p className="text-zinc-400 text-sm mb-6">¿Cómo deseas procesar esta venta?</p>
+                <p className="text-pos-text-muted text-sm mb-6">¿Cómo deseas procesar esta venta?</p>
 
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     onClick={() => handleSelectInvoiceType('final')}
-                    className="bg-zinc-950 border-2 border-zinc-800 hover:border-blue-600 rounded-xl p-6 transition-colors text-left"
+                    className="bg-pos-bg border-2 border-pos-border hover:border-pos-accent rounded-xl p-6 transition-colors text-left"
                   >
-                    <User className="text-blue-400 mb-3" size={28} />
-                    <h4 className="font-bold text-zinc-100 mb-1">Consumidor Final</h4>
-                    <p className="text-xs text-zinc-500">Sin factura formal, venta simple</p>
+                    <User className="text-pos-accent-soft mb-3" size={28} />
+                    <h4 className="font-bold text-pos-text mb-1">Consumidor Final</h4>
+                    <p className="text-xs text-pos-text-muted">Sin factura formal, venta simple</p>
                   </button>
 
                   <button
                     onClick={() => handleSelectInvoiceType('factura')}
-                    className="bg-zinc-950 border-2 border-zinc-800 hover:border-emerald-600 rounded-xl p-6 transition-colors text-left"
+                    className="bg-pos-bg border-2 border-pos-border hover:border-pos-accent rounded-xl p-6 transition-colors text-left"
                   >
-                    <FileText className="text-emerald-400 mb-3" size={28} />
-                    <h4 className="font-bold text-zinc-100 mb-1">Con Factura</h4>
-                    <p className="text-xs text-zinc-500">Factura formal con RUC o Cédula</p>
+                    <FileText className="text-pos-success mb-3" size={28} />
+                    <h4 className="font-bold text-pos-text mb-1">Con Factura</h4>
+                    <p className="text-xs text-pos-text-muted">Factura formal con RUC o Cédula</p>
                   </button>
                 </div>
               </div>
             ) : (
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Tipo de Identificación *</label>
+                  <label className="block text-xs font-bold text-pos-text-muted mb-2">Tipo de Identificación *</label>
                   <div className="flex gap-3 mb-3">
                     <button
                       onClick={() => { setInvoiceData({...invoiceData, identificationType: 'ruc', identification: ''}); setCustomerLookupStatus('idle'); }}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-colors ${
                         invoiceData.identificationType === 'ruc'
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                          ? 'bg-pos-accent text-pos-accent-text'
+                          : 'bg-pos-surface-2 text-pos-text-muted hover:bg-pos-text/10'
                       }`}
                     >
                       RUC
@@ -1224,8 +1224,8 @@ export default function POSInterface() {
                       onClick={() => { setInvoiceData({...invoiceData, identificationType: 'cedula', identification: ''}); setCustomerLookupStatus('idle'); }}
                       className={`flex-1 py-2 px-3 rounded-lg font-bold text-sm transition-colors ${
                         invoiceData.identificationType === 'cedula'
-                          ? 'bg-emerald-600 text-white'
-                          : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                          ? 'bg-pos-accent text-pos-accent-text'
+                          : 'bg-pos-surface-2 text-pos-text-muted hover:bg-pos-text/10'
                       }`}
                     >
                       Cédula
@@ -1234,7 +1234,7 @@ export default function POSInterface() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">
+                  <label className="block text-xs font-bold text-pos-text-muted mb-2">
                     {invoiceData.identificationType === 'ruc' ? 'RUC (13 dígitos)' : 'Cédula (10 dígitos)'} *
                   </label>
                   <div className="relative">
@@ -1244,22 +1244,22 @@ export default function POSInterface() {
                       placeholder={invoiceData.identificationType === 'ruc' ? '1706111505001' : '1234567890'}
                       value={invoiceData.identification}
                       onChange={(e) => handleIdentificationChange(e.target.value)}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 pr-9 text-white placeholder-zinc-500 font-mono"
+                      className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 pr-9 text-pos-text placeholder-pos-text-muted font-mono"
                     />
                     {customerLookupStatus === 'checking' && (
-                      <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 animate-spin" />
+                      <Loader2 size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-pos-text-muted animate-spin" />
                     )}
                     {customerLookupStatus === 'found' && (
-                      <UserCheck size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-400" />
+                      <UserCheck size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-pos-success" />
                     )}
                   </div>
                   {customerLookupStatus === 'found' && (
-                    <p className="text-xs text-emerald-400 mt-1.5 flex items-center gap-1">
+                    <p className="text-xs text-pos-success mt-1.5 flex items-center gap-1">
                       <UserCheck size={12} /> Cliente encontrado - datos cargados automáticamente
                     </p>
                   )}
                   {customerLookupStatus === 'new' && (
-                    <p className="text-xs text-blue-400 mt-1.5">Cliente nuevo - completa sus datos</p>
+                    <p className="text-xs text-pos-accent-soft mt-1.5">Cliente nuevo - completa sus datos</p>
                   )}
                 </div>
 
@@ -1267,36 +1267,36 @@ export default function POSInterface() {
                     "Editar Cliente" (updates the saved record); newly registered
                     customers can be corrected by reopening the registration modal. */}
                 {(customerLookupStatus === 'found' || (customerLookupStatus === 'new' && invoiceData.razonSocial)) && (
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 space-y-2">
+                  <div className="bg-pos-bg border border-pos-border rounded-lg p-4 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Datos del Cliente</span>
+                      <span className="text-xs font-bold text-pos-text-muted uppercase tracking-wide">Datos del Cliente</span>
                       <button
                         onClick={customerLookupStatus === 'found' ? handleOpenEditCustomer : () => setShowNewCustomerModal(true)}
-                        className="text-xs font-bold text-blue-400 hover:text-blue-300"
+                        className="text-xs font-bold text-pos-accent-soft hover:opacity-80"
                       >
                         Editar Cliente
                       </button>
                     </div>
-                    <div className="text-sm font-bold text-zinc-100">{customerDisplay.name}</div>
-                    <div className="grid grid-cols-2 gap-3 text-xs text-zinc-400">
+                    <div className="text-sm font-bold text-pos-text">{customerDisplay.name}</div>
+                    <div className="grid grid-cols-2 gap-3 text-xs text-pos-text-muted">
                       <div>{customerDisplay.email || 'Sin email'}</div>
                       <div>{customerDisplay.phone || 'Sin teléfono'}</div>
                     </div>
-                    {customerDisplay.address && <div className="text-xs text-zinc-400">{customerDisplay.address}</div>}
+                    {customerDisplay.address && <div className="text-xs text-pos-text-muted">{customerDisplay.address}</div>}
                   </div>
                 )}
 
                 <div className="flex gap-3 pt-4">
                   <button
                     onClick={() => setInvoiceType(null)}
-                    className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+                    className="flex-1 bg-pos-surface-2 hover:bg-pos-text/10 text-pos-text font-bold py-2 rounded-lg transition-colors"
                   >
                     Atrás
                   </button>
                   <button
                     onClick={handleConfirmInvoiceData}
                     disabled={customerLookupStatus !== 'found' && !(customerLookupStatus === 'new' && invoiceData.razonSocial)}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-800 disabled:text-zinc-600 disabled:cursor-not-allowed text-white font-bold py-2 rounded-lg transition-colors"
+                    className="flex-1 bg-pos-accent hover:bg-pos-accent-hover disabled:bg-pos-surface-2 disabled:text-pos-text-muted disabled:cursor-not-allowed text-pos-accent-text font-bold py-2 rounded-lg transition-colors"
                   >
                     Continuar
                   </button>
@@ -1310,19 +1310,19 @@ export default function POSInterface() {
       {/* Register New Customer Modal */}
       {showNewCustomerModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+          <div className="bg-pos-surface border border-pos-border rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <User size={22} className="text-blue-400" />
+              <h3 className="text-xl font-bold text-pos-text flex items-center gap-2">
+                <User size={22} className="text-pos-accent-soft" />
                 Registrar Cliente
               </h3>
-              <button onClick={() => setShowNewCustomerModal(false)} className="text-zinc-500 hover:text-zinc-300">
+              <button onClick={() => setShowNewCustomerModal(false)} className="text-pos-text-muted hover:text-pos-text">
                 <X size={22} />
               </button>
             </div>
 
-            <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-4">
-              <p className="text-xs text-blue-300">
+            <div className="bg-pos-accent/10 border border-pos-accent/30 rounded-lg p-3 mb-4">
+              <p className="text-xs text-pos-text">
                 No se encontró un cliente con {invoiceData.identificationType === 'ruc' ? 'RUC' : 'Cédula'}{' '}
                 <span className="font-mono font-bold">{invoiceData.identification}</span>. Regístralo para continuar.
               </p>
@@ -1330,7 +1330,7 @@ export default function POSInterface() {
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">
+                <label className="block text-xs font-bold text-pos-text-muted mb-2">
                   {invoiceData.identificationType === 'ruc' ? 'Razón Social' : 'Nombre'} *
                 </label>
                 <input
@@ -1338,40 +1338,40 @@ export default function POSInterface() {
                   placeholder={invoiceData.identificationType === 'ruc' ? 'Nombre de la empresa' : 'Nombre completo'}
                   value={newCustomerForm.name}
                   onChange={(e) => setNewCustomerForm({...newCustomerForm, name: e.target.value})}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 text-pos-text placeholder-pos-text-muted"
                   autoFocus
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Email</label>
+                  <label className="block text-xs font-bold text-pos-text-muted mb-2">Email</label>
                   <input
                     type="email"
                     placeholder="cliente@example.com"
                     value={newCustomerForm.email}
                     onChange={(e) => setNewCustomerForm({...newCustomerForm, email: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                    className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 text-pos-text placeholder-pos-text-muted text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono</label>
+                  <label className="block text-xs font-bold text-pos-text-muted mb-2">Teléfono</label>
                   <input
                     type="tel"
                     placeholder="+593..."
                     value={newCustomerForm.phone}
                     onChange={(e) => setNewCustomerForm({...newCustomerForm, phone: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                    className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 text-pos-text placeholder-pos-text-muted text-sm"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Dirección</label>
+                <label className="block text-xs font-bold text-pos-text-muted mb-2">Dirección</label>
                 <input
                   type="text"
                   placeholder="Calle principal 123"
                   value={newCustomerForm.address}
                   onChange={(e) => setNewCustomerForm({...newCustomerForm, address: e.target.value})}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 text-pos-text placeholder-pos-text-muted"
                 />
               </div>
             </div>
@@ -1379,13 +1379,13 @@ export default function POSInterface() {
             <div className="flex gap-3 pt-5">
               <button
                 onClick={() => { setShowNewCustomerModal(false); setShowInvoiceType(false); setInvoiceType(null); }}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+                className="flex-1 bg-pos-surface-2 hover:bg-pos-text/10 text-pos-text font-bold py-2 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSaveNewCustomer}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors"
+                className="flex-1 bg-pos-accent hover:bg-pos-accent-hover text-pos-accent-text font-bold py-2 rounded-lg transition-colors"
               >
                 Guardar
               </button>
@@ -1397,55 +1397,55 @@ export default function POSInterface() {
       {/* Edit Existing Customer Modal */}
       {showEditCustomerModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md">
+          <div className="bg-pos-surface border border-pos-border rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <UserCheck size={22} className="text-blue-400" />
+              <h3 className="text-xl font-bold text-pos-text flex items-center gap-2">
+                <UserCheck size={22} className="text-pos-accent-soft" />
                 Editar Cliente
               </h3>
-              <button onClick={() => setShowEditCustomerModal(false)} className="text-zinc-500 hover:text-zinc-300">
+              <button onClick={() => setShowEditCustomerModal(false)} className="text-pos-text-muted hover:text-pos-text">
                 <X size={22} />
               </button>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Nombre *</label>
+                <label className="block text-xs font-bold text-pos-text-muted mb-2">Nombre *</label>
                 <input
                   type="text"
                   value={editCustomerForm.name}
                   onChange={(e) => setEditCustomerForm({...editCustomerForm, name: e.target.value})}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 text-pos-text placeholder-pos-text-muted"
                   autoFocus
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Email</label>
+                  <label className="block text-xs font-bold text-pos-text-muted mb-2">Email</label>
                   <input
                     type="email"
                     value={editCustomerForm.email}
                     onChange={(e) => setEditCustomerForm({...editCustomerForm, email: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                    className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 text-pos-text placeholder-pos-text-muted text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono</label>
+                  <label className="block text-xs font-bold text-pos-text-muted mb-2">Teléfono</label>
                   <input
                     type="tel"
                     value={editCustomerForm.phone}
                     onChange={(e) => setEditCustomerForm({...editCustomerForm, phone: e.target.value})}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500 text-sm"
+                    className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 text-pos-text placeholder-pos-text-muted text-sm"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Dirección</label>
+                <label className="block text-xs font-bold text-pos-text-muted mb-2">Dirección</label>
                 <input
                   type="text"
                   value={editCustomerForm.address}
                   onChange={(e) => setEditCustomerForm({...editCustomerForm, address: e.target.value})}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                  className="w-full bg-pos-surface-2 border border-pos-border rounded px-3 py-2 text-pos-text placeholder-pos-text-muted"
                 />
               </div>
             </div>
@@ -1453,13 +1453,13 @@ export default function POSInterface() {
             <div className="flex gap-3 pt-5">
               <button
                 onClick={() => setShowEditCustomerModal(false)}
-                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-2 rounded-lg transition-colors"
+                className="flex-1 bg-pos-surface-2 hover:bg-pos-text/10 text-pos-text font-bold py-2 rounded-lg transition-colors"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleSaveEditCustomer}
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg transition-colors"
+                className="flex-1 bg-pos-accent hover:bg-pos-accent-hover text-pos-accent-text font-bold py-2 rounded-lg transition-colors"
               >
                 Guardar Cambios
               </button>

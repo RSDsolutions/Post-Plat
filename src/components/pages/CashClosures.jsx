@@ -78,63 +78,63 @@ export default function CashClosures() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-lg font-bold text-zinc-100">Historial de Cierres de Caja</h2>
+        <h2 className="text-lg font-bold text-panel-text">Historial de Cierres de Caja</h2>
         {can('accounting.export') && (
-          <button onClick={handleExportCsv} className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-bold px-4 py-2 rounded-lg transition-colors">
+          <button onClick={handleExportCsv} className="flex items-center gap-2 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text text-sm font-bold px-4 py-2 rounded-lg transition-colors">
             <FileSpreadsheet size={16} /> CSV
           </button>
         )}
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)} className="bg-panel-bg border border-panel-border rounded-lg px-3 py-2 text-sm text-panel-text">
           <option value="all">Todas las sucursales</option>
           {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
-        <select value={userFilter} onChange={e => setUserFilter(e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200">
+        <select value={userFilter} onChange={e => setUserFilter(e.target.value)} className="bg-panel-bg border border-panel-border rounded-lg px-3 py-2 text-sm text-panel-text">
           <option value="all">Todos los cajeros</option>
           {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
-        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200" />
-        <span className="text-zinc-500 self-center text-sm">a</span>
-        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200" />
+        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-panel-bg border border-panel-border rounded-lg px-3 py-2 text-sm text-panel-text" />
+        <span className="text-panel-text-muted self-center text-sm">a</span>
+        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-panel-bg border border-panel-border rounded-lg px-3 py-2 text-sm text-panel-text" />
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader className="animate-spin text-zinc-600" size={28} /></div>
+        <div className="flex items-center justify-center py-16"><Loader className="animate-spin text-panel-text-muted" size={28} /></div>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-zinc-500">Fecha</th>
-                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-zinc-500">Sucursal</th>
-                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-zinc-500">POS</th>
-                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-zinc-500">Cajero</th>
-                <th className="px-3 py-2 text-right text-xs font-bold uppercase text-zinc-500">Esperado</th>
-                <th className="px-3 py-2 text-right text-xs font-bold uppercase text-zinc-500">Contado</th>
-                <th className="px-3 py-2 text-right text-xs font-bold uppercase text-zinc-500">Diferencia</th>
-                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-zinc-500">Notas</th>
+              <tr className="border-b border-panel-border">
+                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-panel-text-muted">Fecha</th>
+                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-panel-text-muted">Sucursal</th>
+                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-panel-text-muted">POS</th>
+                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-panel-text-muted">Cajero</th>
+                <th className="px-3 py-2 text-right text-xs font-bold uppercase text-panel-text-muted">Esperado</th>
+                <th className="px-3 py-2 text-right text-xs font-bold uppercase text-panel-text-muted">Contado</th>
+                <th className="px-3 py-2 text-right text-xs font-bold uppercase text-panel-text-muted">Diferencia</th>
+                <th className="px-3 py-2 text-left text-xs font-bold uppercase text-panel-text-muted">Notas</th>
               </tr>
             </thead>
             <tbody>
               {rows.map(r => (
-                <tr key={r.id} className={`border-b border-zinc-900 ${r.hasDifference ? 'bg-amber-500/5' : ''}`}>
-                  <td className="px-3 py-2 text-zinc-400">{formatCellValue(r.closed_at, 'datetime')}</td>
-                  <td className="px-3 py-2 text-zinc-300">{r.branch}</td>
-                  <td className="px-3 py-2 text-zinc-300">{r.pos}</td>
-                  <td className="px-3 py-2 text-zinc-300">{r.cashier}</td>
-                  <td className="px-3 py-2 text-right text-zinc-300">{formatUSD(r.expected)}</td>
-                  <td className="px-3 py-2 text-right text-zinc-300">{formatUSD(r.counted)}</td>
-                  <td className={`px-3 py-2 text-right font-bold flex items-center justify-end gap-1 ${r.hasDifference ? 'text-amber-400' : 'text-emerald-400'}`}>
+                <tr key={r.id} className={`border-b border-panel-border ${r.hasDifference ? 'bg-panel-warning/5' : ''}`}>
+                  <td className="px-3 py-2 text-panel-text-muted">{formatCellValue(r.closed_at, 'datetime')}</td>
+                  <td className="px-3 py-2 text-panel-text">{r.branch}</td>
+                  <td className="px-3 py-2 text-panel-text">{r.pos}</td>
+                  <td className="px-3 py-2 text-panel-text">{r.cashier}</td>
+                  <td className="px-3 py-2 text-right text-panel-text">{formatUSD(r.expected)}</td>
+                  <td className="px-3 py-2 text-right text-panel-text">{formatUSD(r.counted)}</td>
+                  <td className={`px-3 py-2 text-right font-bold flex items-center justify-end gap-1 ${r.hasDifference ? 'text-panel-warning' : 'text-panel-success'}`}>
                     {r.hasDifference && <AlertTriangle size={12} />}
                     {r.difference > 0 ? '+' : ''}{formatUSD(r.difference)}
                   </td>
-                  <td className="px-3 py-2 text-zinc-500 text-xs max-w-xs truncate" title={r.notes}>{r.notes}</td>
+                  <td className="px-3 py-2 text-panel-text-muted text-xs max-w-xs truncate" title={r.notes}>{r.notes}</td>
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-8 text-center text-zinc-600">Sin cierres de caja con estos filtros</td></tr>
+                <tr><td colSpan={8} className="px-3 py-8 text-center text-panel-text-muted">Sin cierres de caja con estos filtros</td></tr>
               )}
             </tbody>
           </table>

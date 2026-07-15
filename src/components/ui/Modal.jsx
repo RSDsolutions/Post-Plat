@@ -13,7 +13,7 @@ export default function Modal({ title, children, onClose, footer }) {
             </button>
           )}
         </div>
-        <div className="p-6 overflow-y-auto flex-1 text-zinc-300">
+        <div className="p-6 overflow-y-auto flex-1 text-[var(--text-muted)]">
           {children}
         </div>
         {footer && (

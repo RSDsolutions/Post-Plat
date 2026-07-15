@@ -3,10 +3,10 @@ import { X, CheckCircle, AlertTriangle, Info, XCircle } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 
 const TOAST_STYLES = {
-  info: { Icon: Info, border: 'border-blue-500/30', icon: 'text-blue-400' },
-  success: { Icon: CheckCircle, border: 'border-emerald-500/30', icon: 'text-emerald-400' },
-  warning: { Icon: AlertTriangle, border: 'border-amber-500/30', icon: 'text-amber-400' },
-  error: { Icon: XCircle, border: 'border-red-500/30', icon: 'text-red-400' }
+  info: { Icon: Info, border: 'border-blue-500/30', icon: 'text-[var(--status-info)]' },
+  success: { Icon: CheckCircle, border: 'border-emerald-500/30', icon: 'text-[var(--status-success)]' },
+  warning: { Icon: AlertTriangle, border: 'border-amber-500/30', icon: 'text-[var(--status-warning)]' },
+  error: { Icon: XCircle, border: 'border-red-500/30', icon: 'text-[var(--status-danger)]' }
 };
 
 export default function Toast() {
@@ -28,7 +28,7 @@ export default function Toast() {
             <p className="flex-1 min-w-0 text-sm font-medium text-[var(--text-primary)] break-words">{toast.message}</p>
             <button
               onClick={() => dismissToast(toast.id)}
-              className="flex-shrink-0 text-[var(--text-muted)] hover:text-zinc-300 transition-colors"
+              className="flex-shrink-0 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
             >
               <X size={16} />
             </button>

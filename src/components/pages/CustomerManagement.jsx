@@ -22,19 +22,19 @@ export default function CustomerManagement() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Clientes</h1>
-      <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-panel-text">Clientes</h1>
+      <div className="bg-panel-surface rounded-2xl border border-panel-border overflow-hidden">
         <Table
           columns={['Nombre', 'Email', 'Teléfono', 'Crédito Límite', 'Saldo', 'Estado']}
           data={customers}
           renderRow={(c) => (
-            <tr key={c.id} className="hover:bg-zinc-800/50">
-              <td className="px-4 py-3 font-bold text-zinc-100">{c.name}</td>
-              <td className="px-4 py-3 text-zinc-400">{c.email}</td>
-              <td className="px-4 py-3 text-zinc-400">{c.phone}</td>
-              <td className="px-4 py-3 text-zinc-100">{formatUSD(c.credit_limit)}</td>
-              <td className="px-4 py-3 font-bold text-amber-400">{formatUSD(c.current_balance)}</td>
-              <td className="px-4 py-3"><span className="text-xs font-bold px-2 py-1 rounded bg-emerald-500/10 text-emerald-400">{c.is_active ? 'Activo' : 'Inactivo'}</span></td>
+            <tr key={c.id} className="hover:bg-panel-surface-2">
+              <td className="px-4 py-3 font-bold text-panel-text">{c.name}</td>
+              <td className="px-4 py-3 text-panel-text-muted">{c.email}</td>
+              <td className="px-4 py-3 text-panel-text-muted">{c.phone}</td>
+              <td className="px-4 py-3 text-panel-text">{formatUSD(c.credit_limit)}</td>
+              <td className="px-4 py-3 font-bold text-panel-warning">{formatUSD(c.current_balance)}</td>
+              <td className="px-4 py-3"><span className="text-xs font-bold px-2 py-1 rounded bg-panel-success/10 text-panel-success">{c.is_active ? 'Activo' : 'Inactivo'}</span></td>
             </tr>
           )}
         />

@@ -246,12 +246,12 @@ export default function InvoiceManagement() {
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Gestión de Facturas</h1>
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-panel-text">Gestión de Facturas</h1>
           {sriEnvironment && (
             <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
               sriEnvironment === 'production'
-                ? 'bg-red-500/10 text-red-400 border-red-500/30'
-                : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+                ? 'bg-panel-danger/10 text-panel-danger border-panel-danger/30'
+                : 'bg-panel-accent/10 text-panel-accent-soft border-panel-accent/30'
             }`}>
               SRI: {sriEnvironment === 'production' ? 'Producción (real)' : 'Pruebas'}
             </span>
@@ -260,7 +260,7 @@ export default function InvoiceManagement() {
         {can('invoices.export') && (
           <button
             onClick={() => { setBulkBranchId(selectedBranchId); setShowBulkExport(true); }}
-            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+            className="flex items-center gap-2 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text text-sm font-bold px-4 py-2 rounded-lg transition-colors"
           >
             <Archive size={16} /> Descarga masiva de XML
           </button>
@@ -268,12 +268,12 @@ export default function InvoiceManagement() {
       </div>
 
       {branches.length > 1 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4 flex flex-wrap items-center gap-2">
-          <MapPin size={16} className="text-zinc-500 flex-shrink-0" />
+        <div className="bg-panel-surface border border-panel-border rounded-2xl p-4 flex flex-wrap items-center gap-2">
+          <MapPin size={16} className="text-panel-text-muted flex-shrink-0" />
           <button
             onClick={() => setSelectedBranchId('all')}
             className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
-              selectedBranchId === 'all' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+              selectedBranchId === 'all' ? 'bg-panel-accent/20 text-panel-accent-soft border border-panel-accent/40' : 'text-panel-text-muted hover:text-panel-text hover:bg-panel-text/10 border border-transparent'
             }`}
           >
             Todas las sucursales
@@ -283,7 +283,7 @@ export default function InvoiceManagement() {
               key={b.id}
               onClick={() => setSelectedBranchId(b.id)}
               className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
-                selectedBranchId === b.id ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+                selectedBranchId === b.id ? 'bg-panel-accent/20 text-panel-accent-soft border border-panel-accent/40' : 'text-panel-text-muted hover:text-panel-text hover:bg-panel-text/10 border border-transparent'
               }`}
             >
               {b.name}
@@ -293,48 +293,48 @@ export default function InvoiceManagement() {
       )}
 
       {lastError && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 space-y-2">
+        <div className="bg-panel-danger/10 border border-panel-danger/30 rounded-lg p-4 space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="font-bold text-red-400">Error al enviar al SRI (detalle técnico)</h3>
-            <button onClick={() => setLastError(null)} className="text-red-400 hover:text-red-300 text-xs font-bold">Cerrar</button>
+            <h3 className="font-bold text-panel-danger">Error al enviar al SRI (detalle técnico)</h3>
+            <button onClick={() => setLastError(null)} className="text-panel-danger hover:opacity-80 text-xs font-bold">Cerrar</button>
           </div>
-          <div className="text-sm text-red-300">{lastError.message}</div>
+          <div className="text-sm text-panel-danger">{lastError.message}</div>
           {lastError.detail && (
-            <pre className="text-xs text-red-300/80 whitespace-pre-wrap break-all bg-red-950/30 rounded p-2 max-h-48 overflow-y-auto">
+            <pre className="text-xs text-panel-danger/80 whitespace-pre-wrap break-all bg-panel-danger/10 rounded p-2 max-h-48 overflow-y-auto">
               {typeof lastError.detail === 'string' ? lastError.detail : JSON.stringify(lastError.detail, null, 2)}
             </pre>
           )}
           {lastError.stack && (
-            <pre className="text-[10px] text-red-300/60 whitespace-pre-wrap break-all bg-red-950/30 rounded p-2 max-h-48 overflow-y-auto">
+            <pre className="text-[10px] text-panel-danger/60 whitespace-pre-wrap break-all bg-panel-danger/10 rounded p-2 max-h-48 overflow-y-auto">
               {lastError.stack}
             </pre>
           )}
         </div>
       )}
 
-      <div className="bg-zinc-900 rounded-2xl border border-zinc-800 overflow-hidden">
+      <div className="bg-panel-surface rounded-2xl border border-panel-border overflow-hidden">
         {loading ? (
-          <div className="p-8 text-center text-zinc-500">Cargando facturas...</div>
+          <div className="p-8 text-center text-panel-text-muted">Cargando facturas...</div>
         ) : filteredInvoices.length === 0 ? (
-          <div className="p-8 text-center text-zinc-500">No hay facturas registradas</div>
+          <div className="p-8 text-center text-panel-text-muted">No hay facturas registradas</div>
         ) : (
           <Table
             columns={['Factura', 'Sucursal', 'Cliente', 'Fecha', 'Total', 'Estado', 'Acciones']}
             data={filteredInvoices}
             renderRow={(inv) => (
-              <tr key={inv.id} className="hover:bg-zinc-800/50 cursor-pointer" onClick={() => openInvoiceDetail(inv)}>
-                <td className="px-4 py-3 font-bold text-zinc-100 font-mono">{inv.invoice_number}</td>
-                <td className="px-4 py-3 text-zinc-400 text-sm">{inv.point_of_sales?.branches?.name || '-'}</td>
-                <td className="px-4 py-3 text-zinc-300">
+              <tr key={inv.id} className="hover:bg-panel-surface-2 cursor-pointer" onClick={() => openInvoiceDetail(inv)}>
+                <td className="px-4 py-3 font-bold text-panel-text font-mono">{inv.invoice_number}</td>
+                <td className="px-4 py-3 text-panel-text-muted text-sm">{inv.point_of_sales?.branches?.name || '-'}</td>
+                <td className="px-4 py-3 text-panel-text">
                   {inv.customers?.name || 'Consumidor Final'}
                 </td>
-                <td className="px-4 py-3 text-zinc-400">{new Date(inv.issue_date).toLocaleDateString()}</td>
-                <td className="px-4 py-3 font-bold text-emerald-400">{formatUSD(inv.total_amount)}</td>
+                <td className="px-4 py-3 text-panel-text-muted">{new Date(inv.issue_date).toLocaleDateString()}</td>
+                <td className="px-4 py-3 font-bold text-panel-success">{formatUSD(inv.total_amount)}</td>
                 <td className="px-4 py-3"><Badge status={STATUS_LABELS[inv.status] || inv.status} /></td>
                 <td className="px-4 py-3">
                   {inv.status === 'borrador' && (
                     submittingId === inv.id ? (
-                      <div className="text-xs font-bold text-zinc-400 flex items-center gap-1">
+                      <div className="text-xs font-bold text-panel-text-muted flex items-center gap-1">
                         <Loader size={14} className="animate-spin" /> Enviando al SRI...
                       </div>
                     ) : (
@@ -342,7 +342,7 @@ export default function InvoiceManagement() {
                         {can('invoices.approve') && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleApprove(inv); }}
-                            className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                            className="text-xs font-bold text-panel-success hover:opacity-80 flex items-center gap-1"
                           >
                             <CheckCircle size={14} /> Aprobar
                           </button>
@@ -350,7 +350,7 @@ export default function InvoiceManagement() {
                         {can('invoices.void') && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleVoid(inv); }}
-                            className="text-xs font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
+                            className="text-xs font-bold text-panel-danger hover:opacity-80 flex items-center gap-1"
                           >
                             <XCircle size={14} /> Anular
                           </button>
@@ -363,7 +363,7 @@ export default function InvoiceManagement() {
                       <button
                         onClick={(e) => handleDownloadRide(inv, e)}
                         disabled={downloadingRideId === inv.id}
-                        className="text-xs font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1 disabled:opacity-50"
+                        className="text-xs font-bold text-panel-accent-soft hover:opacity-80 flex items-center gap-1 disabled:opacity-50"
                       >
                         {downloadingRideId === inv.id ? (
                           <><Loader size={14} className="animate-spin" /> Generando...</>
@@ -375,7 +375,7 @@ export default function InvoiceManagement() {
                         <button
                           onClick={(e) => handleEmailRide(inv, e)}
                           disabled={emailingRideId === inv.id}
-                          className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 disabled:opacity-50"
+                          className="text-xs font-bold text-panel-success hover:opacity-80 flex items-center gap-1 disabled:opacity-50"
                         >
                           {emailingRideId === inv.id ? (
                             <><Loader size={14} className="animate-spin" /> Enviando...</>
@@ -387,7 +387,7 @@ export default function InvoiceManagement() {
                       {can('invoices.export') && (
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDownloadXml(inv); }}
-                          className="text-xs font-bold text-zinc-300 hover:text-zinc-100 flex items-center gap-1"
+                          className="text-xs font-bold text-panel-text-muted hover:text-panel-text flex items-center gap-1"
                         >
                           <FileCode size={14} /> XML
                         </button>
@@ -404,13 +404,13 @@ export default function InvoiceManagement() {
       {/* Invoice Detail Modal */}
       {selectedInvoice && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 sm:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <FileText className="text-emerald-500" size={28} />
-                <h3 className="text-2xl font-bold text-white">Detalle de Factura</h3>
+                <FileText className="text-panel-success" size={28} />
+                <h3 className="text-2xl font-bold text-panel-text">Detalle de Factura</h3>
               </div>
-              <button onClick={() => setSelectedInvoice(null)} className="text-zinc-500 hover:text-zinc-300">
+              <button onClick={() => setSelectedInvoice(null)} className="text-panel-text-muted hover:text-panel-text">
                 <X size={24} />
               </button>
             </div>
@@ -418,10 +418,10 @@ export default function InvoiceManagement() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs text-zinc-500">Número de Factura</div>
-                  <div className="text-lg font-bold text-zinc-100 font-mono">{selectedInvoice.invoice_number}</div>
+                  <div className="text-xs text-panel-text-muted">Número de Factura</div>
+                  <div className="text-lg font-bold text-panel-text font-mono">{selectedInvoice.invoice_number}</div>
                   {selectedInvoice.point_of_sales?.branches?.name && (
-                    <div className="text-xs text-zinc-500 flex items-center gap-1 mt-1">
+                    <div className="text-xs text-panel-text-muted flex items-center gap-1 mt-1">
                       <MapPin size={11} /> {selectedInvoice.point_of_sales.branches.name} · {selectedInvoice.point_of_sales.nombre}
                     </div>
                   )}
@@ -430,52 +430,52 @@ export default function InvoiceManagement() {
               </div>
 
               {/* Access Key */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
+              <div className="bg-panel-bg border border-panel-border rounded-lg p-4">
                 <div className="flex items-center justify-between mb-1">
-                  <div className="text-xs font-bold text-zinc-400">Clave de Acceso SRI</div>
+                  <div className="text-xs font-bold text-panel-text-muted">Clave de Acceso SRI</div>
                   {selectedInvoice.authorization_number && (
                     <button
                       onClick={() => copyAccessKey(selectedInvoice.authorization_number)}
-                      className="text-zinc-500 hover:text-emerald-400"
+                      className="text-panel-text-muted hover:text-panel-success"
                     >
                       <Copy size={14} />
                     </button>
                   )}
                 </div>
-                <div className="text-xs sm:text-sm text-emerald-400 font-mono break-all">
+                <div className="text-xs sm:text-sm text-panel-success font-mono break-all">
                   {selectedInvoice.authorization_number || 'No generada'}
                 </div>
               </div>
 
               {selectedInvoice.status === 'devuelta' && selectedInvoice.sri_response_message && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4">
-                  <div className="text-xs font-bold text-red-400 mb-1">Respuesta del SRI (rechazo)</div>
-                  <div className="text-xs text-red-300 break-all whitespace-pre-wrap">{selectedInvoice.sri_response_message}</div>
+                <div className="bg-panel-danger/10 border border-panel-danger/30 rounded-lg p-4">
+                  <div className="text-xs font-bold text-panel-danger mb-1">Respuesta del SRI (rechazo)</div>
+                  <div className="text-xs text-panel-danger break-all whitespace-pre-wrap">{selectedInvoice.sri_response_message}</div>
                 </div>
               )}
 
               {/* Customer Info */}
-              <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-4">
-                <div className="text-xs font-bold text-zinc-400 mb-2">Cliente</div>
+              <div className="bg-panel-bg border border-panel-border rounded-lg p-4">
+                <div className="text-xs font-bold text-panel-text-muted mb-2">Cliente</div>
                 {selectedInvoice.customers ? (
                   <div className="space-y-1 text-sm">
-                    <div className="text-zinc-100 font-bold">{selectedInvoice.customers.name}</div>
-                    <div className="text-zinc-400">
+                    <div className="text-panel-text font-bold">{selectedInvoice.customers.name}</div>
+                    <div className="text-panel-text-muted">
                       {selectedInvoice.customers.identification_type === 'ruc' ? 'RUC' : 'Cédula'}: {selectedInvoice.customers.identification_number}
                     </div>
-                    {selectedInvoice.customers.email && <div className="text-zinc-500 text-xs">{selectedInvoice.customers.email}</div>}
-                    {selectedInvoice.customers.phone && <div className="text-zinc-500 text-xs">{selectedInvoice.customers.phone}</div>}
+                    {selectedInvoice.customers.email && <div className="text-panel-text-muted text-xs">{selectedInvoice.customers.email}</div>}
+                    {selectedInvoice.customers.phone && <div className="text-panel-text-muted text-xs">{selectedInvoice.customers.phone}</div>}
                   </div>
                 ) : (
-                  <div className="text-sm text-zinc-300">Consumidor Final</div>
+                  <div className="text-sm text-panel-text">Consumidor Final</div>
                 )}
               </div>
 
               {/* Line Items */}
               <div>
-                <div className="text-xs font-bold text-zinc-400 mb-2">Productos</div>
+                <div className="text-xs font-bold text-panel-text-muted mb-2">Productos</div>
                 {loadingDetails ? (
-                  <div className="text-center text-zinc-500 py-4 text-sm">Cargando...</div>
+                  <div className="text-center text-panel-text-muted py-4 text-sm">Cargando...</div>
                 ) : (
                   <div className="space-y-2">
                     {invoiceDetails.map(item => {
@@ -484,17 +484,17 @@ export default function InvoiceManagement() {
                       const grossAmount = parseFloat(item.unit_price) * parseFloat(item.quantity);
                       const discountAmount = grossAmount - parseFloat(item.subtotal);
                       return (
-                        <div key={item.id} className="flex justify-between items-center bg-zinc-950 rounded-lg p-3 text-sm">
+                        <div key={item.id} className="flex justify-between items-center bg-panel-bg rounded-lg p-3 text-sm">
                           <div>
-                            <div className="text-zinc-100">{item.product_name}</div>
-                            <div className="text-xs text-zinc-500">{item.quantity} x {formatUSD(item.unit_price)}</div>
+                            <div className="text-panel-text">{item.product_name}</div>
+                            <div className="text-xs text-panel-text-muted">{item.quantity} x {formatUSD(item.unit_price)}</div>
                             {item.discount_percent > 0 && (
-                              <div className="text-xs text-pink-400 font-bold">
+                              <div className="text-xs text-[var(--kpi-pink)] font-bold">
                                 -{item.discount_percent}% dto. (-{formatUSD(discountAmount)})
                               </div>
                             )}
                           </div>
-                          <div className="font-bold text-emerald-400">{formatUSD(item.total)}</div>
+                          <div className="font-bold text-panel-success">{formatUSD(item.total)}</div>
                         </div>
                       );
                     })}
@@ -503,34 +503,34 @@ export default function InvoiceManagement() {
               </div>
 
               {/* Totals */}
-              <div className="border-t border-zinc-800 pt-4 space-y-1 text-sm">
-                <div className="flex justify-between text-zinc-400">
+              <div className="border-t border-panel-border pt-4 space-y-1 text-sm">
+                <div className="flex justify-between text-panel-text-muted">
                   <span>Subtotal:</span>
                   <span>{formatUSD(selectedInvoice.subtotal)}</span>
                 </div>
                 {selectedInvoice.discount_amount > 0 && (
-                  <div className="flex justify-between text-red-400">
+                  <div className="flex justify-between text-panel-danger">
                     <span>Descuento:</span>
                     <span>-{formatUSD(selectedInvoice.discount_amount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-zinc-400">
+                <div className="flex justify-between text-panel-text-muted">
                   <span>IVA:</span>
                   <span>{formatUSD(selectedInvoice.tax_amount)}</span>
                 </div>
-                <div className="flex justify-between font-bold text-lg text-emerald-400 pt-1">
+                <div className="flex justify-between font-bold text-lg text-panel-success pt-1">
                   <span>Total:</span>
                   <span>{formatUSD(selectedInvoice.total_amount)}</span>
                 </div>
               </div>
 
               {selectedInvoice.status === 'borrador' && (can('invoices.approve') || can('invoices.void')) && (
-                <div className="flex gap-3 pt-4 border-t border-zinc-800">
+                <div className="flex gap-3 pt-4 border-t border-panel-border">
                   {can('invoices.void') && (
                     <button
                       onClick={() => handleVoid(selectedInvoice)}
                       disabled={submittingId === selectedInvoice.id}
-                      className="flex-1 bg-zinc-800 hover:bg-red-900/30 disabled:opacity-50 text-red-400 font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 bg-panel-surface-2 hover:bg-panel-danger/10 disabled:opacity-50 text-panel-danger font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
                       <XCircle size={18} /> Anular
                     </button>
@@ -539,7 +539,7 @@ export default function InvoiceManagement() {
                     <button
                       onClick={() => handleApprove(selectedInvoice)}
                       disabled={submittingId === selectedInvoice.id}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      className="flex-1 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
                       {submittingId === selectedInvoice.id ? (
                         <><Loader size={18} className="animate-spin" /> Enviando al SRI...</>
@@ -552,7 +552,7 @@ export default function InvoiceManagement() {
               )}
 
               {selectedInvoice.status === 'autorizada' && (
-                <div className="pt-4 border-t border-zinc-800 space-y-2">
+                <div className="pt-4 border-t border-panel-border space-y-2">
                   <button
                     onClick={() => handleDownloadRide(selectedInvoice)}
                     disabled={downloadingRideId === selectedInvoice.id}
@@ -568,7 +568,7 @@ export default function InvoiceManagement() {
                     <button
                       onClick={() => handleEmailRide(selectedInvoice)}
                       disabled={emailingRideId === selectedInvoice.id}
-                      className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
                       {emailingRideId === selectedInvoice.id ? (
                         <><Loader size={18} className="animate-spin" /> Enviando...</>
@@ -580,7 +580,7 @@ export default function InvoiceManagement() {
                   {can('invoices.export') && (
                     <button
                       onClick={() => handleDownloadXml(selectedInvoice)}
-                      className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      className="w-full bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
                     >
                       <FileCode size={18} /> Descargar XML autorizado
                     </button>
@@ -601,14 +601,14 @@ export default function InvoiceManagement() {
               <button
                 onClick={() => setShowBulkExport(false)}
                 disabled={exportingZip}
-                className="px-4 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 font-bold disabled:opacity-50"
+                className="px-4 py-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] font-bold disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleBulkExport}
                 disabled={exportingZip}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold rounded-lg flex items-center gap-2"
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white font-bold rounded-lg flex items-center gap-2"
               >
                 {exportingZip ? <><Loader size={16} className="animate-spin" /> Generando ZIP...</> : <><Archive size={16} /> Descargar ZIP</>}
               </button>
@@ -616,36 +616,36 @@ export default function InvoiceManagement() {
           }
         >
           <div className="space-y-4">
-            <p className="text-sm text-zinc-400">
-              Genera un .zip con el XML autorizado de cada factura del rango (nombrado con su clave de acceso) y un <span className="font-mono text-zinc-300">resumen.csv</span>. Solo se incluyen facturas en estado <span className="font-bold text-emerald-400">autorizada</span>.
+            <p className="text-sm text-[var(--text-muted)]">
+              Genera un .zip con el XML autorizado de cada factura del rango (nombrado con su clave de acceso) y un <span className="font-mono text-[var(--text-primary)]">resumen.csv</span>. Solo se incluyen facturas en estado <span className="font-bold text-[var(--status-success)]">autorizada</span>.
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-bold text-zinc-300 mb-1">Desde</label>
+                <label className="block text-sm font-bold text-[var(--text-primary)] mb-1">Desde</label>
                 <input
                   type="date"
                   value={bulkStartDate}
                   onChange={(e) => setBulkStartDate(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100"
+                  className="w-full bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
               <div>
-                <label className="block text-sm font-bold text-zinc-300 mb-1">Hasta</label>
+                <label className="block text-sm font-bold text-[var(--text-primary)] mb-1">Hasta</label>
                 <input
                   type="date"
                   value={bulkEndDate}
                   onChange={(e) => setBulkEndDate(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100"
+                  className="w-full bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
             </div>
             {branches.length > 1 && (
               <div>
-                <label className="block text-sm font-bold text-zinc-300 mb-1">Sucursal</label>
+                <label className="block text-sm font-bold text-[var(--text-primary)] mb-1">Sucursal</label>
                 <select
                   value={bulkBranchId}
                   onChange={(e) => setBulkBranchId(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100"
+                  className="w-full bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-[var(--text-primary)]"
                 >
                   <option value="all">Todas las sucursales</option>
                   {branches.map(b => (
