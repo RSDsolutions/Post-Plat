@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Plus, X, Key, Loader, MapPin } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchCompanyUsers, createCashierUser, resetCashierPassword, fetchBranches, updateUserBranch } from '../../lib/supabaseHelpers.js';
+import { fetchCompanyUsers, createCompanyUser, resetCashierPassword, fetchBranches, updateUserBranch } from '../../lib/supabaseHelpers.js';
 import { checkLimit, limitReachedMessage } from '../../lib/planLimits.js';
 
-const EMPTY_NEW_CASHIER = { name: '', email: '', phone: '', role: 'vendedor', branchId: '', password: '', confirmPassword: '' };
+const EMPTY_NEW_USER = { name: '', email: '', phone: '', role: 'vendedor', branchId: '', password: '', confirmPassword: '' };
+const ROLE_LABELS = { vendedor: 'Vendedor', operario: 'Operario', contador: 'Contador' };
 
-export default function CashierManagement() {
+// Antes CashierManagement.jsx (solo vendedor/operario) - la Fase 5 expande
+// esta misma pantalla para que el gerente también pueda dar de alta al
+// contador de su empresa, sin sucursal (a diferencia de los cajeros).
+export default function UserManagement() {
   const { currentUser, showToast, companies, plans } = useStore();
-  const [cashiers, setCashiers] = useState([]);
+  const [users, setUsers] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,7 +20,7 @@ export default function CashierManagement() {
   const plan = plans.find(p => p.id === company?.planId);
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newCashier, setNewCashier] = useState(EMPTY_NEW_CASHIER);
+  const [newUser, setNewUser] = useState(EMPTY_NEW_USER);
   const [creating, setCreating] = useState(false);
 
   const [resetTarget, setResetTarget] = useState(null);
@@ -27,16 +31,16 @@ export default function CashierManagement() {
 
   const loadData = async () => {
     try {
-      const [users, branchList] = await Promise.all([
+      const [userList, branchList] = await Promise.all([
         fetchCompanyUsers(currentUser.company_id),
         fetchBranches(currentUser.company_id)
       ]);
-      setCashiers(users.filter(u => u.role === 'operario' || u.role === 'vendedor'));
-      setAllUsers(users);
+      setUsers(userList.filter(u => u.role === 'operario' || u.role === 'vendedor' || u.role === 'contador'));
+      setAllUsers(userList);
       setBranches(branchList);
     } catch (error) {
-      console.error('Error loading cashiers:', error);
-      showToast('error', 'Error al cargar cajeros');
+      console.error('Error loading users:', error);
+      showToast('error', 'Error al cargar usuarios');
     } finally {
       setLoading(false);
     }
@@ -49,23 +53,25 @@ export default function CashierManagement() {
 
   const closeAddModal = () => {
     setShowAddModal(false);
-    setNewCashier(EMPTY_NEW_CASHIER);
+    setNewUser(EMPTY_NEW_USER);
   };
 
-  const handleAddCashier = async () => {
-    if (!newCashier.name.trim() || !newCashier.email.trim()) {
+  const needsBranch = newUser.role !== 'contador';
+
+  const handleAddUser = async () => {
+    if (!newUser.name.trim() || !newUser.email.trim()) {
       showToast('error', 'Nombre y correo son requeridos');
       return;
     }
-    if (!newCashier.branchId) {
-      showToast('error', 'Selecciona la sucursal donde trabajará este cajero');
+    if (needsBranch && !newUser.branchId) {
+      showToast('error', 'Selecciona la sucursal donde trabajará este usuario');
       return;
     }
-    if (newCashier.password.length < 6) {
+    if (newUser.password.length < 6) {
       showToast('error', 'La contraseña debe tener al menos 6 caracteres');
       return;
     }
-    if (newCashier.password !== newCashier.confirmPassword) {
+    if (newUser.password !== newUser.confirmPassword) {
       showToast('error', 'Las contraseñas no coinciden');
       return;
     }
@@ -78,32 +84,32 @@ export default function CashierManagement() {
 
     try {
       setCreating(true);
-      await createCashierUser({
+      await createCompanyUser({
         callerId: currentUser.id,
         companyId: currentUser.company_id,
-        email: newCashier.email.trim(),
-        password: newCashier.password,
-        name: newCashier.name.trim(),
-        role: newCashier.role,
-        phone: newCashier.phone.trim(),
-        branchId: newCashier.branchId
+        email: newUser.email.trim(),
+        password: newUser.password,
+        name: newUser.name.trim(),
+        role: newUser.role,
+        phone: newUser.phone.trim(),
+        branchId: needsBranch ? newUser.branchId : null
       });
-      showToast('success', `Cajero "${newCashier.name}" creado. Comparte sus credenciales de forma segura.`);
+      showToast('success', `"${newUser.name}" creado. Comparte sus credenciales de forma segura.`);
       closeAddModal();
       await loadData();
     } catch (error) {
-      console.error('Error creating cashier:', error);
-      showToast('error', error.message || 'Error al crear el cajero');
+      console.error('Error creating user:', error);
+      showToast('error', error.message || 'Error al crear el usuario');
     } finally {
       setCreating(false);
     }
   };
 
-  const handleReassignBranch = async (cashier, branchId) => {
-    setReassigningId(cashier.id);
+  const handleReassignBranch = async (user, branchId) => {
+    setReassigningId(user.id);
     try {
-      await updateUserBranch({ companyId: currentUser.company_id, userId: cashier.id, branchId: branchId || null, callerId: currentUser.id });
-      showToast('success', `Sucursal de "${cashier.name}" actualizada`);
+      await updateUserBranch({ companyId: currentUser.company_id, userId: user.id, branchId: branchId || null, callerId: currentUser.id });
+      showToast('success', `Sucursal de "${user.name}" actualizada`);
       await loadData();
     } catch (error) {
       console.error('Error reassigning branch:', error);
@@ -113,8 +119,8 @@ export default function CashierManagement() {
     }
   };
 
-  const openResetPassword = (cashier) => {
-    setResetTarget(cashier);
+  const openResetPassword = (user) => {
+    setResetTarget(user);
     setResetForm({ newPassword: '', confirmPassword: '' });
   };
 
@@ -149,65 +155,67 @@ export default function CashierManagement() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Gestión de Cajas</h1>
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Usuarios</h1>
         <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-4 rounded-lg transition-colors"
         >
           <Plus size={20} />
-          Agregar Cajero
+          Agregar Usuario
         </button>
       </div>
 
       {!loading && branches.length === 0 && (
         <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
-          <p className="text-sm text-amber-400">Crea primero una sucursal en "Sucursales" antes de agregar cajeros - cada cajero necesita una sucursal asignada para poder facturar.</p>
+          <p className="text-sm text-amber-400">Crea primero una sucursal en "Sucursales" antes de agregar cajeros - cada cajero necesita una sucursal asignada para poder facturar (el contador no).</p>
         </div>
       )}
 
       {loading ? (
         <div className="text-center text-zinc-500 py-12">Cargando...</div>
-      ) : cashiers.length === 0 ? (
+      ) : users.length === 0 ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-12 text-center">
           <Users className="mx-auto text-zinc-700 mb-3" size={40} />
-          <p className="text-zinc-500">Aún no hay cajeros registrados</p>
+          <p className="text-zinc-500">Aún no hay usuarios registrados</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {cashiers.map(c => (
-            <div key={c.id} className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          {users.map(u => (
+            <div key={u.id} className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <div className="font-bold text-zinc-100 truncate">{c.name}</div>
-                  <div className="text-sm text-zinc-500 truncate">{c.email}</div>
-                  {c.phone && <div className="text-xs text-zinc-600 mt-0.5">{c.phone}</div>}
-                  <div className="text-xs text-blue-400 mt-2 font-bold uppercase">{c.role}</div>
+                  <div className="font-bold text-zinc-100 truncate">{u.name}</div>
+                  <div className="text-sm text-zinc-500 truncate">{u.email}</div>
+                  {u.phone && <div className="text-xs text-zinc-600 mt-0.5">{u.phone}</div>}
+                  <div className="text-xs text-blue-400 mt-2 font-bold uppercase">{ROLE_LABELS[u.role] || u.role}</div>
                 </div>
-                <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded uppercase ${c.is_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
-                  {c.is_active ? 'Activo' : 'Inactivo'}
+                <span className={`flex-shrink-0 text-[10px] font-bold px-2 py-1 rounded uppercase ${u.is_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-800 text-zinc-500'}`}>
+                  {u.is_active ? 'Activo' : 'Inactivo'}
                 </span>
               </div>
 
-              <div className="mt-3">
-                <label className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase mb-1">
-                  <MapPin size={11} /> Sucursal
-                </label>
-                <select
-                  value={c.branch_id || ''}
-                  onChange={(e) => handleReassignBranch(c, e.target.value)}
-                  disabled={reassigningId === c.id}
-                  className={`w-full bg-zinc-800 border rounded px-2 py-1.5 text-sm ${c.branch_id ? 'text-zinc-200 border-zinc-700' : 'text-amber-400 border-amber-500/40'}`}
-                >
-                  <option value="">Sin asignar</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-                {!c.branch_id && <p className="text-[10px] text-amber-400 mt-1">No podrá facturar hasta que se le asigne una sucursal</p>}
-              </div>
+              {u.role !== 'contador' && (
+                <div className="mt-3">
+                  <label className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 uppercase mb-1">
+                    <MapPin size={11} /> Sucursal
+                  </label>
+                  <select
+                    value={u.branch_id || ''}
+                    onChange={(e) => handleReassignBranch(u, e.target.value)}
+                    disabled={reassigningId === u.id}
+                    className={`w-full bg-zinc-800 border rounded px-2 py-1.5 text-sm ${u.branch_id ? 'text-zinc-200 border-zinc-700' : 'text-amber-400 border-amber-500/40'}`}
+                  >
+                    <option value="">Sin asignar</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                  {!u.branch_id && <p className="text-[10px] text-amber-400 mt-1">No podrá facturar hasta que se le asigne una sucursal</p>}
+                </div>
+              )}
 
               <button
-                onClick={() => openResetPassword(c)}
+                onClick={() => openResetPassword(u)}
                 className="mt-3 w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold py-2 rounded-lg transition-colors"
               >
                 <Key size={14} />
@@ -218,12 +226,12 @@ export default function CashierManagement() {
         </div>
       )}
 
-      {/* Add Cashier Modal */}
+      {/* Add User Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-zinc-100">Agregar Cajero</h2>
+              <h2 className="text-2xl font-bold text-zinc-100">Agregar Usuario</h2>
               <button onClick={closeAddModal} className="text-zinc-500 hover:text-zinc-300">
                 <X size={24} />
               </button>
@@ -235,8 +243,8 @@ export default function CashierManagement() {
                 <input
                   type="text"
                   placeholder="Juan Pérez"
-                  value={newCashier.name}
-                  onChange={(e) => setNewCashier({ ...newCashier, name: e.target.value })}
+                  value={newUser.name}
+                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
                 />
               </div>
@@ -245,51 +253,54 @@ export default function CashierManagement() {
                 <label className="block text-xs font-bold text-zinc-400 mb-2">Correo Electrónico *</label>
                 <input
                   type="email"
-                  placeholder="cajero@tutienda.com"
-                  value={newCashier.email}
-                  onChange={(e) => setNewCashier({ ...newCashier, email: e.target.value })}
+                  placeholder="usuario@tutienda.com"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
                 />
-                <p className="text-xs text-zinc-500 mt-1">Será su usuario para entrar al POS</p>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-zinc-400 mb-2">Sucursal *</label>
+                <label className="block text-xs font-bold text-zinc-400 mb-2">Rol *</label>
                 <select
-                  value={newCashier.branchId}
-                  onChange={(e) => setNewCashier({ ...newCashier, branchId: e.target.value })}
+                  value={newUser.role}
+                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value, branchId: e.target.value === 'contador' ? '' : newUser.branchId })}
                   className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
                 >
-                  <option value="">Selecciona una sucursal</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
+                  <option value="vendedor">Vendedor</option>
+                  <option value="operario">Operario</option>
+                  <option value="contador">Contador</option>
                 </select>
-                <p className="text-xs text-zinc-500 mt-1">Define desde qué punto de venta facturará este cajero</p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {needsBranch ? (
                 <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono (Opcional)</label>
-                  <input
-                    type="tel"
-                    placeholder="+593 9 12345678"
-                    value={newCashier.phone}
-                    onChange={(e) => setNewCashier({ ...newCashier, phone: e.target.value })}
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-zinc-400 mb-2">Rol *</label>
+                  <label className="block text-xs font-bold text-zinc-400 mb-2">Sucursal *</label>
                   <select
-                    value={newCashier.role}
-                    onChange={(e) => setNewCashier({ ...newCashier, role: e.target.value })}
+                    value={newUser.branchId}
+                    onChange={(e) => setNewUser({ ...newUser, branchId: e.target.value })}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white"
                   >
-                    <option value="vendedor">Vendedor</option>
-                    <option value="operario">Operario</option>
+                    <option value="">Selecciona una sucursal</option>
+                    {branches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
                   </select>
+                  <p className="text-xs text-zinc-500 mt-1">Define desde qué punto de venta facturará este usuario</p>
                 </div>
+              ) : (
+                <p className="text-xs text-zinc-500">El contador es a nivel empresa, no necesita sucursal.</p>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-400 mb-2">Teléfono (Opcional)</label>
+                <input
+                  type="tel"
+                  placeholder="+593 9 12345678"
+                  value={newUser.phone}
+                  onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -298,8 +309,8 @@ export default function CashierManagement() {
                   <input
                     type="password"
                     placeholder="Mínimo 6 caracteres"
-                    value={newCashier.password}
-                    onChange={(e) => setNewCashier({ ...newCashier, password: e.target.value })}
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
                   />
                 </div>
@@ -308,8 +319,8 @@ export default function CashierManagement() {
                   <input
                     type="password"
                     placeholder="Repite la contraseña"
-                    value={newCashier.confirmPassword}
-                    onChange={(e) => setNewCashier({ ...newCashier, confirmPassword: e.target.value })}
+                    value={newUser.confirmPassword}
+                    onChange={(e) => setNewUser({ ...newUser, confirmPassword: e.target.value })}
                     className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-white placeholder-zinc-500"
                   />
                 </div>
@@ -317,7 +328,7 @@ export default function CashierManagement() {
 
               <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
                 <p className="text-xs text-blue-300">
-                  Comparte estas credenciales directamente con el cajero. Aún no hay envío automático de correo, así que anótalas antes de continuar.
+                  Si el correo está configurado, se le envían estas credenciales automáticamente. También quedan visibles acá por si el envío falla.
                 </p>
               </div>
             </div>
@@ -330,12 +341,12 @@ export default function CashierManagement() {
                 Cancelar
               </button>
               <button
-                onClick={handleAddCashier}
+                onClick={handleAddUser}
                 disabled={creating}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
               >
                 {creating ? <Loader size={18} className="animate-spin" /> : <Plus size={18} />}
-                {creating ? 'Creando...' : 'Crear Cajero'}
+                {creating ? 'Creando...' : 'Crear Usuario'}
               </button>
             </div>
           </div>

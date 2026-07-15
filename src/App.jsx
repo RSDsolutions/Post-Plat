@@ -4,7 +4,6 @@ import { fetchCompanies, fetchPlans, fetchActivityLog } from './lib/supabaseHelp
 import { transformCompany, transformPlan, transformActivityEvent } from './lib/transforms.js';
 import { applyBrandColors } from './lib/brand.js';
 import Layout from './components/layout/Layout.jsx';
-import StoreLayout from './components/layout/StoreLayout.jsx';
 import StoreManagerLayout from './components/layout/StoreManagerLayout.jsx';
 import POSLayout from './components/layout/POSLayout.jsx';
 import Login from './components/pages/Login.jsx';
@@ -38,7 +37,8 @@ export default function App() {
   const impersonating = useStore(state => state.impersonating);
 
   useEffect(() => {
-    // Restore authentication from localStorage
+    // Restaura la sesión de Supabase Auth si hay una vigente (ver
+    // useStore.js restoreAuth) - ya no lee un objeto propio de localStorage.
     restoreAuth();
     applyBrandColors(brand.color);
   }, []);
@@ -72,13 +72,17 @@ export default function App() {
     return <Login />;
   }
 
-  // Show correct layout based on user role
+  // Show correct layout based on user role. contador entra por el mismo
+  // StoreManagerLayout que gerente desde la Fase 5 (antes tenía su propio
+  // StoreLayout legado, retirado) - el sidebar y el dashboard de entrada ya
+  // se resuelven por rol/permiso adentro de ese layout, no acá.
   let ActiveLayout;
   switch (userRole) {
     case 'admin':
       ActiveLayout = Layout;
       break;
     case 'gerente':
+    case 'contador':
       ActiveLayout = StoreManagerLayout;
       break;
     case 'operario':
@@ -86,7 +90,7 @@ export default function App() {
       ActiveLayout = POSLayout;
       break;
     default:
-      ActiveLayout = StoreLayout;
+      ActiveLayout = StoreManagerLayout;
   }
 
   return (

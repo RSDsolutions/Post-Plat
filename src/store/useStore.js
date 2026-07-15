@@ -8,7 +8,7 @@ import { supabase } from '../lib/supabase.js';
 import { fetchRolePermissions, can as canPermission } from '../lib/permissions.js';
 import {
   createCompany, updateCompany, createBranch, createPointOfSale,
-  createCompanyGerente, createCashierUser, logActivity, updatePlan as updatePlanInDb,
+  createCompanyGerente, createCompanyUser, logActivity, updatePlan as updatePlanInDb,
   fetchCompanyGerente, createPaymentRecord, loginWithPassword
 } from '../lib/supabaseHelpers.js';
 
@@ -226,7 +226,7 @@ export const useStore = create((set, get) => ({
       for (const cajero of (wizardData.cajeros || [])) {
         try {
           const cajeroPassword = generateTempPassword();
-          const cajeroResult = await createCashierUser({
+          const cajeroResult = await createCompanyUser({
             callerId: currentUser?.id,
             companyId: dbCompany.id,
             email: cajero.email,

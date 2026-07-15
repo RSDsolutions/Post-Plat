@@ -3,11 +3,12 @@ import { useStore } from '../../store/useStore.js';
 import StoreManagerSidebar from './StoreManagerSidebar.jsx';
 import StoreManagerTopBar from './StoreManagerTopBar.jsx';
 import StoreManagerDashboard from '../pages/StoreManagerDashboard.jsx';
+import AccountantDashboard from '../pages/AccountantDashboard.jsx';
 import Branches from '../pages/Branches.jsx';
 import InventoryManagement from '../pages/InventoryManagement.jsx';
 import Reports from '../pages/Reports.jsx';
 import InvoiceManagement from '../pages/InvoiceManagement.jsx';
-import CashierManagement from '../pages/CashierManagement.jsx';
+import UserManagement from '../pages/UserManagement.jsx';
 import CustomerManagement from '../pages/CustomerManagement.jsx';
 import StoreSettings from '../pages/StoreSettings.jsx';
 import BillingConfiguration from '../pages/BillingConfiguration.jsx';
@@ -16,21 +17,27 @@ import Toast from '../ui/Toast.jsx';
 import ConfirmDialog from '../ui/ConfirmDialog.jsx';
 
 export default function StoreManagerLayout() {
-  const { activePage } = useStore();
+  const { activePage, userRole } = useStore();
+
+  // El contador entra al mismo layout que el gerente (Fase 5) pero con un
+  // dashboard de entrada distinto - resumen contable en vez de comercial.
+  // Reutiliza las mismas páginas para todo lo demás; el sidebar ya filtra
+  // qué secciones ve cada uno por permiso (can()).
+  const DashboardContent = userRole === 'contador' ? AccountantDashboard : StoreManagerDashboard;
 
   let Content;
   switch (activePage) {
-    case 'dashboard': Content = StoreManagerDashboard; break;
+    case 'dashboard': Content = DashboardContent; break;
     case 'branches': Content = Branches; break;
     case 'inventory': Content = InventoryManagement; break;
     case 'reports': Content = Reports; break;
     case 'invoices': Content = InvoiceManagement; break;
     case 'accounting': Content = Accounting; break;
-    case 'cashiers': Content = CashierManagement; break;
+    case 'cashiers': Content = UserManagement; break;
     case 'customers': Content = CustomerManagement; break;
     case 'settings': Content = StoreSettings; break;
     case 'billing': Content = BillingConfiguration; break;
-    default: Content = StoreManagerDashboard;
+    default: Content = DashboardContent;
   }
 
   return (

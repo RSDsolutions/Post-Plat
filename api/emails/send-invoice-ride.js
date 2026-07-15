@@ -9,8 +9,10 @@ import { newInvoiceEmail } from './_templates.js';
 //   - Re-validamos con service role que la factura exista, pertenezca a la
 //     empresa y esté en estado 'autorizada'.
 //   - El destinatario (email) se resuelve desde la tabla customers, no del body.
-//   - Verificamos que el userId que pide pertenezca a la empresa (mismo patrón
-//     que api/sri/submit-invoice.js), para evitar abuso entre empresas.
+//   - Verificamos que el userId que pide pertenezca a la empresa Y tenga rol
+//     gerente/admin (mismo patrón que api/sri/submit-invoice.js) - antes no
+//     se restringía el rol acá, solo la UI lo ocultaba (can('invoices.send_ride')),
+//     así que un contador podía llamarlo directo y el servidor lo dejaba pasar.
 // ---------------------------------------------------------------------------
 
 export default async function handler(req, res) {
@@ -32,8 +34,8 @@ export default async function handler(req, res) {
       .select('id, company_id, role')
       .eq('id', userId)
       .single();
-    if (userError || !user || user.company_id !== companyId) {
-      return res.status(403).json({ error: 'No autorizado para esta empresa' });
+    if (userError || !user || user.company_id !== companyId || !['gerente', 'admin'].includes(user.role)) {
+      return res.status(403).json({ error: 'No autorizado para enviar el RIDE de esta empresa' });
     }
 
     // La factura debe existir, ser de la empresa y estar autorizada.

@@ -7,17 +7,24 @@ export default function StoreManagerSidebar() {
 
   // Inicio no lleva permiso propio (siempre visible para quien entra a este
   // layout); el resto se condiciona con can(), no con role === '...' - así
-  // el mismo sidebar sirve para gerente hoy y para contador cuando la Fase 5
-  // lo enrute acá (cada permiso ya define exactamente qué ve cada rol).
+  // el mismo sidebar sirve para gerente y para contador (Fase 5) sin ningún
+  // caso especial: cada permiso ya define exactamente qué ve cada rol.
+  //
+  // 'inventory' se gatea con inventory.read, no products.read (fix de la
+  // Fase 1): contador tiene products.read (lo necesita para ver nombres de
+  // producto en facturas/reportes) pero NO debe ver la pantalla completa de
+  // gestión de inventario - solo gerente tiene inventory.read/write. Con
+  // products.read, contador terminaba viendo "Inventario" igual, algo que
+  // la Fase 5 dice explícitamente que no debe pasar.
   const menuItems = [
     { id: 'dashboard', label: 'Inicio', icon: LayoutDashboard, permission: null },
     { id: 'branches', label: 'Sucursales', icon: MapPin, permission: 'branches.manage' },
     { id: 'reports', label: 'Reportes', icon: BarChart3, permission: 'reports.read' },
     { id: 'invoices', label: 'Facturas', icon: FileText, permission: 'invoices.read' },
     { id: 'accounting', label: 'Contabilidad', icon: Calculator, permission: 'accounting.read' },
-    { id: 'inventory', label: 'Inventario', icon: Package, permission: 'products.read' },
+    { id: 'inventory', label: 'Inventario', icon: Package, permission: 'inventory.read' },
     { id: 'customers', label: 'Clientes', icon: Users, permission: 'customers.read' },
-    { id: 'cashiers', label: 'Cajas', icon: Building2, permission: 'users.manage' },
+    { id: 'cashiers', label: 'Usuarios', icon: Building2, permission: 'users.manage' },
     { id: 'billing', label: 'Facturación SRI', icon: Receipt, permission: 'billing_config.manage' },
     { id: 'settings', label: 'Configuración', icon: Settings, permission: 'settings.manage' },
   ].filter(item => !item.permission || can(item.permission));

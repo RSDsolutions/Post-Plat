@@ -339,18 +339,22 @@ export default function InvoiceManagement() {
                       </div>
                     ) : (
                       <div className="flex gap-2">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleApprove(inv); }}
-                          className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
-                        >
-                          <CheckCircle size={14} /> Aprobar
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleVoid(inv); }}
-                          className="text-xs font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
-                        >
-                          <XCircle size={14} /> Anular
-                        </button>
+                        {can('invoices.approve') && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleApprove(inv); }}
+                            className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+                          >
+                            <CheckCircle size={14} /> Aprobar
+                          </button>
+                        )}
+                        {can('invoices.void') && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleVoid(inv); }}
+                            className="text-xs font-bold text-red-400 hover:text-red-300 flex items-center gap-1"
+                          >
+                            <XCircle size={14} /> Anular
+                          </button>
+                        )}
                       </div>
                     )
                   )}
@@ -520,26 +524,30 @@ export default function InvoiceManagement() {
                 </div>
               </div>
 
-              {selectedInvoice.status === 'borrador' && (
+              {selectedInvoice.status === 'borrador' && (can('invoices.approve') || can('invoices.void')) && (
                 <div className="flex gap-3 pt-4 border-t border-zinc-800">
-                  <button
-                    onClick={() => handleVoid(selectedInvoice)}
-                    disabled={submittingId === selectedInvoice.id}
-                    className="flex-1 bg-zinc-800 hover:bg-red-900/30 disabled:opacity-50 text-red-400 font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    <XCircle size={18} /> Anular
-                  </button>
-                  <button
-                    onClick={() => handleApprove(selectedInvoice)}
-                    disabled={submittingId === selectedInvoice.id}
-                    className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    {submittingId === selectedInvoice.id ? (
-                      <><Loader size={18} className="animate-spin" /> Enviando al SRI...</>
-                    ) : (
-                      <><CheckCircle size={18} /> Aprobar y Enviar al SRI</>
-                    )}
-                  </button>
+                  {can('invoices.void') && (
+                    <button
+                      onClick={() => handleVoid(selectedInvoice)}
+                      disabled={submittingId === selectedInvoice.id}
+                      className="flex-1 bg-zinc-800 hover:bg-red-900/30 disabled:opacity-50 text-red-400 font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      <XCircle size={18} /> Anular
+                    </button>
+                  )}
+                  {can('invoices.approve') && (
+                    <button
+                      onClick={() => handleApprove(selectedInvoice)}
+                      disabled={submittingId === selectedInvoice.id}
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {submittingId === selectedInvoice.id ? (
+                        <><Loader size={18} className="animate-spin" /> Enviando al SRI...</>
+                      ) : (
+                        <><CheckCircle size={18} /> Aprobar y Enviar al SRI</>
+                      )}
+                    </button>
+                  )}
                 </div>
               )}
 

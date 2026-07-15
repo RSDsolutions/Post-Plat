@@ -563,19 +563,19 @@ export async function fetchCompanyUsers(companyId) {
 }
 
 // Creates an operario/vendedor login for the gerente's own company and emails
-// them a welcome + temp password. Goes through the serverless endpoint
-// (api/admin/create-cashier.js) instead of calling the RPC directly, so the
-// plaintext password can be emailed server-side without ever living in the
-// browser bundle. The endpoint verifies the caller is gerente/admin of the
-// company and the RPC still re-validates the role server-side.
-export async function createCashierUser({ callerId, companyId, email, password, name, role, phone, branchId }) {
-  const response = await fetch('/api/admin/create-cashier', {
+// Creates a vendedor/operario/contador login and emails them a welcome +
+// temp password. Goes through api/admin/create-user.js (generaliza el viejo
+// create-cashier.js, que solo aceptaba vendedor/operario) so the plaintext
+// password can be emailed server-side without ever living in the browser
+// bundle. contador no lleva branchId (a nivel empresa, no de sucursal).
+export async function createCompanyUser({ callerId, companyId, email, password, name, role, phone, branchId }) {
+  const response = await fetch('/api/admin/create-user', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ callerId, companyId, email, password, name, role, phone, branchId })
   });
   const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || 'Error al crear el cajero');
+  if (!response.ok) throw new Error(result.error || 'Error al crear el usuario');
   return result;
 }
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Key, MapPin, Loader, UserCog, Ban, CheckCircle2 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import {
-  fetchCompanyUsers, fetchBranches, createCashierUser, createCompanyGerente,
+  fetchCompanyUsers, fetchBranches, createCompanyUser, createCompanyGerente,
   updateUserBranch, adminResetUserPassword, adminSetUserActive
 } from '../../lib/supabaseHelpers.js';
 import { generateTempPassword } from '../../lib/password.js';
@@ -12,7 +12,7 @@ import Modal from '../ui/Modal.jsx';
 
 const EMPTY_CAJERO = { name: '', email: '', phone: '', role: 'vendedor', branchId: '' };
 const EMPTY_GERENTE = { name: '', email: '' };
-const ROLE_LABELS = { gerente: 'Gerente', vendedor: 'Vendedor', operario: 'Operario' };
+const ROLE_LABELS = { gerente: 'Gerente', vendedor: 'Vendedor', operario: 'Operario', contador: 'Contador' };
 
 function credentialsMessage(name, email, password, emailStatus) {
   const emailNote = emailStatus === 'sent'
@@ -63,7 +63,7 @@ export default function CompanyUsersTab({ company }) {
   }, [company.id]);
 
   const gerente = users.find(u => u.role === 'gerente');
-  const cajeros = users.filter(u => u.role === 'vendedor' || u.role === 'operario');
+  const cajeros = users.filter(u => u.role === 'vendedor' || u.role === 'operario' || u.role === 'contador');
   const activeUserCount = users.filter(u => u.is_active).length;
 
   const closeAddCajero = () => { setShowAddCajero(false); setNewCajero(EMPTY_CAJERO); };
@@ -71,15 +71,16 @@ export default function CompanyUsersTab({ company }) {
   const handleAddCajero = async () => {
     const name = newCajero.name.trim();
     const email = newCajero.email.trim();
+    const needsBranch = newCajero.role !== 'contador';
     if (!name || !email) { showToast('error', 'Nombre y correo son requeridos'); return; }
-    if (!newCajero.branchId) { showToast('error', 'Selecciona la sucursal donde trabajará este cajero'); return; }
+    if (needsBranch && !newCajero.branchId) { showToast('error', 'Selecciona la sucursal donde trabajará este usuario'); return; }
     const limitCheck = checkLimit('users', plan, activeUserCount);
     if (!limitCheck.ok) { showToast('error', limitReachedMessage(limitCheck, plan?.name)); return; }
 
     setCreatingCajero(true);
     try {
       const tempPassword = generateTempPassword();
-      const result = await createCashierUser({
+      const result = await createCompanyUser({
         callerId: currentUser.id,
         companyId: company.id,
         email,
@@ -87,7 +88,7 @@ export default function CompanyUsersTab({ company }) {
         name,
         role: newCajero.role,
         phone: newCajero.phone.trim(),
-        branchId: newCajero.branchId
+        branchId: needsBranch ? newCajero.branchId : null
       });
       closeAddCajero();
       await load();
@@ -227,24 +228,24 @@ export default function CompanyUsersTab({ company }) {
 
       <div>
         <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2 mb-4">
-          <h3 className="text-base font-bold text-[var(--text-primary)]">Cajeros ({cajeros.length}{plan?.usersLimit != null ? ` / ${plan.usersLimit}` : ''})</h3>
+          <h3 className="text-base font-bold text-[var(--text-primary)]">Usuarios ({cajeros.length}{plan?.usersLimit != null ? ` / ${plan.usersLimit}` : ''})</h3>
           <button
             onClick={() => setShowAddCajero(true)}
             className="flex items-center gap-1.5 bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-colors"
           >
-            <Plus size={14} /> Agregar cajero
+            <Plus size={14} /> Agregar usuario
           </button>
         </div>
 
         {!loading && branches.length === 0 && (
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 mb-4">
-            <p className="text-xs font-medium text-amber-300">Esta empresa no tiene sucursales configuradas todavía - se necesita al menos una para poder asignar cajeros.</p>
+            <p className="text-xs font-medium text-amber-300">Esta empresa no tiene sucursales configuradas todavía - se necesita al menos una para poder asignar cajeros (el contador no necesita sucursal).</p>
           </div>
         )}
 
         {cajeros.length === 0 ? (
           <div className="bg-[var(--surface-0)]/50 border border-[var(--border-subtle)] rounded-2xl p-8 text-center text-sm text-[var(--text-muted)]">
-            Aún no hay cajeros registrados.
+            Aún no hay cajeros ni contadores registrados.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -261,20 +262,22 @@ export default function CompanyUsersTab({ company }) {
                   </span>
                 </div>
 
-                <div className="mt-3">
-                  <label className="flex items-center gap-1 text-[10px] font-bold text-[var(--text-muted)] uppercase mb-1">
-                    <MapPin size={11} /> Sucursal
-                  </label>
-                  <select
-                    value={c.branch_id || ''}
-                    onChange={(e) => handleReassignBranch(c, e.target.value)}
-                    disabled={busyUserId === c.id}
-                    className={`w-full bg-[var(--surface-0)] border rounded-lg px-2 py-1.5 text-sm ${c.branch_id ? 'text-[var(--text-primary)] border-[var(--border-subtle)]' : 'text-amber-400 border-amber-500/40'}`}
-                  >
-                    <option value="">Sin asignar</option>
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
-                </div>
+                {c.role !== 'contador' && (
+                  <div className="mt-3">
+                    <label className="flex items-center gap-1 text-[10px] font-bold text-[var(--text-muted)] uppercase mb-1">
+                      <MapPin size={11} /> Sucursal
+                    </label>
+                    <select
+                      value={c.branch_id || ''}
+                      onChange={(e) => handleReassignBranch(c, e.target.value)}
+                      disabled={busyUserId === c.id}
+                      className={`w-full bg-[var(--surface-0)] border rounded-lg px-2 py-1.5 text-sm ${c.branch_id ? 'text-[var(--text-primary)] border-[var(--border-subtle)]' : 'text-amber-400 border-amber-500/40'}`}
+                    >
+                      <option value="">Sin asignar</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+                )}
 
                 <div className="flex gap-2 mt-3">
                   <button
@@ -300,7 +303,7 @@ export default function CompanyUsersTab({ company }) {
 
       {showAddCajero && (
         <Modal
-          title="Agregar cajero"
+          title="Agregar usuario"
           onClose={closeAddCajero}
           footer={
             <>
@@ -310,7 +313,7 @@ export default function CompanyUsersTab({ company }) {
                 disabled={creatingCajero}
                 className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors disabled:opacity-50 flex items-center gap-2"
               >
-                {creatingCajero && <Loader size={14} className="animate-spin" />} Crear cajero
+                {creatingCajero && <Loader size={14} className="animate-spin" />} Crear usuario
               </button>
             </>
           }
@@ -327,27 +330,30 @@ export default function CompanyUsersTab({ company }) {
                 className="w-full bg-[var(--surface-0)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]" />
             </div>
             <div>
-              <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Sucursal *</label>
-              <select value={newCajero.branchId} onChange={e => setNewCajero({ ...newCajero, branchId: e.target.value })}
+              <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Rol *</label>
+              <select value={newCajero.role} onChange={e => setNewCajero({ ...newCajero, role: e.target.value, branchId: e.target.value === 'contador' ? '' : newCajero.branchId })}
                 className="w-full bg-[var(--surface-0)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]">
-                <option value="">Selecciona una sucursal</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                <option value="vendedor">Vendedor</option>
+                <option value="operario">Operario</option>
+                <option value="contador">Contador</option>
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            {newCajero.role !== 'contador' ? (
               <div>
-                <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Teléfono</label>
-                <input type="tel" value={newCajero.phone} onChange={e => setNewCajero({ ...newCajero, phone: e.target.value })}
-                  className="w-full bg-[var(--surface-0)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Rol *</label>
-                <select value={newCajero.role} onChange={e => setNewCajero({ ...newCajero, role: e.target.value })}
+                <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Sucursal *</label>
+                <select value={newCajero.branchId} onChange={e => setNewCajero({ ...newCajero, branchId: e.target.value })}
                   className="w-full bg-[var(--surface-0)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]">
-                  <option value="vendedor">Vendedor</option>
-                  <option value="operario">Operario</option>
+                  <option value="">Selecciona una sucursal</option>
+                  {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </div>
+            ) : (
+              <p className="text-xs text-[var(--text-muted)]">El contador es a nivel empresa, no necesita sucursal.</p>
+            )}
+            <div>
+              <label className="block text-xs font-bold text-[var(--text-muted)] uppercase mb-2">Teléfono</label>
+              <input type="tel" value={newCajero.phone} onChange={e => setNewCajero({ ...newCajero, phone: e.target.value })}
+                className="w-full bg-[var(--surface-0)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]" />
             </div>
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
               <p className="text-xs text-blue-300">La contraseña temporal se genera automáticamente y se envía por correo. También se muestra aquí al finalizar, por si el envío falla.</p>

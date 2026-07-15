@@ -5,9 +5,10 @@ import { getSupabaseAdmin } from '../emails/_lib.js';
 // DIRECTO desde el navegador con la anon key. Eso dejó de ser posible: resetear
 // una contraseña de Auth requiere auth.admin.updateUserById, que solo corre
 // con service role - nunca disponible en el navegador. Mismo patrón de
-// autorización que ya tenía la RPC (gerente de esa empresa, target
-// operario/vendedor de la misma empresa), ahora verificado acá antes de tocar
-// Auth.
+// autorización que ya tenía la RPC (gerente de esa empresa, target de la
+// misma empresa), ahora verificado acá antes de tocar Auth. Target incluye
+// contador desde la Fase 5 (antes solo operario/vendedor) - el gerente
+// también gestiona esa cuenta, no solo admin.
 // ---------------------------------------------------------------------------
 
 export default async function handler(req, res) {
@@ -44,7 +45,7 @@ export default async function handler(req, res) {
       .select('id, email, name, role')
       .eq('id', userId)
       .eq('company_id', companyId)
-      .in('role', ['operario', 'vendedor'])
+      .in('role', ['operario', 'vendedor', 'contador'])
       .maybeSingle();
     if (targetError || !target) {
       return res.status(400).json({ error: 'Usuario no encontrado en esta empresa' });
