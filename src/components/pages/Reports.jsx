@@ -29,7 +29,7 @@ const BAR_ACCENTS = { products: 'blue', customers: 'pink', cashiers: 'purple' };
 const KPI_TEXT_CLASSES = { emerald: 'text-emerald-400', blue: 'text-blue-400', amber: 'text-amber-400', purple: 'text-purple-400', pink: 'text-pink-400', red: 'text-red-400' };
 
 export default function Reports() {
-  const { currentUser, showToast, companies, plans } = useStore();
+  const { currentUser, showToast, companies, plans, can } = useStore();
   const [datePreset, setDatePreset] = useState('month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -271,23 +271,25 @@ export default function Reports() {
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
             <div className="p-6 pb-4 flex items-center justify-between flex-wrap gap-3">
               <h2 className="text-lg font-bold text-zinc-100">{report.table.title}</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleExportCsv}
-                  className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-bold px-4 py-2 rounded-lg transition-colors"
-                >
-                  <FileSpreadsheet size={16} />
-                  CSV
-                </button>
-                <button
-                  onClick={handleExportPdf}
-                  disabled={exportingPdf}
-                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
-                >
-                  {exportingPdf ? <Loader size={16} className="animate-spin" /> : <FileText size={16} />}
-                  PDF
-                </button>
-              </div>
+              {can('reports.export') && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleExportCsv}
+                    className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+                  >
+                    <FileSpreadsheet size={16} />
+                    CSV
+                  </button>
+                  <button
+                    onClick={handleExportPdf}
+                    disabled={exportingPdf}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+                  >
+                    {exportingPdf ? <Loader size={16} className="animate-spin" /> : <FileText size={16} />}
+                    PDF
+                  </button>
+                </div>
+              )}
             </div>
             <div className="overflow-x-auto px-6 pb-6">
               <table className="w-full text-sm border-collapse">

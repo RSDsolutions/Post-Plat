@@ -102,7 +102,7 @@ export default function CashierManagement() {
   const handleReassignBranch = async (cashier, branchId) => {
     setReassigningId(cashier.id);
     try {
-      await updateUserBranch({ companyId: currentUser.company_id, userId: cashier.id, branchId: branchId || null });
+      await updateUserBranch({ companyId: currentUser.company_id, userId: cashier.id, branchId: branchId || null, callerId: currentUser.id });
       showToast('success', `Sucursal de "${cashier.name}" actualizada`);
       await loadData();
     } catch (error) {
@@ -133,7 +133,8 @@ export default function CashierManagement() {
       await resetCashierPassword({
         companyId: currentUser.company_id,
         userId: resetTarget.id,
-        newPassword: resetForm.newPassword
+        newPassword: resetForm.newPassword,
+        callerId: currentUser.id
       });
       showToast('success', `Contraseña de "${resetTarget.name}" actualizada`);
       setResetTarget(null);

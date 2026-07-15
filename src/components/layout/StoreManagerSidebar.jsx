@@ -3,19 +3,23 @@ import { LayoutDashboard, Package, BarChart3, FileText, Users, Settings, LogOut,
 import { useStore } from '../../store/useStore.js';
 
 export default function StoreManagerSidebar() {
-  const { activePage, setActivePage, logout, currentUser, sidebarCollapsed, toggleSidebar, mobileMenuOpen, closeMobileMenu } = useStore();
+  const { activePage, setActivePage, logout, currentUser, can, sidebarCollapsed, toggleSidebar, mobileMenuOpen, closeMobileMenu } = useStore();
 
+  // Inicio no lleva permiso propio (siempre visible para quien entra a este
+  // layout); el resto se condiciona con can(), no con role === '...' - así
+  // el mismo sidebar sirve para gerente hoy y para contador cuando la Fase 5
+  // lo enrute acá (cada permiso ya define exactamente qué ve cada rol).
   const menuItems = [
-    { id: 'dashboard', label: 'Inicio', icon: LayoutDashboard },
-    { id: 'branches', label: 'Sucursales', icon: MapPin },
-    { id: 'reports', label: 'Reportes', icon: BarChart3 },
-    { id: 'invoices', label: 'Facturas', icon: FileText },
-    { id: 'inventory', label: 'Inventario', icon: Package },
-    { id: 'customers', label: 'Clientes', icon: Users },
-    { id: 'cashiers', label: 'Cajas', icon: Building2 },
-    { id: 'billing', label: 'Facturación SRI', icon: Receipt },
-    { id: 'settings', label: 'Configuración', icon: Settings },
-  ];
+    { id: 'dashboard', label: 'Inicio', icon: LayoutDashboard, permission: null },
+    { id: 'branches', label: 'Sucursales', icon: MapPin, permission: 'branches.manage' },
+    { id: 'reports', label: 'Reportes', icon: BarChart3, permission: 'reports.read' },
+    { id: 'invoices', label: 'Facturas', icon: FileText, permission: 'invoices.read' },
+    { id: 'inventory', label: 'Inventario', icon: Package, permission: 'products.read' },
+    { id: 'customers', label: 'Clientes', icon: Users, permission: 'customers.read' },
+    { id: 'cashiers', label: 'Cajas', icon: Building2, permission: 'users.manage' },
+    { id: 'billing', label: 'Facturación SRI', icon: Receipt, permission: 'billing_config.manage' },
+    { id: 'settings', label: 'Configuración', icon: Settings, permission: 'settings.manage' },
+  ].filter(item => !item.permission || can(item.permission));
 
   return (
     <>

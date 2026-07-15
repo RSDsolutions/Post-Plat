@@ -4,10 +4,12 @@ import { generateAlerts } from '../lib/alerts.js';
 import { formatUSD } from '../lib/format.js';
 import { transformCompany } from '../lib/transforms.js';
 import { generateTempPassword } from '../lib/password.js';
+import { supabase } from '../lib/supabase.js';
+import { fetchRolePermissions, can as canPermission } from '../lib/permissions.js';
 import {
   createCompany, updateCompany, createBranch, createPointOfSale,
   createCompanyGerente, createCashierUser, logActivity, updatePlan as updatePlanInDb,
-  fetchCompanyGerente, createPaymentRecord
+  fetchCompanyGerente, createPaymentRecord, loginWithPassword
 } from '../lib/supabaseHelpers.js';
 
 export const useStore = create((set, get) => ({
@@ -23,6 +25,11 @@ export const useStore = create((set, get) => ({
   currentUser: null,
   userRole: null,
   isAuthenticating: false,
+  // Set de claves modulo.accion del rol actual (ver src/lib/permissions.js).
+  // Vacío = deniega todo (fail closed) - nunca se interpreta como "sin
+  // restricciones" mientras carga.
+  permissions: new Set(),
+  can: (key) => canPermission(get().permissions, key),
   // Set while an admin is impersonating a company's gerente ("ver como
   // cliente") - holds who to restore on exitImpersonation. Deliberately
   // never written to localStorage (see impersonateCompany), so a hard
@@ -51,32 +58,49 @@ export const useStore = create((set, get) => ({
   companyStatusFilter: 'all',
   companyPlanFilter: 'all',
 
-  // Auth actions
+  // Auth actions - sesión real de Supabase Auth (JWT, persistida y refrescada
+  // por el propio supabase-js, ya no a mano en localStorage).
+  login: async (email, password) => {
+    const user = await loginWithPassword(email, password);
+    const permissions = await fetchRolePermissions(user.role);
+    set({ currentUser: user, userRole: user.role, permissions, isAuthenticated: true, isAuthenticating: false });
+    return user;
+  },
+  // Sigue existiendo para impersonación (swap de estado local, nunca crea
+  // una sesión Auth real - ver impersonateCompany) y para casos donde el
+  // perfil ya se resolvió por otro camino. No carga permisos por sí sola -
+  // los callers que cambian de rol (impersonateCompany) lo hacen aparte.
   setCurrentUser: (user, role) => {
-    const authState = { currentUser: user, userRole: role, isAuthenticated: true, isAuthenticating: false };
-    set(authState);
-    // Persist to localStorage
-    localStorage.setItem('postplat_auth', JSON.stringify({ user, role }));
+    set({ currentUser: user, userRole: role, isAuthenticated: true, isAuthenticating: false });
   },
   logout: () => {
-    set({ currentUser: null, userRole: null, isAuthenticated: false, activePage: 'dashboard' });
-    localStorage.removeItem('postplat_auth');
+    supabase.auth.signOut();
+    set({ currentUser: null, userRole: null, permissions: new Set(), isAuthenticated: false, activePage: 'dashboard' });
   },
   setIsAuthenticating: (authenticating) => set({ isAuthenticating: authenticating }),
-  restoreAuth: () => {
-    const saved = localStorage.getItem('postplat_auth');
-    if (saved) {
-      try {
-        const { user, role } = JSON.parse(saved);
-        set({ currentUser: user, userRole: role, isAuthenticated: true, isAuthenticating: false });
-        return true;
-      } catch (e) {
-        console.error('Error restoring auth:', e);
-        localStorage.removeItem('postplat_auth');
-        return false;
-      }
+  // Restaura la sesión al abrir la app. supabase-js ya persiste su propia
+  // sesión (localStorage interno + auto-refresh de token); acá solo hay que
+  // volver a resolver el perfil de negocio si hay una sesión Auth vigente.
+  restoreAuth: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return false;
+
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, email, name, role, company_id, is_active')
+      .eq('id', session.user.id)
+      .single();
+
+    if (error || !data || !data.is_active) {
+      await supabase.auth.signOut();
+      set({ currentUser: null, userRole: null, permissions: new Set(), isAuthenticated: false });
+      return false;
     }
-    return false;
+
+    const { is_active, ...user } = data;
+    const permissions = await fetchRolePermissions(user.role);
+    set({ currentUser: user, userRole: user.role, permissions, isAuthenticated: true, isAuthenticating: false });
+    return true;
   },
 
   // "Ver como cliente" - lets an admin drop into a company's gerente view
@@ -85,7 +109,7 @@ export const useStore = create((set, get) => ({
   // currentUser at call time, so it must run while currentUser is still
   // the admin).
   impersonateCompany: async (companyId) => {
-    const { showToast, currentUser, userRole, companies, addActivityEvent } = get();
+    const { showToast, currentUser, userRole, permissions, companies, addActivityEvent } = get();
     const comp = companies.find(c => c.id === companyId);
     try {
       const gerente = await fetchCompanyGerente(companyId);
@@ -94,10 +118,12 @@ export const useStore = create((set, get) => ({
         return;
       }
       await addActivityEvent('Admin ingresó como soporte', companyId, comp?.nombreComercial, `Impersonando a ${gerente.name} (${gerente.email})`);
+      const gerentePermissions = await fetchRolePermissions(gerente.role);
       set({
-        impersonating: { adminUser: currentUser, adminRole: userRole },
+        impersonating: { adminUser: currentUser, adminRole: userRole, adminPermissions: permissions },
         currentUser: gerente,
         userRole: gerente.role,
+        permissions: gerentePermissions,
         activePage: 'dashboard',
         selectedCompanyId: null
       });
@@ -112,6 +138,7 @@ export const useStore = create((set, get) => ({
     set({
       currentUser: impersonating.adminUser,
       userRole: impersonating.adminRole,
+      permissions: impersonating.adminPermissions,
       impersonating: null,
       activePage: 'companies'
     });

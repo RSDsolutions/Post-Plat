@@ -436,24 +436,35 @@ export async function getCurrentUser() {
   return user;
 }
 
-// User Authentication (from users table)
-export async function validateAdminCredentials(email, password) {
-  const { data, error } = await supabase.rpc('verify_user_password', {
-    p_email: email,
-    p_password: password
-  });
-
-  if (error || !data || data.length === 0) {
+// User Authentication - Supabase Auth (login real, con sesión y JWT). Reemplaza
+// el viejo validateAdminCredentials()/verify_user_password (comparación bcrypt
+// manual sin sesión). Devuelve la misma forma {id, email, name, role,
+// company_id} que antes para no tocar los ~68 sitios que leen currentUser.*.
+export async function loginWithPassword(email, password) {
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+  if (authError) {
     throw new Error('Email o contraseña inválidos');
   }
 
-  return {
-    id: data[0].id,
-    email: data[0].email,
-    name: data[0].name,
-    role: data[0].role,
-    company_id: data[0].company_id
-  };
+  // Filtra por el propio auth.uid() explícitamente - sin esto, la política RLS
+  // de users (company_id = current_company_id() OR id = auth.uid() OR admin)
+  // devolvería TODOS los usuarios de la empresa para un gerente, no solo el
+  // suyo, y .single() fallaría con "multiple rows".
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, email, name, role, company_id, is_active')
+    .eq('id', authData.user.id)
+    .single();
+
+  if (error || !data || !data.is_active) {
+    await supabase.auth.signOut();
+    throw new Error('Tu usuario está desactivado. Contacta a tu administrador.');
+  }
+
+  await supabase.rpc('record_login', { p_user_id: data.id });
+
+  const { is_active, ...user } = data;
+  return user;
 }
 
 export async function getAdminUser(email) {
@@ -465,15 +476,6 @@ export async function getAdminUser(email) {
 
   if (error) throw new Error(`Error fetching admin user: ${error.message}`);
   return data;
-}
-
-export async function updateAdminLastLogin(email) {
-  const { error } = await supabase
-    .from('users')
-    .update({ last_login: new Date().toISOString() })
-    .eq('email', email);
-
-  if (error) throw new Error(`Error updating last login: ${error.message}`);
 }
 
 // users.password_hash is column-level revoked for anon/authenticated (see
@@ -508,13 +510,14 @@ export async function createCashierUser({ callerId, companyId, email, password, 
 }
 
 // Reassigns an existing cashier to a different branch (or unassigns with
-// branchId=null). Scoped server-side to the target's own company and to
-// cashier-level roles, same guard pattern as resetCashierPassword.
-export async function updateUserBranch({ companyId, userId, branchId }) {
+// branchId=null). The RPC verifies callerId is the gerente of companyId (or
+// admin) before touching anything - it used to trust company_id+user_id alone.
+export async function updateUserBranch({ companyId, userId, branchId, callerId }) {
   const { data, error } = await supabase.rpc('update_user_branch', {
     p_company_id: companyId,
     p_user_id: userId,
-    p_branch_id: branchId
+    p_branch_id: branchId,
+    p_caller_id: callerId
   });
 
   if (error) throw new Error(error.message);
@@ -553,19 +556,19 @@ export async function emailInvoiceRide({ invoiceId, companyId, userId, pdfBase64
   return result;
 }
 
-// Lets a gerente set a new password for one of their cashiers directly -
-// there's no outbound email/reset-link flow in this project (no Supabase
-// Auth session, no SMTP configured), so this is the functional stand-in:
-// the gerente sets it and relays it to the cashier themselves.
-export async function resetCashierPassword({ companyId, userId, newPassword }) {
-  const { data, error } = await supabase.rpc('reset_company_user_password', {
-    p_company_id: companyId,
-    p_user_id: userId,
-    p_new_password: newPassword
+// Lets a gerente set a new password for one of their cashiers. Goes through
+// api/admin/reset-cashier-password.js (service role) because resetting an
+// Auth password requires auth.admin.updateUserById, never available to the
+// browser - this used to be a direct RPC call with the anon key.
+export async function resetCashierPassword({ companyId, userId, newPassword, callerId }) {
+  const response = await fetch('/api/admin/reset-cashier-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ callerId, companyId, userId, newPassword })
   });
-
-  if (error) throw new Error(error.message);
-  return data?.[0];
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || 'Error al resetear la contraseña');
+  return result.user;
 }
 
 // Admin-side password reset for any company user (gerente included) - goes
@@ -1202,45 +1205,39 @@ export async function getBillingConfig(companyId) {
   }
 }
 
-export async function uploadSriCertificate(companyId, file, certPassword) {
+// Convierte un File a base64 sin depender de FileReader (evita el prefijo
+// data: URL) - el archivo .p12 es chico (unos KB), el loop evita el límite de
+// argumentos de String.fromCharCode(...bytes) que rompería con archivos más grandes.
+async function fileToBase64(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+// La subida pasa por api/sri/upload-certificate.js (service_role) en vez de
+// escribir directo a Supabase desde el navegador: la contraseña del .p12 se
+// cifra server-side (pgcrypto) antes de guardarse, nunca viaja en claro a la
+// tabla. Ver supabase/migrations/20260715_encrypt_cert_password.sql.
+export async function uploadSriCertificate(companyId, userId, file, certPassword) {
   try {
     if (!file || !certPassword) {
       throw new Error('Archivo de certificado y contraseña son requeridos');
     }
 
-    const { data: existing, error: findError } = await supabase
-      .from('billing_configs')
-      .select('id')
-      .eq('company_id', companyId)
-      .single();
+    const fileBase64 = await fileToBase64(file);
 
-    if (findError && findError.code !== 'PGRST116') throw new Error(findError.message);
-    if (!existing) {
-      throw new Error('Guarda la configuración de facturación antes de subir el certificado');
-    }
+    const response = await fetch('/api/sri/upload-certificate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyId, userId, certPassword, fileBase64 })
+    });
 
-    const storagePath = `${companyId}/certificado.p12`;
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Error al subir el certificado');
 
-    const { error: uploadError } = await supabase.storage
-      .from('sri-certificates')
-      .upload(storagePath, file, { upsert: true });
-
-    if (uploadError) throw new Error(uploadError.message);
-
-    const uploadedAt = new Date().toISOString();
-
-    const { error: updateError } = await supabase
-      .from('billing_configs')
-      .update({
-        cert_storage_path: storagePath,
-        cert_password: certPassword,
-        cert_uploaded_at: uploadedAt
-      })
-      .eq('company_id', companyId);
-
-    if (updateError) throw new Error(updateError.message);
-
-    return { certStoragePath: storagePath, certUploadedAt: uploadedAt };
+    return { certStoragePath: result.certStoragePath, certUploadedAt: result.certUploadedAt };
   } catch (error) {
     throw new Error(`Error uploading certificate: ${error.message}`);
   }

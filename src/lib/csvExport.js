@@ -25,16 +25,25 @@ function escapeCsvField(value) {
   return str;
 }
 
-export function downloadReportCsv(filename, columns, rows) {
+// Sin el BOM: para incrustar en un ZIP (invoiceXmlExport.js) hay que agregarlo
+// aparte, ver buildCsvStringWithBom.
+export function buildCsvString(columns, rows) {
   const header = columns.map(c => escapeCsvField(c.label)).join(',');
   const lines = rows.map(row =>
     columns.map(c => escapeCsvField(csvCellValue(row[c.key], c.format))).join(',')
   );
-  // Leading BOM so Excel opens accented characters (á, é, ñ) as UTF-8
-  // instead of mangling them under its default codepage.
+  return [header, ...lines].join('\r\n');
+}
+
+// Con el BOM inicial - así lo necesita cualquier destino que Excel vaya a
+// abrir directo (descarga de archivo suelto o dentro de un ZIP).
+export function buildCsvStringWithBom(columns, rows) {
   const BOM = String.fromCharCode(0xFEFF);
-  const csvContent = [header, ...lines].join('\r\n');
-  const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+  return BOM + buildCsvString(columns, rows);
+}
+
+export function downloadReportCsv(filename, columns, rows) {
+  const blob = new Blob([buildCsvStringWithBom(columns, rows)], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;

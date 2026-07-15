@@ -2,12 +2,12 @@ import { getSupabaseAdmin, sendEmail } from '../emails/_lib.js';
 import { passwordResetEmail } from '../emails/_templates.js';
 
 // ---------------------------------------------------------------------------
-// Admin-side password reset for ANY company user (gerente incluido) - la RPC
-// reset_company_user_password (usada por el propio gerente para sus cajeros)
-// sólo acepta roles operario/vendedor, así que este endpoint llama en su lugar
-// a admin_reset_user_password, cuyo EXECUTE está revocado para anon/authenticated
-// (ver migración lock_down_admin_user_management_rpcs) - sólo el service role
-// de este endpoint puede invocarla. Mismo patrón que api/admin/create-gerente.js.
+// Admin-side password reset for ANY company user (gerente incluido). Desde la
+// migración a Supabase Auth, la contraseña ya no vive en users.password_hash:
+// admin_reset_user_password sólo valida autorización + existencia del target
+// (RPC, cuyo EXECUTE sigue revocado para anon/authenticated), y este endpoint
+// hace el cambio real vía auth.admin.updateUserById con la service role, la
+// única forma de tocar auth.users. Mismo patrón que api/admin/create-gerente.js.
 // ---------------------------------------------------------------------------
 
 export default async function handler(req, res) {
@@ -32,17 +32,25 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'No autorizado' });
     }
 
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
+    }
+
     const { data, error } = await supabase.rpc('admin_reset_user_password', {
       p_admin_id: adminId,
       p_company_id: companyId,
-      p_user_id: userId,
-      p_new_password: newPassword
+      p_user_id: userId
     });
     if (error) {
       return res.status(400).json({ error: error.message });
     }
 
     const target = data?.[0];
+
+    const { error: authError } = await supabase.auth.admin.updateUserById(userId, { password: newPassword });
+    if (authError) {
+      return res.status(400).json({ error: `No se pudo actualizar la contraseña: ${authError.message}` });
+    }
     const { data: company } = await supabase
       .from('companies')
       .select('nombre_comercial, razon_social')

@@ -176,7 +176,7 @@ export default function BillingConfiguration() {
       // .p12 with a private key before uploading it anywhere
       const certInfo = await validateP12Certificate(certFile, certPassword);
 
-      const result = await uploadSriCertificate(currentUser.company_id, certFile, certPassword);
+      const result = await uploadSriCertificate(currentUser.company_id, currentUser.id, certFile, certPassword);
       setConfig(prev => ({
         ...prev,
         certStoragePath: result.certStoragePath,

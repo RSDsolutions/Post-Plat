@@ -9,7 +9,7 @@ import { checkLimit, limitReachedMessage, hasFeature } from '../../lib/planLimit
 const ALL_BRANCHES = 'all';
 
 export default function InventoryManagement() {
-  const { currentUser, showToast, companies, plans } = useStore();
+  const { currentUser, showToast, companies, plans, can } = useStore();
   const company = companies.find(c => c.id === currentUser?.company_id);
   const plan = plans.find(p => p.id === company?.planId);
   const [featureOverrides, setFeatureOverrides] = useState([]);
@@ -296,15 +296,17 @@ export default function InventoryManagement() {
             <option key={cat} value={cat}>{cat}</option>
           ))}
         </select>
-        <button
-          onClick={() => isAllBranches ? showToast('warning', 'Selecciona una sucursal específica para agregar productos') : setShowAddModal(true)}
-          disabled={isAllBranches}
-          title={isAllBranches ? 'Selecciona una sucursal específica primero' : ''}
-          className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
-        >
-          <Plus size={20} />
-          Agregar Producto
-        </button>
+        {can('products.write') && (
+          <button
+            onClick={() => isAllBranches ? showToast('warning', 'Selecciona una sucursal específica para agregar productos') : setShowAddModal(true)}
+            disabled={isAllBranches}
+            title={isAllBranches ? 'Selecciona una sucursal específica primero' : ''}
+            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <Plus size={20} />
+            Agregar Producto
+          </button>
+        )}
       </div>
 
       {/* Products Table */}
@@ -353,22 +355,26 @@ export default function InventoryManagement() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => openEdit(product)}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition-colors"
-                    >
-                      <Edit2 size={14} />
-                      Editar
-                    </button>
+                    {can('products.write') && (
+                      <button
+                        onClick={() => openEdit(product)}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold transition-colors"
+                      >
+                        <Edit2 size={14} />
+                        Editar
+                      </button>
+                    )}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleDeleteProduct(product.id, product.name)}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold transition-colors"
-                    >
-                      <Trash2 size={14} />
-                      Eliminar
-                    </button>
+                    {can('products.write') && (
+                      <button
+                        onClick={() => handleDeleteProduct(product.id, product.name)}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-bold transition-colors"
+                      >
+                        <Trash2 size={14} />
+                        Eliminar
+                      </button>
+                    )}
                   </td>
                 </tr>
               );

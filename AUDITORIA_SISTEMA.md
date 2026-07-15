@@ -1,10 +1,44 @@
 # 🔍 Auditoría del Sistema - POST-PLAT
 
-**Fecha:** 2026-07-09
+**Fecha:** 2026-07-09 (actualizado 2026-07-15 — ver [Actualización 2026-07-15](#actualización-2026-07-15))
 **Alcance:** Base de datos (Supabase/Postgres), API serverless (`api/sri/*`), frontend (React/Vite), configuración y despliegue.
 **Método:** Supabase Advisors (security + performance), lectura directa de `pg_policies`/`information_schema`, pruebas reales contra la API REST con la anon key (no solo simulación con rol privilegiado), lectura de código fuente y del historial de cambios de esta sesión.
 
 > Ver también [`RESUMEN_SISTEMA.md`](./RESUMEN_SISTEMA.md) para una descripción funcional de cómo está armado el sistema hoy.
+
+---
+
+## Actualización 2026-07-15
+
+Los 3 hallazgos críticos del resumen ejecutivo original (`create_company_gerente` sin verificar quién llama, `plans` ilegible, `activity_log` sin persistir) **ya están resueltos** — se aplicaron migraciones (`admin_user_management_rpcs`, `lock_down_admin_user_management_rpcs`, `close_public_execute_gap_on_admin_rpcs`, `close_create_company_user_public_execute_gap`) y se movieron las creaciones de usuario a endpoints server-side (`api/admin/create-gerente.js`, `api/admin/create-cashier.js`). No se re-verificó cada punto con pruebas reales de nuevo en esta pasada — recomendado antes de la próxima auditoría completa.
+
+Se agregan 4 hallazgos nuevos, detectados en esta fecha:
+
+### 5. Certificado `.p12`: la contraseña se guardaba en texto plano (CRÍTICO — **resuelto en esta sesión**)
+
+`billing_configs.cert_password` es una columna `text` sin cifrar. Estaba protegida solo por `REVOKE SELECT` a nivel de columna para `anon`/`authenticated` (el navegador no podía leerla de vuelta), pero **se escribía en texto plano directamente desde el navegador** (`uploadSriCertificate()` en `supabaseHelpers.js` hacía un `UPDATE` con la contraseña tal cual) y cualquiera con la `service_role key` o acceso directo a Postgres (dump, backup, un admin de infraestructura) la veía en claro — junto con el `.p12` correspondiente en el bucket `sri-certificates`, eso equivale a la firma electrónica completa del cliente.
+
+**Corrección aplicada:** se cifra con `pgcrypto` (`pgp_sym_encrypt`/`pgp_sym_decrypt`) usando una clave que **vive solo en una variable de entorno de Vercel** (`CERT_ENCRYPTION_KEY`), nunca en Postgres. La subida ahora pasa por un endpoint server-side nuevo (`api/sri/upload-certificate.js`) que cifra antes de guardar; `api/sri/submit-invoice.js` descifra vía una función `SECURITY DEFINER` (`get_cert_password`) solo ejecutable por `service_role`. Así, un compromiso de la base de datos por sí solo (sin también comprometer las env vars de Vercel) ya no expone la contraseña del certificado. Detalle técnico abajo, en la hoja de ruta se movió a "ya resuelto" (§1.4).
+
+### 6. No hay notas de crédito ni flujo de anulación fiscal real (CRÍTICO — funcional/cumplimiento)
+
+El enum `invoice_type` en la base ya contempla `nota_credito`, `nota_debito` y `comprobante_retencion`, pero no existe ni un archivo en `src/` que los mencione — no hay UI, no hay generación de XML, no hay firma ni envío al SRI para ninguno de los tres. `invoices.status` sí tiene un valor `anulada`, pero no encontré ningún flujo que lo escriba desde la interfaz (la "anulación" real de un comprobante autorizado ante el SRI ecuatoriano se hace legalmente emitiendo una nota de crédito, no marcando una fila como anulada en la propia base).
+
+**Impacto:** un sistema de facturación electrónica en Ecuador sin nota de crédito está incompleto en la práctica — no hay forma legal de revertir una factura autorizada por devolución de mercadería o error de emisión. Es el vacío funcional más grande detectado hasta ahora. Notas de débito y retenciones son razonables como fase 2, pero la nota de crédito debería entrar antes de que el sistema se use con clientes reales en producción.
+
+**Alcance estimado de la corrección:** UI de emisión (asociada a una factura autorizada existente), generación del XML de nota de crédito, firma XAdES-BES (reutiliza `xadesSign.js`), envío a los webservices del SRI (reutiliza el patrón de `submit-invoice.js`), y actualización del estado de la factura original. Es una feature grande, no un fix puntual.
+
+### 7. Sin contingencia ni cola de reintentos automáticos ante caídas del SRI (ALTA)
+
+El SRI se cae con cierta frecuencia (es un servicio gubernamental, no un SLA comercial). Hoy la única forma de reconsultar una factura es manual (`api/sri/status.js`, el usuario tiene que volver a la pantalla y pedirlo). No hay `cron` configurado (`vercel.json` no define ninguno — confirmado, solo fija `maxDuration: 60` para las funciones) ni cola de reintentos: una factura que queda `devuelta` o atascada en `borrador` porque el webservice no respondió se queda así hasta que alguien la reintente a mano.
+
+**Corrección sugerida:** un cron de Vercel (o `pg_cron`, ya instalado como extensión aunque no habilitado — ver lista de extensiones) que reintente periódicamente facturas `devuelta`/`borrador` con más de N minutos de antigüedad, y opcionalmente implementar el esquema de contingencia oficial del SRI (permite emitir sin autorización inmediata cuando el servicio está caído, regularizando después) para no bloquear la venta en el POS cuando el SRI no responde.
+
+### 8. Sesiones sin JWT ni expiración (ya documentado como §1.2/roadmap ítem 6 — RESUELTO 2026-07-15)
+
+Confirmado vigente en su momento: `useStore.js` guardaba el usuario autenticado tal cual en `localStorage.postplat_auth`, sin token firmado ni expiración. **Resuelto migrando a Supabase Auth de verdad** (Fase 0 de un proyecto mayor — ver [Actualización 2026-07-15 (Fase 0 — Supabase Auth)](#actualización-2026-07-15-fase-0--supabase-auth) más abajo para el detalle completo). Los 7 usuarios existentes se migraron sin perder su contraseña ni cambiar su UUID (`auth.admin.createUser({ id, password_hash, email_confirm:true })`, bcrypt es compatible). Las 21 tablas pasaron de `USING(true)` a políticas reales basadas en `auth.uid()` — verificado con pruebas reales contra la BD (un vendedor ya no puede leer/escribir datos de otra empresa; un admin solo tiene SELECT, no puede escribir facturas/productos de un cliente).
+
+**Lo que queda pendiente de esto mismo:** `api/sri/submit-invoice.js`, `api/sri/status.js`, `api/sri/upload-certificate.js` y `api/emails/send-invoice-ride.js` siguen recibiendo `userId` en el body y verificándolo contra `public.users` con `service_role`, en vez de validar un JWT (`Authorization: Bearer` + `auth.getUser()`). No es peor que antes (mismo patrón que ya tenían), pero migrarlos sería la extensión natural de este trabajo — lo dejo para una sesión aparte, no bloqueaba que RLS fuera honesta.
 
 ---
 
@@ -21,6 +55,23 @@ El motivo raíz de los tres es el mismo patrón: varias tablas tienen **RLS acti
 **Recomendación:** antes de seguir agregando funcionalidades, corregir estos 3 puntos. Son cambios pequeños y acotados (agregar políticas RLS, agregar una verificación de rol en una función). Puedo aplicarlos de inmediato si lo autorizas — no los toqué porque el pedido de esta conversación fue específicamente generar esta auditoría, no modificar la base de datos.
 
 El resto del documento detalla estos y otros hallazgos por categoría, más una hoja de ruta priorizada.
+
+---
+
+## Actualización 2026-07-15 (Fase 0 — Supabase Auth)
+
+Migración real a Supabase Auth, hecha como prerequisito de un proyecto de permisos/contabilidad más grande (ver plan de esa sesión) al descubrir que "RLS impide que un rol escriba" era imposible de cumplir de verdad sin `auth.uid()`. Decisión consciente del usuario, no una iniciativa unilateral — implica apartarse de "no se usa Supabase Auth" que decía `CLAUDE.md`/la spec original.
+
+**Qué cambió:**
+- Los 7 usuarios existentes se migraron a `auth.users` preservando **el mismo UUID y la misma contraseña** (`auth.admin.createUser({ id, password_hash, email_confirm:true })` — Supabase soporta importar hashes bcrypt tal cual). Cero resets forzados, cero reescritura de FKs.
+- `public.users` pasa a ser tabla de "perfil" (`FK users.id → auth.users.id`), `password_hash` queda inerte (nullable, ya no se lee ni se escribe).
+- Login (`useStore.login()`) usa `supabase.auth.signInWithPassword`; sesión persistida/refrescada por supabase-js, no a mano en `localStorage`.
+- Las 21 tablas pasaron de `USING(true)` a políticas reales: `SELECT` scopeado a `company_id = current_company_id()` (o `is_platform_admin()` para el panel admin, solo lectura), escritura restringida además por rol (`current_role() in (...)`). Verificado con pruebas reales: un vendedor ya no puede leer ni escribir datos de otra empresa; el admin solo puede leer, no escribir, datos operativos de un cliente.
+- `create_company_gerente`, `create_company_user`, `verify_user_password`, `reset_company_user_password` (RPCs bcrypt) — **retiradas**. Los altas/reseteos ahora pasan por `auth.admin.createUser`/`updateUserById` desde endpoints `service_role` (`api/admin/create-gerente.js`, `create-cashier.js`, `reset-user-password.js`, `reset-cashier-password.js` [nuevo], `set-user-active.js`).
+- Desactivar un usuario ahora también banea a nivel Auth (`ban_duration`), no solo marca `is_active=false` — antes de esto, un login ya en curso (localStorage) podía seguir "funcionando" indefinidamente aunque se desactivara al usuario, porque nada revisaba `is_active` en cada acción.
+- `update_user_branch` ganó verificación real de quién llama (antes cualquiera que supiera `company_id`+`user_id`+`branch_id` podía reasignar — no estaba en la lista original de RPCs "ya bien resueltas").
+
+**Qué NO se tocó (seguimiento pendiente):** `api/sri/submit-invoice.js`, `api/sri/status.js`, `api/sri/upload-certificate.js`, `api/emails/send-invoice-ride.js` siguen validando un `userId` de body contra la tabla `users` con `service_role`, no un JWT real. Es el mismo nivel de seguridad que ya tenían (no es una regresión), pero ahora que hay sesiones reales, migrarlos a `Authorization: Bearer` + `supabase.auth.getUser()` cerraría la última pieza de este mismo problema.
 
 ---
 
@@ -159,6 +210,8 @@ Para que quede balanceado — esto ya se corrigió y verificó en sesiones recie
 - **Constraint de `point_of_sales` demasiado restrictiva:** impedía repetir un mismo punto de emisión en distintos establecimientos (sí permitido por el SRI). Corregida a `UNIQUE(company_id, numero_establecimiento, numero_pos)`.
 - **Panel admin sin persistencia real:** suspender/reactivar/cambiar plan/crear empresa eran mutaciones locales que se perdían al refrescar. Ahora todo pasa por Supabase de verdad.
 - **RPCs de cajeros (`create_company_user`, `reset_company_user_password`) con buenas guardas server-side:** restringen rol a `operario`/`vendedor`, validan que el cajero pertenezca a la empresa del gerente que llama. Es el patrón correcto — falta replicarlo en `create_company_gerente` (punto 1.1.1).
+- **`create_company_gerente`, `plans`, `activity_log` (puntos 1.1.1-1.1.3 originales):** corregidos — ver [Actualización 2026-07-15](#actualización-2026-07-15).
+- **`billing_configs.cert_password` en texto plano (§5 de la actualización 2026-07-15):** cifrado con `pgcrypto` + clave fuera de la base (env var de Vercel), subida movida a un endpoint server-side dedicado.
 
 ---
 
@@ -212,29 +265,33 @@ Para que quede balanceado — esto ya se corrigió y verificó en sesiones recie
 
 ## 6. Hoja de ruta priorizada
 
+*(actualizada 2026-07-15 — los ítems 1-3 originales y el cifrado de `cert_password` ya están resueltos, ver §1.4 y la actualización del 2026-07-15)*
+
 **🔴 Urgente — riesgo activo en producción**
-1. `create_company_gerente`: agregar verificación de que quien llama es admin (§1.1.1).
-2. Agregar política `SELECT` a `plans` (§1.1.2).
-3. Agregar políticas `INSERT`/`SELECT` a `activity_log` (§1.1.3).
-4. Implementar de verdad el bloqueo por intentos fallidos en `verify_user_password`/`verify_admin_password` (§1.1.4).
-5. Quitar `stack` de las respuestas HTTP en `api/sri/submit-invoice.js` (§1.2).
+1. ~~`create_company_gerente`: agregar verificación de que quien llama es admin (§1.1.1).~~ ✅ Resuelto.
+2. ~~Agregar política `SELECT` a `plans` (§1.1.2).~~ ✅ Resuelto.
+3. ~~Agregar políticas `INSERT`/`SELECT` a `activity_log` (§1.1.3).~~ ✅ Resuelto.
+4. Implementar de verdad el bloqueo por intentos fallidos en `verify_user_password`/`verify_admin_password` (§1.1.4). **Sigue pendiente.**
+5. Quitar `stack` de las respuestas HTTP en `api/sri/submit-invoice.js` (§1.2). **Sigue pendiente.**
+6. ~~Sesiones sin JWT/expiración — migrar a Supabase Auth (§8).~~ ✅ Resuelto 2026-07-15 (Fase 0). Queda como seguimiento menor: migrar `api/sri/*`/`api/emails/send-invoice-ride.js` de `userId` en el body a verificar el JWT real (ver la actualización de esa fecha).
+7. Nota de crédito / anulación fiscal real de comprobantes autorizados (§6 de la actualización 2026-07-15). **Sigue pendiente — feature grande, priorizar antes de operar con clientes reales.**
 
 **🟠 Alta**
-6. Definir un plan real para aislamiento entre empresas: migrar a Supabase Auth (JWT + `auth.uid()` en las políticas RLS) o, como paso intermedio, firmar un token de sesión propio que los RPCs y `api/sri/*` puedan verificar en vez de confiar en IDs sueltos del body.
-7. Hacer cumplir los límites de plan (facturas/mes, usuarios, sucursales) en el momento de crear el recurso, no solo mostrarlos.
-8. `SET search_path` en las funciones `SECURITY DEFINER` (§1.2).
-9. Acotar la política de listado del bucket `company-logos` (§1.2).
+8. Contingencia/reintentos automáticos ante caídas del SRI (§7 de la actualización 2026-07-15). **Sigue pendiente.**
+9. Hacer cumplir los límites de plan (facturas/mes, usuarios, sucursales) en el momento de crear el recurso, no solo mostrarlos.
+10. `SET search_path` en las funciones `SECURITY DEFINER` (§1.2).
+11. Acotar la política de listado del bucket `company-logos` (§1.2).
 
 **🟡 Media**
-10. Code-splitting por rol (admin / gerente / POS) para bajar el bundle inicial.
-11. Integración de pasarela de pago real.
-12. Flujo de recuperación de contraseña por correo para `gerente`/`admin` (requiere elegir proveedor de email).
-13. Quitar índices duplicados, agregar índices a las FK listadas en §2, consolidar las políticas duplicadas de `invoices`.
-14. Responsividad móvil del panel admin.
+12. Code-splitting por rol (admin / gerente / POS) para bajar el bundle inicial.
+13. Integración de pasarela de pago real.
+14. Flujo de recuperación de contraseña por correo para `gerente`/`admin` (el sistema de correos con Resend ya existe desde el 2026-07-11 — falta este flujo puntual).
+15. Quitar índices duplicados, agregar índices a las FK listadas en §2, consolidar las políticas duplicadas de `invoices`.
+16. Responsividad móvil del panel admin.
 
 **🟢 Baja**
-15. Suite de tests mínima, empezando por generación de clave de acceso SRI y los RPCs de negocio (es el código con más riesgo y menos visibilidad cuando falla).
-16. Evaluar TypeScript (o al menos JSDoc) — varios bugs de esta sesión eran discrepancias de forma que un tipado hubiera atrapado antes de ejecutar.
-17. Pipeline de CI (build + lint) en cada push a `main`.
-18. Limpieza de código muerto: `src/data/companies.js`, `src/data/activityLog.js`, tabla `admin_users`, columnas `products.quantity`/`min_stock`, dependencia `@modelcontextprotocol/sdk`.
-19. Actualizar la sección de esquema de `CLAUDE.md` para reflejar las 19 tablas reales.
+17. Suite de tests mínima, empezando por generación de clave de acceso SRI y los RPCs de negocio (es el código con más riesgo y menos visibilidad cuando falla).
+18. Evaluar TypeScript (o al menos JSDoc) — varios bugs de esta sesión eran discrepancias de forma que un tipado hubiera atrapado antes de ejecutar.
+19. Pipeline de CI (build + lint) en cada push a `main`.
+20. Limpieza de código muerto: `src/data/companies.js`, `src/data/activityLog.js`, tabla `admin_users`, columnas `products.quantity`/`min_stock`, dependencia `@modelcontextprotocol/sdk`.
+21. Actualizar la sección de esquema de `CLAUDE.md` para reflejar las 21 tablas reales.

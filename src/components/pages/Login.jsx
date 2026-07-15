@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/useStore.js';
-import { validateAdminCredentials, updateAdminLastLogin } from '../../lib/supabaseHelpers.js';
 import { Lock, AlertCircle, CheckCircle } from 'lucide-react';
 
 export default function Login() {
-  const { setCurrentUser, showToast } = useStore();
+  const { login, showToast } = useStore();
   const [userType, setUserType] = useState('admin');
   const [email, setEmail] = useState('admin@postplat.com');
   const [password, setPassword] = useState('');
@@ -26,17 +25,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      // Validate credentials against Supabase
-      const user = await validateAdminCredentials(email, password);
-
-      // Update last login timestamp
-      await updateAdminLastLogin(email);
-
-      // Determine role: use the actual role from the database
-      const role = user.role || (user.company_id ? 'vendedor' : 'admin');
-
-      // Successful login
-      setCurrentUser(user, role);
+      const user = await login(email, password);
       showToast('success', `¡Bienvenido ${user.name}!`);
     } catch (err) {
       setError(err.message || 'Error al conectar. Intenta nuevamente.');
@@ -56,12 +45,7 @@ export default function Login() {
         ? { email: 'admin@postplat.com', password: 'ABC123456' }
         : { email: 'vendedor1@supermercadoabc.com', password: 'ABC123456' };
 
-      const user = await validateAdminCredentials(credentials.email, credentials.password);
-      await updateAdminLastLogin(credentials.email);
-
-      const role = user.role || (user.company_id ? 'vendedor' : 'admin');
-      setCurrentUser(user, role);
-
+      const user = await login(credentials.email, credentials.password);
       showToast('success', `¡Demo - Bienvenido ${user.name}!`);
     } catch (err) {
       setError(err.message || 'Error al conectar.');

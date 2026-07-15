@@ -144,8 +144,22 @@ export default async function handler(req, res) {
     if (billingError || !billingConfig) {
       return res.status(400).json({ error: 'Configuración de facturación no encontrada. Configúrala en Facturación SRI.' });
     }
-    if (!billingConfig.cert_storage_path || !billingConfig.cert_password) {
+    if (!billingConfig.cert_storage_path) {
       return res.status(400).json({ error: 'No hay certificado de firma electrónica cargado. Súbelo en Facturación SRI.' });
+    }
+
+    // cert_password está cifrado en reposo (pgcrypto) - se descifra acá con
+    // la clave server-side, nunca se lee en texto plano de la tabla directamente.
+    const certEncryptionKey = process.env.CERT_ENCRYPTION_KEY;
+    if (!certEncryptionKey) {
+      return res.status(500).json({ error: 'Configuración de servidor incompleta: falta CERT_ENCRYPTION_KEY' });
+    }
+    const { data: certPassword, error: certPasswordError } = await supabase.rpc('get_cert_password', {
+      p_company_id: companyId,
+      p_key: certEncryptionKey
+    });
+    if (certPasswordError || !certPassword) {
+      return res.status(400).json({ error: 'No se pudo recuperar la contraseña del certificado. Vuelve a subirlo en Facturación SRI.' });
     }
 
     // Descargar certificado
@@ -300,7 +314,7 @@ export default async function handler(req, res) {
       }
     };
     const xml = generateInvoiceXml(builtInvoice);
-    const signedXml = await signXml(certArrayBuffer, billingConfig.cert_password, xml);
+    const signedXml = await signXml(certArrayBuffer, certPassword, xml);
 
     const urls = isTest ? SRI_URLS.test : SRI_URLS.production;
 

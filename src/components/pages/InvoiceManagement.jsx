@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin, Mail } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin, Mail, FileCode, Archive } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig, fetchCompanyById, fetchBranches, emailInvoiceRide } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Badge from '../ui/Badge.jsx';
+import Modal from '../ui/Modal.jsx';
 import { formatUSD } from '../../lib/format.js';
 import { generateRidePdf } from '../../lib/rideGenerator.js';
+import { downloadInvoiceXml, downloadInvoicesXmlZip } from '../../lib/invoiceXmlExport.js';
 
 const STATUS_LABELS = {
   borrador: 'Pendiente',
@@ -15,7 +17,7 @@ const STATUS_LABELS = {
 };
 
 export default function InvoiceManagement() {
-  const { currentUser, showToast, openConfirm } = useStore();
+  const { currentUser, showToast, openConfirm, can } = useStore();
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -29,6 +31,11 @@ export default function InvoiceManagement() {
   const [emailingRideId, setEmailingRideId] = useState(null);
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('all');
+  const [showBulkExport, setShowBulkExport] = useState(false);
+  const [bulkStartDate, setBulkStartDate] = useState('');
+  const [bulkEndDate, setBulkEndDate] = useState('');
+  const [bulkBranchId, setBulkBranchId] = useState('all');
+  const [exportingZip, setExportingZip] = useState(false);
 
   const loadInvoices = async () => {
     try {
@@ -191,6 +198,45 @@ export default function InvoiceManagement() {
     );
   };
 
+  const handleDownloadXml = (invoice) => {
+    try {
+      downloadInvoiceXml(invoice);
+    } catch (error) {
+      showToast('error', error.message || 'Error al descargar el XML');
+    }
+  };
+
+  // Descarga masiva: filtra las facturas ya cargadas en memoria (invoices ya
+  // trae signed_xml completo, ver fetchInvoicesByCompany) por rango de fecha
+  // + sucursal, arma el ZIP en el navegador - sin pasar por Vercel Functions,
+  // como pide el criterio de aceptación de esta fase.
+  const handleBulkExport = async () => {
+    if (!bulkStartDate || !bulkEndDate) {
+      showToast('error', 'Selecciona el rango de fechas');
+      return;
+    }
+    const start = new Date(`${bulkStartDate}T00:00:00`);
+    const end = new Date(`${bulkEndDate}T23:59:59`);
+
+    const inRange = invoices.filter(inv => {
+      const issued = new Date(inv.issue_date);
+      if (issued < start || issued > end) return false;
+      if (bulkBranchId !== 'all' && inv.point_of_sales?.branch_id !== bulkBranchId) return false;
+      return true;
+    });
+
+    setExportingZip(true);
+    try {
+      const count = await downloadInvoicesXmlZip(inRange, `facturas-${bulkStartDate}-a-${bulkEndDate}.zip`);
+      showToast('success', `ZIP generado con ${count} factura${count === 1 ? '' : 's'} autorizada${count === 1 ? '' : 's'}`);
+      setShowBulkExport(false);
+    } catch (error) {
+      showToast('error', error.message || 'Error al generar el ZIP');
+    } finally {
+      setExportingZip(false);
+    }
+  };
+
   const copyAccessKey = (key) => {
     navigator.clipboard.writeText(key);
     showToast('success', 'Clave de acceso copiada');
@@ -198,16 +244,26 @@ export default function InvoiceManagement() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Gestión de Facturas</h1>
-        {sriEnvironment && (
-          <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
-            sriEnvironment === 'production'
-              ? 'bg-red-500/10 text-red-400 border-red-500/30'
-              : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
-          }`}>
-            SRI: {sriEnvironment === 'production' ? 'Producción (real)' : 'Pruebas'}
-          </span>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-zinc-100">Gestión de Facturas</h1>
+          {sriEnvironment && (
+            <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${
+              sriEnvironment === 'production'
+                ? 'bg-red-500/10 text-red-400 border-red-500/30'
+                : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30'
+            }`}>
+              SRI: {sriEnvironment === 'production' ? 'Producción (real)' : 'Pruebas'}
+            </span>
+          )}
+        </div>
+        {can('invoices.export') && (
+          <button
+            onClick={() => { setBulkBranchId(selectedBranchId); setShowBulkExport(true); }}
+            className="flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+          >
+            <Archive size={16} /> Descarga masiva de XML
+          </button>
         )}
       </div>
 
@@ -311,17 +367,27 @@ export default function InvoiceManagement() {
                           <><Download size={14} /> Descargar RIDE</>
                         )}
                       </button>
-                      <button
-                        onClick={(e) => handleEmailRide(inv, e)}
-                        disabled={emailingRideId === inv.id}
-                        className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 disabled:opacity-50"
-                      >
-                        {emailingRideId === inv.id ? (
-                          <><Loader size={14} className="animate-spin" /> Enviando...</>
-                        ) : (
-                          <><Mail size={14} /> Enviar por correo</>
-                        )}
-                      </button>
+                      {can('invoices.send_ride') && (
+                        <button
+                          onClick={(e) => handleEmailRide(inv, e)}
+                          disabled={emailingRideId === inv.id}
+                          className="text-xs font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 disabled:opacity-50"
+                        >
+                          {emailingRideId === inv.id ? (
+                            <><Loader size={14} className="animate-spin" /> Enviando...</>
+                          ) : (
+                            <><Mail size={14} /> Enviar por correo</>
+                          )}
+                        </button>
+                      )}
+                      {can('invoices.export') && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDownloadXml(inv); }}
+                          className="text-xs font-bold text-zinc-300 hover:text-zinc-100 flex items-center gap-1"
+                        >
+                          <FileCode size={14} /> XML
+                        </button>
+                      )}
                     </div>
                   )}
                 </td>
@@ -490,22 +556,98 @@ export default function InvoiceManagement() {
                       <><Download size={18} /> Descargar RIDE (PDF)</>
                     )}
                   </button>
-                  <button
-                    onClick={() => handleEmailRide(selectedInvoice)}
-                    disabled={emailingRideId === selectedInvoice.id}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
-                  >
-                    {emailingRideId === selectedInvoice.id ? (
-                      <><Loader size={18} className="animate-spin" /> Enviando...</>
-                    ) : (
-                      <><Mail size={18} /> Enviar RIDE por correo al cliente</>
-                    )}
-                  </button>
+                  {can('invoices.send_ride') && (
+                    <button
+                      onClick={() => handleEmailRide(selectedInvoice)}
+                      disabled={emailingRideId === selectedInvoice.id}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      {emailingRideId === selectedInvoice.id ? (
+                        <><Loader size={18} className="animate-spin" /> Enviando...</>
+                      ) : (
+                        <><Mail size={18} /> Enviar RIDE por correo al cliente</>
+                      )}
+                    </button>
+                  )}
+                  {can('invoices.export') && (
+                    <button
+                      onClick={() => handleDownloadXml(selectedInvoice)}
+                      className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                    >
+                      <FileCode size={18} /> Descargar XML autorizado
+                    </button>
+                  )}
                 </div>
               )}
             </div>
           </div>
         </div>
+      )}
+
+      {showBulkExport && (
+        <Modal
+          title="Descarga masiva de XML"
+          onClose={() => !exportingZip && setShowBulkExport(false)}
+          footer={
+            <>
+              <button
+                onClick={() => setShowBulkExport(false)}
+                disabled={exportingZip}
+                className="px-4 py-2 rounded-lg text-zinc-400 hover:text-zinc-200 font-bold disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleBulkExport}
+                disabled={exportingZip}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-bold rounded-lg flex items-center gap-2"
+              >
+                {exportingZip ? <><Loader size={16} className="animate-spin" /> Generando ZIP...</> : <><Archive size={16} /> Descargar ZIP</>}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-400">
+              Genera un .zip con el XML autorizado de cada factura del rango (nombrado con su clave de acceso) y un <span className="font-mono text-zinc-300">resumen.csv</span>. Solo se incluyen facturas en estado <span className="font-bold text-emerald-400">autorizada</span>.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-bold text-zinc-300 mb-1">Desde</label>
+                <input
+                  type="date"
+                  value={bulkStartDate}
+                  onChange={(e) => setBulkStartDate(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-zinc-300 mb-1">Hasta</label>
+                <input
+                  type="date"
+                  value={bulkEndDate}
+                  onChange={(e) => setBulkEndDate(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100"
+                />
+              </div>
+            </div>
+            {branches.length > 1 && (
+              <div>
+                <label className="block text-sm font-bold text-zinc-300 mb-1">Sucursal</label>
+                <select
+                  value={bulkBranchId}
+                  onChange={(e) => setBulkBranchId(e.target.value)}
+                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-100"
+                >
+                  <option value="all">Todas las sucursales</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </Modal>
       )}
     </div>
   );
