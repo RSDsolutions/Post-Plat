@@ -1091,6 +1091,68 @@ export async function updateCustomer(customerId, customerData) {
   }
 }
 
+// Suppliers (Compras - Fase 2, espejo de Customers)
+export async function fetchSuppliers(companyId) {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('*')
+    .eq('company_id', companyId)
+    .order('razon_social', { ascending: true });
+
+  if (error) throw new Error(`Error fetching suppliers: ${error.message}`);
+  return data || [];
+}
+
+// El 23505 acá SIEMPRE es el RUC duplicado (suppliers solo tiene esa
+// restricción unique) - se traduce a un mensaje humano en vez de dejar
+// pasar el error crudo de Postgres, que es el criterio de aceptación de
+// esta fase.
+export async function createSupplier(supplierData) {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .insert([{
+      company_id: supplierData.company_id,
+      ruc: supplierData.ruc,
+      razon_social: supplierData.razon_social,
+      nombre_comercial: supplierData.nombre_comercial || null,
+      direccion: supplierData.direccion || null,
+      telefono: supplierData.telefono || null,
+      email: supplierData.email || null,
+      tipo_contribuyente: supplierData.tipo_contribuyente
+    }])
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') throw new Error('Ya existe un proveedor con este RUC en tu empresa');
+    throw new Error(`Error creating supplier: ${error.message}`);
+  }
+  return data;
+}
+
+export async function updateSupplier(supplierId, supplierData) {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .update({
+      razon_social: supplierData.razon_social,
+      nombre_comercial: supplierData.nombre_comercial || null,
+      direccion: supplierData.direccion || null,
+      telefono: supplierData.telefono || null,
+      email: supplierData.email || null,
+      tipo_contribuyente: supplierData.tipo_contribuyente,
+      is_active: supplierData.is_active
+    })
+    .eq('id', supplierId)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') throw new Error('Ya existe un proveedor con este RUC en tu empresa');
+    throw new Error(`Error updating supplier: ${error.message}`);
+  }
+  return data;
+}
+
 // Invoices & Billing
 // pos_id must be resolved by the caller (the cashier's assigned branch's
 // active point of sale - see resolveCashierPointOfSale) rather than guessed
