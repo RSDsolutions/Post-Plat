@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   TrendingUp, Package, Users, Building2, Boxes, Receipt, LayoutGrid,
-  Loader, FileSpreadsheet, FileText, MapPin, Lock
+  Loader, FileSpreadsheet, FileText, MapPin, Lock, Truck, Landmark
 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchData, fetchInvoicesForReports, fetchCompanyById, fetchCompanyUsers, fetchBranches, fetchProductStock, fetchProductStockAllBranches, fetchCompanyFeatureOverrides } from '../../lib/supabaseHelpers.js';
+import { fetchData, fetchInvoicesForReports, fetchPurchasesForReports, fetchCompanyById, fetchCompanyUsers, fetchBranches, fetchProductStock, fetchProductStockAllBranches, fetchCompanyFeatureOverrides } from '../../lib/supabaseHelpers.js';
 import {
-  DATE_PRESETS, computeDateRange, formatDateRangeLabel,
+  DATE_PRESETS, computeDateRange, formatDateRangeLabel, toLocalDayKey,
   buildReportDataset, buildReport, formatCellValue, REPORT_TABS
 } from '../../lib/reportsHelpers.js';
 import { downloadReportCsv } from '../../lib/csvExport.js';
@@ -15,7 +15,7 @@ import { TrendLineChart, DonutChart, BarList } from '../ui/ReportCharts.jsx';
 import { hasFeature } from '../../lib/planLimits.js';
 import EmptyState from '../ui/EmptyState.jsx';
 
-const TAB_ICONS = { overview: LayoutGrid, sales: TrendingUp, products: Package, customers: Users, cashiers: Building2, inventory: Boxes, tax: Receipt };
+const TAB_ICONS = { overview: LayoutGrid, sales: TrendingUp, products: Package, customers: Users, cashiers: Building2, inventory: Boxes, tax: Receipt, purchases: Truck, purchaseRetentions: Landmark };
 const CHART_HEADINGS = {
   overview: 'Tendencia de Ingresos',
   sales: 'Ingresos por Método de Pago',
@@ -23,9 +23,11 @@ const CHART_HEADINGS = {
   customers: 'Top Clientes por Gasto',
   cashiers: 'Ranking de Cajeros',
   inventory: 'Valor de Inventario por Categoría',
-  tax: 'Facturas por Estado'
+  tax: 'Facturas por Estado',
+  purchases: 'Top Proveedores por Compras',
+  purchaseRetentions: 'Retenciones por Tipo'
 };
-const BAR_ACCENTS = { products: 'blue', customers: 'pink', cashiers: 'purple' };
+const BAR_ACCENTS = { products: 'blue', customers: 'pink', cashiers: 'purple', purchases: 'amber' };
 const KPI_TEXT_CLASSES = {
   emerald: 'text-panel-success',
   blue: 'text-panel-accent-soft',
@@ -46,7 +48,7 @@ export default function Reports() {
   const [company, setCompany] = useState(null);
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('all');
-  const [rawData, setRawData] = useState({ invoices: [], products: [], users: [], stockRows: [] });
+  const [rawData, setRawData] = useState({ invoices: [], products: [], users: [], stockRows: [], purchases: [] });
   const [featureOverrides, setFeatureOverrides] = useState([]);
 
   const ownCompany = companies.find(c => c.id === currentUser?.company_id);
@@ -79,8 +81,9 @@ export default function Reports() {
       fetchCompanyById(currentUser.company_id),
       selectedBranchId === 'all'
         ? fetchProductStockAllBranches(currentUser.company_id)
-        : fetchProductStock(currentUser.company_id, selectedBranchId)
-    ]).then(([invoices, products, users, companyData, stockRows]) => {
+        : fetchProductStock(currentUser.company_id, selectedBranchId),
+      fetchPurchasesForReports(currentUser.company_id, start ? toLocalDayKey(start) : null, end ? toLocalDayKey(end) : null)
+    ]).then(([invoices, products, users, companyData, stockRows, purchases]) => {
       if (cancelled) return;
       // point_of_sales is embedded on each invoice (see fetchInvoicesForReports) -
       // filter by branch client-side, consistent with how every other report
@@ -88,7 +91,14 @@ export default function Reports() {
       const scopedInvoices = selectedBranchId === 'all'
         ? invoices
         : invoices.filter(inv => inv.point_of_sales?.branch_id === selectedBranchId);
-      setRawData({ invoices: scopedInvoices, products: products || [], users: users || [], stockRows: stockRows || [] });
+      // purchases.branch_id vive directo en la tabla (a diferencia de
+      // invoices, que lo tiene anidado vía point_of_sales) - una compra sin
+      // sucursal asignada (branch_id null) no aparece al filtrar por una
+      // sucursal específica, mismo criterio que una factura sin POS.
+      const scopedPurchases = selectedBranchId === 'all'
+        ? purchases
+        : purchases.filter(p => p.branch_id === selectedBranchId);
+      setRawData({ invoices: scopedInvoices, products: products || [], users: users || [], stockRows: stockRows || [], purchases: scopedPurchases });
       setCompany(companyData);
     }).catch(error => {
       console.error('Error loading reports data:', error);

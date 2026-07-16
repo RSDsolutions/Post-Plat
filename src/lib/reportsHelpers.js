@@ -129,7 +129,7 @@ function sum(arr, fn) {
 // One fetch (invoices + nested customer/line items, plus products & users)
 // feeds every report tab below via client-side aggregation - the data
 // volumes for a single-store POS don't justify a query per tab.
-export function buildReportDataset({ invoices, products, users, stockRows }) {
+export function buildReportDataset({ invoices, products, users, stockRows, purchases }) {
   const productMap = new Map(products.map(p => [p.id, p]));
   const userMap = new Map(users.map(u => [u.id, u]));
   // activeInvoices alimenta sumas de venta (impuestos, productos, cajeros...)
@@ -139,7 +139,10 @@ export function buildReportDataset({ invoices, products, users, stockRows }) {
   // subreporta el efecto de las NC en vez de sumarlo mal; netearlas de verdad
   // en cada una de las pestañas de Reports.jsx queda fuera de esta fase.
   const activeInvoices = invoices.filter(inv => inv.status !== 'anulada' && inv.invoice_type !== 'nota_credito');
-  return { invoices, activeInvoices, productMap, userMap, stockRows: stockRows || [] };
+  // Igual criterio que activeInvoices: una compra anulada no debe sumar al
+  // total comprado ni a lo retenido de ese proveedor.
+  const activePurchases = (purchases || []).filter(p => p.status !== 'anulada');
+  return { invoices, activeInvoices, productMap, userMap, stockRows: stockRows || [], purchases: purchases || [], activePurchases };
 }
 
 export const REPORT_TABS = [
@@ -149,7 +152,9 @@ export const REPORT_TABS = [
   { id: 'customers', label: 'Clientes' },
   { id: 'cashiers', label: 'Cajeros' },
   { id: 'inventory', label: 'Inventario' },
-  { id: 'tax', label: 'Impuestos / SRI' }
+  { id: 'tax', label: 'Impuestos / SRI' },
+  { id: 'purchases', label: 'Compras' },
+  { id: 'purchaseRetentions', label: 'Retenciones a Proveedores' }
 ];
 
 function buildOverviewReport(dataset) {
@@ -508,6 +513,125 @@ function buildTaxReport(dataset) {
   };
 }
 
+function buildPurchasesReport(dataset) {
+  const { activePurchases, purchases } = dataset;
+  const totalPurchased = sum(activePurchases, p => p.total);
+  const purchaseCount = activePurchases.length;
+  const avgPurchase = purchaseCount ? totalPurchased / purchaseCount : 0;
+  const voidedCount = purchases.length - purchaseCount;
+
+  const bySupplier = new Map();
+  activePurchases.forEach(p => {
+    const key = p.supplier_id || p.suppliers?.id || 'sin_proveedor';
+    const retained = sum(p.purchase_retentions || [], r => r.retention_amount);
+    const cur = bySupplier.get(key) || {
+      name: p.suppliers?.razon_social || 'Proveedor eliminado',
+      ruc: p.suppliers?.ruc || '-',
+      purchases: 0,
+      total: 0,
+      retained: 0
+    };
+    cur.purchases += 1;
+    cur.total += Number(p.total) || 0;
+    cur.retained += retained;
+    bySupplier.set(key, cur);
+  });
+
+  const rows = Array.from(bySupplier.values())
+    .map(r => ({ ...r, net: r.total - r.retained }))
+    .sort((a, b) => b.total - a.total);
+  const totalRetainedAll = sum(rows, r => r.retained);
+
+  return {
+    kpis: [
+      { label: 'Total Comprado', value: totalPurchased, format: 'usd', accent: 'blue' },
+      { label: 'Compras Registradas', value: purchaseCount, format: 'number', accent: 'emerald' },
+      { label: 'Proveedores Activos', value: rows.length, format: 'number', accent: 'purple' },
+      { label: 'Compra Promedio', value: avgPurchase, format: 'usd', accent: 'amber' },
+      { label: 'Compras Anuladas', value: voidedCount, format: 'number', accent: 'red' }
+    ],
+    chart: { type: 'bars', title: 'Top 8 Proveedores por Compras', data: rows.slice(0, 8).map(r => ({ label: r.name, value: r.total, formatted: formatUSD(r.total) })) },
+    table: {
+      title: 'Compras por Proveedor',
+      columns: [
+        { key: 'name', label: 'Proveedor', align: 'left', width: 46, format: 'text' },
+        { key: 'ruc', label: 'RUC', align: 'left', width: 28, format: 'text' },
+        { key: 'purchases', label: 'Compras', align: 'right', width: 22, format: 'number' },
+        { key: 'total', label: 'Total Comprado', align: 'right', width: 30, format: 'usd' },
+        { key: 'retained', label: 'Retenido', align: 'right', width: 26, format: 'usd' },
+        { key: 'net', label: 'Neto Pagado', align: 'right', width: 28, format: 'usd' }
+      ],
+      rows,
+      totals: { purchases: purchaseCount, total: totalPurchased, retained: totalRetainedAll, net: totalPurchased - totalRetainedAll }
+    }
+  };
+}
+
+// Insumo directo para la declaración mensual al SRI: retenido IVA/renta del
+// período, desglosado por concepto - separado de buildPurchasesReport (que
+// responde "a quién le compramos") porque son dos preguntas distintas y el
+// contrato de cada pestaña es una sola tabla.
+function buildPurchaseRetentionsReport(dataset) {
+  const { activePurchases } = dataset;
+  const allRetentions = activePurchases.flatMap(p => p.purchase_retentions || []);
+
+  const totalIva = sum(allRetentions.filter(r => r.retention_type === 'iva'), r => r.retention_amount);
+  const totalRenta = sum(allRetentions.filter(r => r.retention_type === 'renta'), r => r.retention_amount);
+  const totalRetained = totalIva + totalRenta;
+  const authorized = allRetentions.filter(r => r.retention_sri_status === 'autorizada').length;
+  const pending = allRetentions.filter(r => r.retention_sri_status === 'pendiente').length;
+
+  const typeColors = { iva: '#3b82f6', renta: '#f59e0b' };
+  const byType = new Map();
+  allRetentions.forEach(r => byType.set(r.retention_type, (byType.get(r.retention_type) || 0) + (Number(r.retention_amount) || 0)));
+  const donutData = Array.from(byType.entries())
+    .filter(([, value]) => value > 0)
+    .map(([type, value]) => ({ label: type === 'iva' ? 'Retención IVA' : 'Retención Renta', value, color: typeColors[type] || '#71717a' }));
+
+  const byConcept = new Map();
+  allRetentions.forEach(r => {
+    const key = `${r.retention_concept_id || 'sin_concepto'}_${r.retention_type}`;
+    const cur = byConcept.get(key) || {
+      codigo: r.retention_concepts?.codigo_sri || '-',
+      concepto: r.retention_concepts?.descripcion || 'Sin concepto',
+      tipo: r.retention_type === 'iva' ? 'IVA' : 'Renta',
+      count: 0,
+      base: 0,
+      amount: 0
+    };
+    cur.count += 1;
+    cur.base += Number(r.retention_base) || 0;
+    cur.amount += Number(r.retention_amount) || 0;
+    byConcept.set(key, cur);
+  });
+
+  const rows = Array.from(byConcept.values()).sort((a, b) => b.amount - a.amount);
+
+  return {
+    kpis: [
+      { label: 'Total Retenido', value: totalRetained, format: 'usd', accent: 'purple' },
+      { label: 'Retenido IVA', value: totalIva, format: 'usd', accent: 'blue' },
+      { label: 'Retenido Renta', value: totalRenta, format: 'usd', accent: 'amber' },
+      { label: 'Comprobantes Autorizados', value: authorized, format: 'number', accent: 'emerald' },
+      { label: 'Pendientes de Emitir', value: pending, format: 'number', accent: pending > 0 ? 'red' : 'emerald' }
+    ],
+    chart: { type: 'donut', valueFormat: 'usd', data: donutData },
+    table: {
+      title: 'Retenciones por Concepto',
+      columns: [
+        { key: 'codigo', label: 'Código SRI', align: 'left', width: 22, format: 'text' },
+        { key: 'concepto', label: 'Concepto', align: 'left', width: 50, format: 'text' },
+        { key: 'tipo', label: 'Tipo', align: 'left', width: 18, format: 'text' },
+        { key: 'count', label: 'Retenciones', align: 'right', width: 24, format: 'number' },
+        { key: 'base', label: 'Base Imponible', align: 'right', width: 28, format: 'usd' },
+        { key: 'amount', label: 'Monto Retenido', align: 'right', width: 28, format: 'usd' }
+      ],
+      rows,
+      totals: { count: allRetentions.length, base: sum(rows, r => r.base), amount: totalRetained }
+    }
+  };
+}
+
 export function buildReport(tabId, dataset) {
   switch (tabId) {
     case 'sales': return buildSalesReport(dataset);
@@ -516,6 +640,8 @@ export function buildReport(tabId, dataset) {
     case 'cashiers': return buildCashiersReport(dataset);
     case 'inventory': return buildInventoryReport(dataset);
     case 'tax': return buildTaxReport(dataset);
+    case 'purchases': return buildPurchasesReport(dataset);
+    case 'purchaseRetentions': return buildPurchaseRetentionsReport(dataset);
     case 'overview':
     default:
       return buildOverviewReport(dataset);

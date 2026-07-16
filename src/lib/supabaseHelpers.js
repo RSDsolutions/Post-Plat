@@ -1389,6 +1389,25 @@ export async function createAccountsPayablePayment({ accountsPayableId, amount, 
   return data;
 }
 
+// Reportes de Compras (Fase 7). startStr/endStr deben ser 'YYYY-MM-DD'
+// locales (no toISOString(): document_date es un `date` sin hora, y
+// convertir a UTC puede correr la fecha un día en zonas UTC- como Ecuador -
+// el mismo motivo por el que Fase 1 evitó timestamp without time zone).
+export async function fetchPurchasesForReports(companyId, startStr, endStr) {
+  let query = supabase
+    .from('purchases')
+    .select('*, suppliers(id, razon_social, ruc), purchase_retentions(id, retention_type, retention_percentage, retention_base, retention_amount, retention_sri_status, retention_concept_id, retention_concepts(codigo_sri, descripcion))')
+    .eq('company_id', companyId)
+    .order('document_date', { ascending: false });
+
+  if (startStr) query = query.gte('document_date', startStr);
+  if (endStr) query = query.lte('document_date', endStr);
+
+  const { data, error } = await query;
+  if (error) throw new Error(`Error fetching purchases report data: ${error.message}`);
+  return data || [];
+}
+
 // Invoices & Billing
 // pos_id must be resolved by the caller (the cashier's assigned branch's
 // active point of sale - see resolveCashierPointOfSale) rather than guessed
