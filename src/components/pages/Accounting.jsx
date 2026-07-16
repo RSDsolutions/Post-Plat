@@ -123,8 +123,8 @@ export default function Accounting() {
   const handleDownloadZip = async () => {
     setDownloadingZip(true);
     try {
-      const count = await downloadInvoicesXmlZip(scopedInvoices, `facturas-${datePreset}-${new Date().toISOString().slice(0, 10)}.zip`);
-      showToast('success', `ZIP generado con ${count} factura${count === 1 ? '' : 's'} autorizada${count === 1 ? '' : 's'}`);
+      const count = await downloadInvoicesXmlZip(scopedInvoices, `comprobantes-${datePreset}-${new Date().toISOString().slice(0, 10)}.zip`);
+      showToast('success', `ZIP generado con ${count} comprobante${count === 1 ? '' : 's'} autorizado${count === 1 ? '' : 's'}`);
     } catch (error) {
       showToast('error', error.message || 'Error al generar el ZIP');
     } finally {

@@ -1,5 +1,24 @@
 import { supabase } from './supabase.js';
 
+// invoices.issue_date es "timestamp without time zone" - Postgres la guarda
+// TAL CUAL, sin convertir nada. new Date().toISOString() siempre da UTC
+// (ej. 21:00 en Ecuador -> "...T02:00:00.000Z" del día siguiente); si esa
+// string se guarda ahí y luego se relee con new Date(...), el faltante de
+// "Z" hace que se reinterprete como hora LOCAL de quien la lea - en Vercel
+// (UTC) el corrimiento de +5h se "cuela" igual, declarando la fecha
+// siguiente al SRI para cualquier venta entre 19:00 y 23:59 hora Ecuador (se
+// confirmó real y reproducible: una prueba de este tipo fue rechazada por el
+// SRI con "FECHA EMISION EXTEMPORANEA" al correr en un entorno en horario de
+// Ecuador, que además de correr el día también corre la hora, agravándolo).
+// Esta función arma la hora LOCAL de quien la ejecuta (el navegador del
+// punto de venta, que está físicamente en Ecuador) como string sin "Z" -  al
+// guardarse tal cual y releerse en cualquier entorno con TZ=UTC (Vercel) o
+// TZ=America/Guayaquil, ambos extraen el mismo día/hora correctos.
+function toLocalNaiveTimestamp(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, '0')}`;
+}
+
 // Header de autorización real para los endpoints de api/* que verifican el
 // JWT (api/_authHelpers.js) en vez de confiar en un userId/companyId que el
 // body simplemente afirmaba (Fase 1 de hardening, ver AUDITORIA_SISTEMA.md).
@@ -328,6 +347,35 @@ export async function getNextPosSequential(posId) {
   } catch (error) {
     throw new Error(`Error getting next sequential: ${error.message}`);
   }
+}
+
+// Secuencial para cualquier documento que NO sea factura (hoy: nota de
+// crédito) - a diferencia de getNextPosSequential, este usa el RPC atómico
+// get_next_document_sequential (UPSERT ... RETURNING, sin condición de
+// carrera posible) porque es mecanismo nuevo sin historial que preservar.
+// Ver supabase/migrations/20260721_credit_notes_schema.sql.
+export async function getNextDocumentSequential(posId, docType) {
+  const { data, error } = await supabase.rpc('get_next_document_sequential', {
+    p_point_of_sale_id: posId,
+    p_doc_type: docType
+  });
+  if (error) throw new Error(`Error obteniendo el secuencial: ${error.message}`);
+  return data;
+}
+
+// Notas de crédito ya emitidas contra una factura, para que la UI muestre el
+// saldo disponible antes de enviar - la validación real (que no lo exceda)
+// vuelve a correr server-side en submit-credit-note.js, esto es solo para UX.
+export async function fetchCreditNotesForInvoice(invoiceId) {
+  const { data, error } = await supabase
+    .from('invoices')
+    .select('*, invoice_details(*)')
+    .eq('modified_invoice_id', invoiceId)
+    .eq('invoice_type', 'nota_credito')
+    .order('created_at', { ascending: false });
+
+  if (error) throw new Error(`Error obteniendo notas de crédito: ${error.message}`);
+  return data || [];
 }
 
 // Per-branch inventory. products stays the shared catalog (code/name/price/
@@ -985,7 +1033,7 @@ export async function createInvoice(invoiceData) {
         customer_id: invoiceData.customer_id || null,
         invoice_type: invoiceData.invoice_type || 'factura',
         invoice_number: invoiceData.invoice_number,
-        issue_date: new Date().toISOString(),
+        issue_date: toLocalNaiveTimestamp(new Date()),
         authorization_number: invoiceData.access_key || null,
         subtotal: parseFloat(invoiceData.subtotal_amount) || 0,
         discount_amount: parseFloat(invoiceData.discount_amount) || 0,
@@ -993,7 +1041,10 @@ export async function createInvoice(invoiceData) {
         total_amount: parseFloat(invoiceData.total_amount) || 0,
         payment_method: invoiceData.payment_method || 'cash',
         status: 'borrador',
-        notes: invoiceData.notes || ''
+        notes: invoiceData.notes || '',
+        modified_invoice_id: invoiceData.modified_invoice_id || null,
+        credit_note_reason: invoiceData.credit_note_reason || null,
+        credit_note_restock: !!invoiceData.credit_note_restock
       }])
       .select()
       .single();
@@ -1156,6 +1207,30 @@ export async function submitInvoiceToSRI(invoiceId) {
 
   if (!response.ok) {
     const error = new Error(result.error || 'Error al enviar la factura al SRI');
+    error.detail = result.detail;
+    throw error;
+  }
+
+  return result;
+}
+
+export async function submitCreditNoteToSRI(invoiceId) {
+  const response = await fetch('/api/sri/submit-credit-note', {
+    method: 'POST',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ invoiceId })
+  });
+
+  const rawText = await response.text();
+  let result;
+  try {
+    result = JSON.parse(rawText);
+  } catch {
+    throw new Error(`El servidor no respondió correctamente (status ${response.status}). Respuesta: ${rawText.slice(0, 300)}`);
+  }
+
+  if (!response.ok) {
+    const error = new Error(result.error || 'Error al enviar la nota de crédito al SRI');
     error.detail = result.detail;
     throw error;
   }

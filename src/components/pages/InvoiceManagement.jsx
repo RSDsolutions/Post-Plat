@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin, Mail, FileCode, Archive } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin, Mail, FileCode, Archive, Undo2, AlertTriangle } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig, fetchCompanyById, fetchBranches, emailInvoiceRide } from '../../lib/supabaseHelpers.js';
+import {
+  fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig,
+  fetchCompanyById, fetchBranches, emailInvoiceRide,
+  createInvoice, createInvoiceDetail, getNextDocumentSequential, submitCreditNoteToSRI, fetchCreditNotesForInvoice
+} from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Badge from '../ui/Badge.jsx';
 import Modal from '../ui/Modal.jsx';
@@ -15,6 +19,21 @@ const STATUS_LABELS = {
   anulada: 'Anulada',
   devuelta: 'Devuelta'
 };
+
+const TYPE_LABELS = {
+  factura: 'Factura',
+  nota_credito: 'Nota de Crédito'
+};
+
+const AMOUNT_EPSILON = 0.01;
+
+function formatDetailAmounts(unitPrice, quantity, discountPercent, taxPercent) {
+  const grossAmount = parseFloat(unitPrice) * parseFloat(quantity);
+  const discountAmount = grossAmount * (parseFloat(discountPercent) || 0) / 100;
+  const subtotal = grossAmount - discountAmount;
+  const taxAmount = subtotal * (parseFloat(taxPercent) || 0) / 100;
+  return { subtotal, taxAmount, total: subtotal + taxAmount };
+}
 
 export default function InvoiceManagement() {
   const { currentUser, showToast, openConfirm, can } = useStore();
@@ -31,11 +50,22 @@ export default function InvoiceManagement() {
   const [emailingRideId, setEmailingRideId] = useState(null);
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState('all');
+  const [selectedType, setSelectedType] = useState('all');
   const [showBulkExport, setShowBulkExport] = useState(false);
   const [bulkStartDate, setBulkStartDate] = useState('');
   const [bulkEndDate, setBulkEndDate] = useState('');
   const [bulkBranchId, setBulkBranchId] = useState('all');
   const [exportingZip, setExportingZip] = useState(false);
+
+  // Emisión de nota de crédito
+  const [showCreditNoteModal, setShowCreditNoteModal] = useState(false);
+  const [creditNoteReason, setCreditNoteReason] = useState('');
+  const [creditNoteRestock, setCreditNoteRestock] = useState(true);
+  const [creditNoteLines, setCreditNoteLines] = useState([]);
+  const [priorCreditNotes, setPriorCreditNotes] = useState([]);
+  const [loadingCreditNoteData, setLoadingCreditNoteData] = useState(false);
+  const [submittingCreditNote, setSubmittingCreditNote] = useState(false);
+  const [creditNoteError, setCreditNoteError] = useState(null);
 
   const loadInvoices = async () => {
     try {
@@ -59,9 +89,20 @@ export default function InvoiceManagement() {
   }, [currentUser?.company_id]);
 
   const filteredInvoices = useMemo(() => {
-    if (selectedBranchId === 'all') return invoices;
-    return invoices.filter(inv => inv.point_of_sales?.branch_id === selectedBranchId);
-  }, [invoices, selectedBranchId]);
+    return invoices.filter(inv => {
+      if (selectedBranchId !== 'all' && inv.point_of_sales?.branch_id !== selectedBranchId) return false;
+      if (selectedType !== 'all' && inv.invoice_type !== selectedType) return false;
+      return true;
+    });
+  }, [invoices, selectedBranchId, selectedType]);
+
+  // Para una nota de crédito, resuelve la factura que modifica (ya está en
+  // memoria - fetchInvoicesByCompany trae todas las facturas de la empresa,
+  // sin paginar) para mostrarla/incluirla en el RIDE.
+  const getModifiedInvoiceRef = (invoice) => {
+    if (invoice.invoice_type !== 'nota_credito') return undefined;
+    return invoices.find(i => i.id === invoice.modified_invoice_id);
+  };
 
   const openInvoiceDetail = async (invoice) => {
     setSelectedInvoice(invoice);
@@ -85,7 +126,7 @@ export default function InvoiceManagement() {
     setDownloadingRideId(invoice.id);
     try {
       const details = await fetchInvoiceDetails(invoice.id);
-      await generateRidePdf({ invoice, details, company, sriEnvironment });
+      await generateRidePdf({ invoice, details, company, sriEnvironment, modifiedInvoice: getModifiedInvoiceRef(invoice) });
     } catch (error) {
       console.error('Error generating RIDE:', error);
       showToast('error', error.message || 'Error al generar el RIDE');
@@ -99,7 +140,7 @@ export default function InvoiceManagement() {
   // que quien lo llame (botón manual o auto-envío) decida qué avisar.
   const sendRideByEmail = async (invoice) => {
     const details = await fetchInvoiceDetails(invoice.id);
-    const pdfBase64 = await generateRidePdf({ invoice, details, company, sriEnvironment, output: 'base64' });
+    const pdfBase64 = await generateRidePdf({ invoice, details, company, sriEnvironment, modifiedInvoice: getModifiedInvoiceRef(invoice), output: 'base64' });
     return emailInvoiceRide({
       invoiceId: invoice.id,
       pdfBase64
@@ -129,16 +170,18 @@ export default function InvoiceManagement() {
   };
 
   const handleApprove = (invoice) => {
+    const isCreditNote = invoice.invoice_type === 'nota_credito';
+    const docLabel = isCreditNote ? 'nota de crédito' : 'factura';
     const envLabel = sriEnvironment === 'production' ? 'PRODUCCIÓN (real)' : 'PRUEBAS';
     openConfirm(
       'Aprobar y enviar al SRI',
-      `¿Confirmas enviar la factura ${invoice.invoice_number} al SRI en ambiente de ${envLabel}? El comprobante se firmará con el certificado cargado y se enviará al webservice real del SRI. Puede tardar varios segundos.`,
+      `¿Confirmas enviar la ${docLabel} ${invoice.invoice_number} al SRI en ambiente de ${envLabel}? El comprobante se firmará con el certificado cargado y se enviará al webservice real del SRI. Puede tardar varios segundos.`,
       async () => {
         setSubmittingId(invoice.id);
         setLastError(null);
         try {
-          await submitInvoiceToSRI(invoice.id);
-          showToast('success', `Factura ${invoice.invoice_number} autorizada por el SRI`);
+          await (isCreditNote ? submitCreditNoteToSRI(invoice.id) : submitInvoiceToSRI(invoice.id));
+          showToast('success', `${isCreditNote ? 'Nota de crédito' : 'Factura'} ${invoice.invoice_number} autorizada por el SRI`);
           await loadInvoices();
           setSelectedInvoice(null);
 
@@ -165,7 +208,7 @@ export default function InvoiceManagement() {
           }
         } catch (error) {
           console.error('SRI submission error:', error);
-          showToast('error', error.message || 'Error al enviar la factura al SRI');
+          showToast('error', error.message || `Error al enviar la ${docLabel} al SRI`);
           setLastError({
             message: error.message,
             detail: error.detail
@@ -203,6 +246,126 @@ export default function InvoiceManagement() {
     }
   };
 
+  // Abre el modal de nota de crédito sobre la factura actualmente seleccionada.
+  // Reusa invoiceDetails, que ya está cargado porque este botón solo aparece
+  // dentro del modal de detalle (ver openInvoiceDetail). Por defecto arranca
+  // con todas las líneas a su cantidad completa - "nota de crédito total" es
+  // simplemente no tocar nada; una parcial es desmarcar/reducir cantidades.
+  const openCreditNoteModal = async (invoice) => {
+    setCreditNoteReason('');
+    setCreditNoteRestock(true);
+    setCreditNoteError(null);
+    setCreditNoteLines(invoiceDetails.map(d => ({
+      ...d,
+      included: true,
+      creditQty: parseFloat(d.quantity)
+    })));
+    setShowCreditNoteModal(true);
+    setLoadingCreditNoteData(true);
+    try {
+      const prior = await fetchCreditNotesForInvoice(invoice.id);
+      setPriorCreditNotes(prior);
+    } catch (error) {
+      showToast('error', error.message || 'Error al cargar notas de crédito previas');
+    } finally {
+      setLoadingCreditNoteData(false);
+    }
+  };
+
+  const updateCreditNoteLine = (index, patch) => {
+    setCreditNoteLines(prev => prev.map((line, i) => i === index ? { ...line, ...patch } : line));
+  };
+
+  const priorCreditedTotal = useMemo(() => (
+    priorCreditNotes.filter(cn => cn.status === 'autorizada').reduce((sum, cn) => sum + parseFloat(cn.total_amount), 0)
+  ), [priorCreditNotes]);
+
+  const availableBalance = selectedInvoice ? parseFloat(selectedInvoice.total_amount) - priorCreditedTotal : 0;
+
+  const creditNoteTotals = useMemo(() => {
+    return creditNoteLines
+      .filter(l => l.included && parseFloat(l.creditQty) > 0)
+      .reduce((acc, l) => {
+        const { subtotal, taxAmount, total } = formatDetailAmounts(l.unit_price, l.creditQty, l.discount_percent, l.tax_percent);
+        return { subtotal: acc.subtotal + subtotal, taxAmount: acc.taxAmount + taxAmount, total: acc.total + total };
+      }, { subtotal: 0, taxAmount: 0, total: 0 });
+  }, [creditNoteLines]);
+
+  const creditNoteExceedsBalance = creditNoteTotals.total > availableBalance + AMOUNT_EPSILON;
+
+  const handleSubmitCreditNote = async () => {
+    if (!selectedInvoice) return;
+    if (!creditNoteReason.trim()) {
+      setCreditNoteError('El motivo es obligatorio');
+      return;
+    }
+    const includedLines = creditNoteLines.filter(l => l.included && parseFloat(l.creditQty) > 0);
+    if (includedLines.length === 0) {
+      setCreditNoteError('Selecciona al menos un producto para la nota de crédito');
+      return;
+    }
+    if (creditNoteExceedsBalance) {
+      setCreditNoteError(`El total excede el saldo disponible de la factura (${formatUSD(availableBalance)})`);
+      return;
+    }
+
+    setSubmittingCreditNote(true);
+    setCreditNoteError(null);
+    try {
+      const pos = selectedInvoice.point_of_sales;
+      const sequential = await getNextDocumentSequential(selectedInvoice.pos_id, 'nota_credito');
+      const invoiceNumber = `${pos.numero_establecimiento.padStart(3, '0')}-${pos.numero_pos.padStart(3, '0')}-${String(sequential).padStart(9, '0')}`;
+
+      const creditNote = await createInvoice({
+        company_id: currentUser.company_id,
+        user_id: currentUser.id,
+        pos_id: selectedInvoice.pos_id,
+        customer_id: selectedInvoice.customer_id || null,
+        invoice_type: 'nota_credito',
+        invoice_number: invoiceNumber,
+        subtotal_amount: creditNoteTotals.subtotal,
+        tax_amount: creditNoteTotals.taxAmount,
+        total_amount: creditNoteTotals.total,
+        payment_method: selectedInvoice.payment_method,
+        modified_invoice_id: selectedInvoice.id,
+        credit_note_reason: creditNoteReason.trim(),
+        credit_note_restock: creditNoteRestock,
+        notes: `Nota de crédito sobre factura ${selectedInvoice.invoice_number}`
+      });
+
+      for (const line of includedLines) {
+        const { subtotal, taxAmount, total } = formatDetailAmounts(line.unit_price, line.creditQty, line.discount_percent, line.tax_percent);
+        await createInvoiceDetail({
+          invoice_id: creditNote.id,
+          product_id: line.product_id,
+          product_code: line.product_code,
+          product_name: line.product_name,
+          quantity: line.creditQty,
+          unit_price: line.unit_price,
+          discount_percent: line.discount_percent,
+          subtotal,
+          tax_rate: line.tax_percent,
+          tax_amount: taxAmount,
+          total
+        });
+      }
+
+      const result = await submitCreditNoteToSRI(creditNote.id);
+      showToast('success', `Nota de crédito ${invoiceNumber} autorizada por el SRI`);
+      if (result?.warnings?.length) {
+        result.warnings.forEach(w => showToast('warning', w));
+      }
+      setShowCreditNoteModal(false);
+      setSelectedInvoice(null);
+      await loadInvoices();
+    } catch (error) {
+      console.error('Error emitting credit note:', error);
+      setCreditNoteError(error.message || 'Error al emitir la nota de crédito');
+    } finally {
+      setSubmittingCreditNote(false);
+    }
+  };
+
   // Descarga masiva: filtra las facturas ya cargadas en memoria (invoices ya
   // trae signed_xml completo, ver fetchInvoicesByCompany) por rango de fecha
   // + sucursal, arma el ZIP en el navegador - sin pasar por Vercel Functions,
@@ -224,8 +387,8 @@ export default function InvoiceManagement() {
 
     setExportingZip(true);
     try {
-      const count = await downloadInvoicesXmlZip(inRange, `facturas-${bulkStartDate}-a-${bulkEndDate}.zip`);
-      showToast('success', `ZIP generado con ${count} factura${count === 1 ? '' : 's'} autorizada${count === 1 ? '' : 's'}`);
+      const count = await downloadInvoicesXmlZip(inRange, `comprobantes-${bulkStartDate}-a-${bulkEndDate}.zip`);
+      showToast('success', `ZIP generado con ${count} comprobante${count === 1 ? '' : 's'} autorizado${count === 1 ? '' : 's'}`);
       setShowBulkExport(false);
     } catch (error) {
       showToast('error', error.message || 'Error al generar el ZIP');
@@ -289,6 +452,25 @@ export default function InvoiceManagement() {
         </div>
       )}
 
+      <div className="bg-panel-surface border border-panel-border rounded-2xl p-4 flex flex-wrap items-center gap-2">
+        <FileText size={16} className="text-panel-text-muted flex-shrink-0" />
+        {[
+          { value: 'all', label: 'Todos' },
+          { value: 'factura', label: 'Facturas' },
+          { value: 'nota_credito', label: 'Notas de Crédito' }
+        ].map(opt => (
+          <button
+            key={opt.value}
+            onClick={() => setSelectedType(opt.value)}
+            className={`px-4 py-2 rounded-xl text-sm font-bold transition-colors ${
+              selectedType === opt.value ? 'bg-panel-accent/20 text-panel-accent-soft border border-panel-accent/40' : 'text-panel-text-muted hover:text-panel-text hover:bg-panel-text/10 border border-transparent'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {lastError && (
         <div className="bg-panel-danger/10 border border-panel-danger/30 rounded-lg p-4 space-y-2">
           <div className="flex items-center justify-between">
@@ -315,13 +497,22 @@ export default function InvoiceManagement() {
             data={filteredInvoices}
             renderRow={(inv) => (
               <tr key={inv.id} className="hover:bg-panel-surface-2 cursor-pointer" onClick={() => openInvoiceDetail(inv)}>
-                <td className="px-4 py-3 font-bold text-panel-text font-mono">{inv.invoice_number}</td>
+                <td className="px-4 py-3 font-bold text-panel-text font-mono">
+                  <div className="flex items-center gap-2">
+                    {inv.invoice_type === 'nota_credito' && (
+                      <Undo2 size={14} className="text-panel-danger flex-shrink-0" title="Nota de crédito" />
+                    )}
+                    {inv.invoice_number}
+                  </div>
+                </td>
                 <td className="px-4 py-3 text-panel-text-muted text-sm">{inv.point_of_sales?.branches?.name || '-'}</td>
                 <td className="px-4 py-3 text-panel-text">
                   {inv.customers?.name || 'Consumidor Final'}
                 </td>
                 <td className="px-4 py-3 text-panel-text-muted">{new Date(inv.issue_date).toLocaleDateString()}</td>
-                <td className="px-4 py-3 font-bold text-panel-success">{formatUSD(inv.total_amount)}</td>
+                <td className={`px-4 py-3 font-bold ${inv.invoice_type === 'nota_credito' ? 'text-panel-text' : 'text-panel-success'}`}>
+                  {inv.invoice_type === 'nota_credito' ? '-' : ''}{formatUSD(inv.total_amount)}
+                </td>
                 <td className="px-4 py-3"><Badge status={STATUS_LABELS[inv.status] || inv.status} /></td>
                 <td className="px-4 py-3">
                   {inv.status === 'borrador' && (
@@ -394,13 +585,19 @@ export default function InvoiceManagement() {
       </div>
 
       {/* Invoice Detail Modal */}
-      {selectedInvoice && (
+      {selectedInvoice && !showCreditNoteModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 sm:p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <FileText className="text-panel-success" size={28} />
-                <h3 className="text-2xl font-bold text-panel-text">Detalle de Factura</h3>
+                {selectedInvoice.invoice_type === 'nota_credito' ? (
+                  <Undo2 className="text-panel-danger" size={28} />
+                ) : (
+                  <FileText className="text-panel-success" size={28} />
+                )}
+                <h3 className="text-2xl font-bold text-panel-text">
+                  {selectedInvoice.invoice_type === 'nota_credito' ? 'Detalle de Nota de Crédito' : 'Detalle de Factura'}
+                </h3>
               </div>
               <button onClick={() => setSelectedInvoice(null)} className="text-panel-text-muted hover:text-panel-text">
                 <X size={24} />
@@ -410,7 +607,9 @@ export default function InvoiceManagement() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-xs text-panel-text-muted">Número de Factura</div>
+                  <div className="text-xs text-panel-text-muted">
+                    {selectedInvoice.invoice_type === 'nota_credito' ? 'Número de Nota de Crédito' : 'Número de Factura'}
+                  </div>
                   <div className="text-lg font-bold text-panel-text font-mono">{selectedInvoice.invoice_number}</div>
                   {selectedInvoice.point_of_sales?.branches?.name && (
                     <div className="text-xs text-panel-text-muted flex items-center gap-1 mt-1">
@@ -420,6 +619,18 @@ export default function InvoiceManagement() {
                 </div>
                 <Badge status={STATUS_LABELS[selectedInvoice.status] || selectedInvoice.status} />
               </div>
+
+              {selectedInvoice.invoice_type === 'nota_credito' && (
+                <div className="bg-panel-danger/10 border border-panel-danger/30 rounded-lg p-4 space-y-1">
+                  <div className="text-xs font-bold text-panel-text flex items-center gap-1">
+                    <Undo2 size={12} className="text-panel-danger" />
+                    Modifica la factura {invoices.find(i => i.id === selectedInvoice.modified_invoice_id)?.invoice_number || selectedInvoice.modified_invoice_id}
+                  </div>
+                  {selectedInvoice.credit_note_reason && (
+                    <div className="text-sm text-panel-text">{selectedInvoice.credit_note_reason}</div>
+                  )}
+                </div>
+              )}
 
               {/* Access Key */}
               <div className="bg-panel-bg border border-panel-border rounded-lg p-4">
@@ -577,11 +788,156 @@ export default function InvoiceManagement() {
                       <FileCode size={18} /> Descargar XML autorizado
                     </button>
                   )}
+                  {selectedInvoice.invoice_type !== 'nota_credito' && can('credit_notes.create') && (
+                    selectedInvoice.customers ? (
+                      <button
+                        onClick={() => openCreditNoteModal(selectedInvoice)}
+                        className="w-full bg-panel-danger/10 hover:bg-panel-danger/20 border border-panel-danger/30 text-panel-text font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Undo2 size={18} className="text-panel-danger" /> Emitir nota de crédito
+                      </button>
+                    ) : (
+                      <div className="text-xs text-panel-text-muted bg-panel-surface-2 rounded-lg p-3 flex items-start gap-2">
+                        <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+                        El SRI no permite emitir notas de crédito sobre facturas a consumidor final - solo sobre facturas con un cliente identificado (RUC/cédula).
+                      </div>
+                    )
+                  )}
                 </div>
               )}
             </div>
           </div>
         </div>
+      )}
+
+      {showCreditNoteModal && selectedInvoice && (
+        <Modal
+          title={`Emitir nota de crédito - ${selectedInvoice.invoice_number}`}
+          onClose={() => !submittingCreditNote && setShowCreditNoteModal(false)}
+          footer={
+            <>
+              <button
+                onClick={() => setShowCreditNoteModal(false)}
+                disabled={submittingCreditNote}
+                className="px-4 py-2 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] font-bold disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSubmitCreditNote}
+                disabled={submittingCreditNote || loadingCreditNoteData || creditNoteExceedsBalance}
+                className="px-4 py-2 bg-[var(--status-danger)]/10 hover:bg-[var(--status-danger)]/20 disabled:opacity-50 border border-[var(--status-danger)]/30 text-[var(--text-primary)] font-bold rounded-lg flex items-center gap-2"
+              >
+                {submittingCreditNote ? (
+                  <><Loader size={16} className="animate-spin" /> Enviando al SRI...</>
+                ) : (
+                  <><Undo2 size={16} className="text-[var(--status-danger)]" /> Emitir y enviar al SRI</>
+                )}
+              </button>
+            </>
+          }
+        >
+          {loadingCreditNoteData ? (
+            <div className="text-center text-[var(--text-muted)] py-8">Cargando...</div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-[var(--surface-2)] rounded-lg p-4 flex items-center justify-between text-sm">
+                <div>
+                  <div className="text-[var(--text-muted)]">Total factura original</div>
+                  <div className="font-bold text-[var(--text-primary)]">{formatUSD(selectedInvoice.total_amount)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[var(--text-muted)]">Saldo disponible</div>
+                  <div className="font-bold text-[var(--text-primary)]">{formatUSD(availableBalance)}</div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-[var(--text-primary)] mb-1">Motivo *</label>
+                <textarea
+                  value={creditNoteReason}
+                  onChange={(e) => setCreditNoteReason(e.target.value)}
+                  rows={2}
+                  placeholder="Ej: Devolución de mercadería, error de facturación..."
+                  className="w-full bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-[var(--text-primary)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-[var(--text-primary)] mb-2">Productos a acreditar</label>
+                <div className="space-y-2">
+                  {creditNoteLines.map((line, index) => (
+                    <div key={line.id} className="flex items-center gap-3 bg-[var(--surface-2)] rounded-lg p-3 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={line.included}
+                        onChange={(e) => updateCreditNoteLine(index, { included: e.target.checked })}
+                        className="w-4 h-4 flex-shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[var(--text-primary)] truncate">{line.product_name}</div>
+                        <div className="text-xs text-[var(--text-muted)]">{formatUSD(line.unit_price)} c/u · máx {parseFloat(line.quantity)}</div>
+                      </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max={line.quantity}
+                        step="0.01"
+                        value={line.creditQty}
+                        disabled={!line.included}
+                        onChange={(e) => {
+                          const raw = parseFloat(e.target.value) || 0;
+                          const capped = Math.min(Math.max(raw, 0), parseFloat(line.quantity));
+                          updateCreditNoteLine(index, { creditQty: capped });
+                        }}
+                        className="w-20 bg-[var(--surface-1)] border border-[var(--border-subtle)] rounded-lg px-2 py-1 text-[var(--text-primary)] disabled:opacity-50"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-[var(--text-primary)]">
+                <input
+                  type="checkbox"
+                  checked={creditNoteRestock}
+                  onChange={(e) => setCreditNoteRestock(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                Reingresar mercadería al stock
+              </label>
+
+              <div className="border-t border-[var(--border-subtle)] pt-3 space-y-1 text-sm">
+                <div className="flex justify-between text-[var(--text-muted)]">
+                  <span>Subtotal:</span>
+                  <span>{formatUSD(creditNoteTotals.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-[var(--text-muted)]">
+                  <span>IVA:</span>
+                  <span>{formatUSD(creditNoteTotals.taxAmount)}</span>
+                </div>
+                <div className={`flex justify-between font-bold text-lg pt-1 ${creditNoteExceedsBalance ? 'text-[var(--status-danger)]' : 'text-[var(--text-primary)]'}`}>
+                  <span>Total nota de crédito:</span>
+                  <span>{formatUSD(creditNoteTotals.total)}</span>
+                </div>
+              </div>
+
+              {creditNoteExceedsBalance && (
+                <div className="bg-[var(--status-danger)]/10 border border-[var(--status-danger)]/30 rounded-lg p-3 text-sm text-[var(--text-primary)] flex items-start gap-2">
+                  <AlertTriangle size={16} className="flex-shrink-0 mt-0.5 text-[var(--status-danger)]" />
+                  El total excede el saldo disponible de la factura ({formatUSD(availableBalance)}).
+                </div>
+              )}
+
+              {creditNoteError && (
+                <div className="bg-[var(--status-danger)]/10 border border-[var(--status-danger)]/30 rounded-lg p-3 text-sm text-[var(--text-primary)] flex items-start gap-2">
+                  <AlertTriangle size={16} className="flex-shrink-0 mt-0.5 text-[var(--status-danger)]" />
+                  {creditNoteError}
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
       )}
 
       {showBulkExport && (
@@ -609,7 +965,7 @@ export default function InvoiceManagement() {
         >
           <div className="space-y-4">
             <p className="text-sm text-[var(--text-muted)]">
-              Genera un .zip con el XML autorizado de cada factura del rango (nombrado con su clave de acceso) y un <span className="font-mono text-[var(--text-primary)]">resumen.csv</span>. Solo se incluyen facturas en estado <span className="font-bold text-[var(--status-success)]">autorizada</span>.
+              Genera un .zip con el XML autorizado de cada comprobante del rango (facturas y notas de crédito, en subcarpetas separadas, nombrados con su clave de acceso) y un <span className="font-mono text-[var(--text-primary)]">resumen.csv</span>. Solo se incluyen comprobantes en estado <span className="font-bold text-[var(--status-success)]">autorizada</span>.
             </p>
             <div className="grid grid-cols-2 gap-4">
               <div>

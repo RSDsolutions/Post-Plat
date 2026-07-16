@@ -25,6 +25,7 @@ export function downloadInvoiceXml(invoice) {
 }
 
 const SUMMARY_COLUMNS = [
+  { key: 'document_type', label: 'Tipo' },
   { key: 'invoice_number', label: 'Número' },
   { key: 'issue_date', label: 'Fecha', format: 'datetime' },
   { key: 'customer_name', label: 'Cliente' },
@@ -35,22 +36,26 @@ const SUMMARY_COLUMNS = [
   { key: 'authorization_number', label: 'Número de autorización' }
 ];
 
-// Arma un ZIP con un .xml por factura autorizada (nombrado con su clave de
-// acceso) más un resumen.csv - todo en el cliente, sin pasar por ninguna
+// Arma un ZIP con un .xml por comprobante autorizado (nombrado con su clave
+// de acceso) más un resumen.csv - todo en el cliente, sin pasar por ninguna
 // Vercel Function (los signed_xml ya están en el objeto invoice, cargados
-// junto con el resto de la lista en InvoiceManagement.jsx).
+// junto con el resto de la lista en InvoiceManagement.jsx). Facturas y notas
+// de crédito van en subcarpetas separadas (mismo ZIP, mismo resumen.csv con
+// una columna Tipo) para que sea fácil declarar cada una por separado.
 export async function downloadInvoicesXmlZip(invoices, zipFilename) {
   const withXml = invoices.filter(inv => inv.status === 'autorizada' && inv.signed_xml && inv.authorization_number);
   if (withXml.length === 0) {
-    throw new Error('No hay facturas autorizadas con XML en el rango seleccionado');
+    throw new Error('No hay comprobantes autorizados con XML en el rango seleccionado');
   }
 
   const zip = new JSZip();
   withXml.forEach(inv => {
-    zip.file(`${inv.authorization_number}.xml`, inv.signed_xml);
+    const folder = inv.invoice_type === 'nota_credito' ? 'notas_credito' : 'facturas';
+    zip.file(`${folder}/${inv.authorization_number}.xml`, inv.signed_xml);
   });
 
   const summaryRows = withXml.map(inv => ({
+    document_type: inv.invoice_type === 'nota_credito' ? 'Nota de Crédito' : 'Factura',
     invoice_number: inv.invoice_number,
     issue_date: inv.issue_date,
     customer_name: inv.customers?.name || 'Consumidor Final',

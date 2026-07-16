@@ -69,14 +69,23 @@ function accumulate(target, invoice, branchNameById, sign) {
 // reporte de Impuestos/SRI existente en el mismo período - ese es el
 // criterio de aceptación de esta fase.
 //
-// Notas de crédito: invoice_type='nota_credito' todavía no existe en ningún
-// dato real (no hay flujo para emitirlas), pero el cálculo ya las resta de
-// cada total si algún día aparecen - no hace falta tocar este archivo cuando
-// se implemente esa fase, alcanza con que empiecen a insertarse con ese
-// invoice_type.
+// Notas de crédito (Fase 2): 'anulada' esconde del todo una factura que
+// nunca llegó a ser una venta real (cancelada antes de o sin pasar por el
+// SRI). Pero desde que existen las NC, una factura también queda 'anulada'
+// cuando una nota de crédito la salda por completo (ver
+// api/sri/submit-credit-note.js) - esa factura SÍ fue una venta real,
+// declarada ante el SRI en SU propio período (fetchInvoicesForReports filtra
+// por issue_date, cada documento cae en el mes que le corresponde a su
+// propia fecha). Debe seguir contando ahí; es la nota de crédito, con su
+// propia fecha, la que resta en el mes que le toca a ELLA. Se distingue si
+// existe una NC que la referencia (modified_invoice_id), no por el texto de
+// voided_reason.
 export function buildSalesLedger(invoices, branches = []) {
   const branchNameById = new Map(branches.map(b => [b.id, b.name]));
-  const active = invoices.filter(inv => inv.status !== 'anulada');
+  const creditedInvoiceIds = new Set(
+    invoices.filter(inv => inv.invoice_type === 'nota_credito' && inv.modified_invoice_id).map(inv => inv.modified_invoice_id)
+  );
+  const active = invoices.filter(inv => inv.status !== 'anulada' || creditedInvoiceIds.has(inv.id));
   const sales = active.filter(inv => inv.invoice_type !== 'nota_credito');
   const creditNotes = active.filter(inv => inv.invoice_type === 'nota_credito');
 

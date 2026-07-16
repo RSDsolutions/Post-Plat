@@ -132,7 +132,13 @@ function sum(arr, fn) {
 export function buildReportDataset({ invoices, products, users, stockRows }) {
   const productMap = new Map(products.map(p => [p.id, p]));
   const userMap = new Map(users.map(u => [u.id, u]));
-  const activeInvoices = invoices.filter(inv => inv.status !== 'anulada');
+  // activeInvoices alimenta sumas de venta (impuestos, productos, cajeros...)
+  // que no saben restar notas de crédito - a diferencia de accountingHelpers.
+  // buildSalesLedger (que sí las neta con signo), acá simplemente se excluyen
+  // para no contarlas como una venta más con el signo equivocado. Esto
+  // subreporta el efecto de las NC en vez de sumarlo mal; netearlas de verdad
+  // en cada una de las pestañas de Reports.jsx queda fuera de esta fase.
+  const activeInvoices = invoices.filter(inv => inv.status !== 'anulada' && inv.invoice_type !== 'nota_credito');
   return { invoices, activeInvoices, productMap, userMap, stockRows: stockRows || [] };
 }
 

@@ -1,29 +1,7 @@
 import { signXml } from './_xadesSign.js';
 import { generateAccessKey } from './_accessKey.js';
 import { getAuthenticatedUser } from '../_authHelpers.js';
-
-const SRI_URLS = {
-  test: {
-    reception: 'https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl',
-    authorization: 'https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl'
-  },
-  production: {
-    reception: 'https://cel.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline?wsdl',
-    authorization: 'https://cel.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline?wsdl'
-  }
-};
-
-// Tabla 17 SRI - Codigos de porcentaje de IVA (verificar vigencia periodicamente)
-function mapTaxPercentCode(rate) {
-  const r = parseFloat(rate);
-  if (r === 0) return '0';
-  if (r === 12) return '2';
-  if (r === 14) return '3';
-  if (r === 15) return '4';
-  if (r === 5) return '5';
-  if (r === 8) return '8';
-  return '4';
-}
+import { mapTaxPercentCode, loadOpenFactura, submitSignedXmlToSri } from './_sriClient.js';
 
 function mapPaymentMethodToSRI(method) {
   const map = { cash: '01', card: '19', debit: '16', transfer: '20', other: '20' };
@@ -54,21 +32,15 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: 'No autorizado para aprobar facturas de esta empresa' });
   }
 
-  // signXml is our own local implementation (see _xadesSign.js) - open-factura's version
-  // uses `import * as forge from "node-forge"`, which under native Node.js ESM/CJS interop
-  // leaves forge.util/forge.pki/etc. undefined (only works when bundled by esbuild/webpack).
+  // signXml es nuestra propia implementación (ver _xadesSign.js) - la de
+  // open-factura usa `import * as forge from "node-forge"`, que bajo la
+  // interoperabilidad nativa ESM/CJS de Node deja forge.util/forge.pki/etc.
+  // undefined (solo funciona empaquetado por esbuild/webpack).
   let generateInvoiceXml, documentReception, documentAuthorization;
   try {
-    // open-factura's "main" (CJS) entry does require('node-fetch'), but node-fetch v3
-    // is ESM-only, which throws ERR_REQUIRE_ESM. Import the package's .mjs build directly
-    // to bypass Node's CJS "main" resolution (Node ignores the "module" field).
-    const openFactura = await import('open-factura/dist/index.mjs');
-    ({ generateInvoiceXml, documentReception, documentAuthorization } = openFactura);
+    ({ generateInvoiceXml, documentReception, documentAuthorization } = await loadOpenFactura());
   } catch (importError) {
-    console.error('Failed to load open-factura:', importError);
-    return res.status(500).json({
-      error: 'No se pudo cargar el módulo de firma electrónica en el servidor'
-    });
+    return res.status(500).json({ error: importError.message });
   }
 
   try {
@@ -308,12 +280,11 @@ export default async function handler(req, res) {
     const xml = generateInvoiceXml(builtInvoice);
     const signedXml = await signXml(certArrayBuffer, certPassword, xml);
 
-    const urls = isTest ? SRI_URLS.test : SRI_URLS.production;
+    const { received, receptionResult, authStatus: sriAuthStatus, authObj } = await submitSignedXmlToSri({
+      signedXml, accessKey, isTest, documentReception, documentAuthorization
+    });
 
-    const receptionResult = await documentReception(signedXml, urls.reception);
-    const receptionStatus = receptionResult?.RespuestaRecepcionComprobante?.estado || receptionResult?.estado;
-
-    if (receptionStatus !== 'RECIBIDA') {
+    if (!received) {
       await supabase.from('invoices').update({
         status: 'devuelta',
         authorization_number: accessKey,
@@ -323,18 +294,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'El SRI devolvió el comprobante en recepción', detail: receptionResult });
     }
 
-    // El SRI suele tardar unos segundos en autorizar tras recibir el comprobante
-    let authObj = null;
-    let authStatus = 'EN PROCESO';
-    for (let attempt = 0; attempt < 5 && authStatus === 'EN PROCESO'; attempt++) {
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      const authResult = await documentAuthorization(accessKey, urls.authorization);
-      const auth = authResult?.RespuestaAutorizacionComprobante?.autorizaciones?.autorizacion;
-      authObj = Array.isArray(auth) ? auth[0] : auth;
-      authStatus = authObj?.estado || 'EN PROCESO';
-    }
-
-    if (authStatus === 'AUTORIZADO') {
+    if (sriAuthStatus === 'AUTORIZADO') {
       await supabase.from('invoices').update({
         status: 'autorizada',
         authorization_number: accessKey,
@@ -353,10 +313,10 @@ export default async function handler(req, res) {
     await supabase.from('invoices').update({
       status: 'devuelta',
       authorization_number: accessKey,
-      sri_response_message: JSON.stringify(authObj || { estado: authStatus })
+      sri_response_message: JSON.stringify(authObj || { estado: sriAuthStatus })
     }).eq('id', invoiceId);
 
-    return res.status(400).json({ error: `El SRI no autorizó el comprobante (estado: ${authStatus})`, detail: authObj });
+    return res.status(400).json({ error: `El SRI no autorizó el comprobante (estado: ${sriAuthStatus})`, detail: authObj });
   } catch (error) {
     console.error('SRI submission error:', error);
     return res.status(500).json({

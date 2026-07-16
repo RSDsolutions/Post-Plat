@@ -1,4 +1,5 @@
 import { getAuthenticatedUser } from '../_authHelpers.js';
+import { applyCreditNoteAuthorizedEffects } from './_creditNoteEffects.js';
 
 // ---------------------------------------------------------------------------
 // Reconsulta el estado de UNA factura ya recibida por el SRI, sin volver a
@@ -55,7 +56,7 @@ export default async function handler(req, res) {
   try {
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
-      .select('id, status, authorization_number, company_id')
+      .select('id, status, authorization_number, company_id, invoice_type')
       .eq('id', invoiceId)
       .eq('company_id', companyId)
       .single();
@@ -94,10 +95,26 @@ export default async function handler(req, res) {
 
       // Reconsultar y encontrar AUTORIZADO cuenta contra el límite del plan
       // igual que un envío exitoso - submit-invoice.js hace el mismo +1
-      // directo (no hay RPC de incremento atómico en este proyecto).
-      await supabase.from('companies').update({ monthly_comprobantes: (company?.monthly_comprobantes || 0) + 1 }).eq('id', companyId);
+      // directo (no hay RPC de incremento atómico en este proyecto). Las
+      // notas de crédito NO consumen cupo de facturas (decisión de la Fase 4),
+      // así que se excluyen también acá, no solo en submit-credit-note.js.
+      if (invoice.invoice_type !== 'nota_credito') {
+        await supabase.from('companies').update({ monthly_comprobantes: (company?.monthly_comprobantes || 0) + 1 }).eq('id', companyId);
+      }
 
-      return res.status(200).json({ success: true, status: 'autorizada' });
+      // Si esta reconsulta es lo que finalmente autoriza una nota de crédito
+      // (el envío original en submit-credit-note.js quedó 'devuelta' por
+      // timeout mientras el SRI seguía 'EN PROCESO'), hay que disparar los
+      // mismos efectos que se disparan cuando autoriza en el acto: cascada a
+      // anulada si salda el 100% de la factura original, y reingreso de stock.
+      let warnings, originalInvoiceVoided;
+      if (invoice.invoice_type === 'nota_credito') {
+        ({ warnings, originalInvoiceVoided } = await applyCreditNoteAuthorizedEffects({
+          supabase, creditNoteId: invoiceId, companyId, userId: user.id
+        }));
+      }
+
+      return res.status(200).json({ success: true, status: 'autorizada', warnings, originalInvoiceVoided });
     }
 
     await supabase.from('invoices').update({

@@ -93,6 +93,27 @@ Una migración de esa fase (`20260718_add_user_ui_preferences.sql`) agregó `use
 
 ---
 
+## Actualización 2026-07-16 (Fase 2 — Nota de crédito)
+
+### 10. `invoices.issue_date` se declaraba con fecha equivocada al SRI en ventas nocturnas (ALTA — resuelto el punto de escritura; hallazgo relacionado en reportes queda abierto)
+
+Encontrado al probar la Fase 2 contra el SRI de **producción real** (con el certificado de FARMACIA CRUZ AZUL, autorizado explícitamente por el usuario para esta prueba puntual, de bajo valor). Una factura de prueba fue **rechazada por el SRI** con `FECHA EMISION EXTEMPORANEA` ("la fecha de emisión... es mayor a la fecha del servidor").
+
+**Mecanismo:** `invoices.issue_date` es `timestamp without time zone` (como *todas* las columnas de fecha/hora de este esquema — no es un caso aislado). `createInvoice()` en `supabaseHelpers.js` la poblaba con `new Date().toISOString()`, que siempre da la hora en **UTC**. Postgres guarda esa cadena tal cual, sin convertir nada (la columna no sabe de zonas horarias). Al releerla más tarde con `new Date(invoice.issue_date)`, la ausencia del sufijo `"Z"` hace que el motor JS la reinterprete como hora **local** de quien la lee — no de quien la escribió. El resultado depende de en qué huso corre cada lado:
+
+- El navegador del punto de venta (físicamente en Ecuador, UTC-5) escribe correctamente en UTC — pero cualquier venta entre **19:00 y 23:59 hora Ecuador** produce una fecha UTC que ya es "mañana".
+- Vercel (donde corre `api/sri/submit-invoice.js`) corre con `TZ=UTC` por defecto (no hay `TZ` configurada en `vercel.json` ni en ningún `.env`) — al releer esa cadena sin conversión adicional, la fecha "de mañana" queda tal cual y se declara al SRI como `fechaEmision`, dentro de la clave de acceso.
+
+**Por qué no se había notado en producción:** no se encontró ningún comprobante real de FARMACIA CRUZ AZUL rechazado por este motivo — el mecanismo, corriendo enteramente en Vercel (UTC en ambos extremos, escritura y lectura), no vuelve a desplazar la fecha una segunda vez, así que el comprobante nocturno queda con fecha "de mañana" de forma **consistente** en vez de contradictoria, y aparentemente pasó la tolerancia del SRI sin ser rechazado — declarando silenciosamente la fecha civil equivocada (un día adelantada) para ventas de la noche, en vez de ser rechazado. Se intentó correlacionar con el historial real de la empresa: no se encontró ningún comprobante `devuelta` con este mensaje, pero **no se pudo auditar con certeza completa** cuántos comprobantes nocturnos reales quedaron con la fecha civil corrida (evidencia indirecta: al menos una factura vieja en estado `borrador` con indicios de esta corrupción, sin llegar a confirmarse el detalle). La prueba de este hallazgo sí falló de forma reproducible al ejecutarse desde una máquina con huso horario de Ecuador (no UTC) — ahí el desplazamiento se aplica dos veces y el rechazo del SRI fue inmediato y consistente.
+
+**Corregido:** `createInvoice()` ahora arma la marca de tiempo con los getters *locales* de `Date` (`getFullYear/getMonth/getDate/getHours...`), sin pasar por `toISOString()` — el valor guardado representa fielmente la hora de Ecuador tal cual la ve el navegador del punto de venta, sin conversión, y se relee correctamente sin importar si el proceso que la lee corre en UTC (Vercel) o en horario de Ecuador. Reverificado con una factura y una nota de crédito reales, autorizadas de punta a punta por el SRI de producción, incluyendo una venta armada para caer en la ventana de riesgo.
+
+**Hallazgo relacionado, NO corregido en esta fase (fuera de alcance — reportar aparte):** el mismo patrón (`.toISOString()` como límite de un filtro contra una columna `timestamp without time zone`) aparece también en el filtrado por rango de fechas de Reportes/Contabilidad (`Accounting.jsx` pasa `start.toISOString()`/`end.toISOString()` a `fetchInvoicesForReports`). Con `issue_date` ahora guardándose en hora local (no UTC), comparar contra un límite en UTC puede excluir o incluir comprobantes equivocados cerca de la medianoche. No se tocó en esta fase por ser un cambio más amplio, en archivos no relacionados con notas de crédito — queda como ítem propio de la hoja de ruta.
+
+**Corrección sugerida para que no se repita:** dado que *todo* el esquema usa `timestamp without time zone`, cualquier valor que se escriba desde JS debe construirse con getters locales (nunca `toISOString()`) si se espera compararlo o volver a leerlo como hora de Ecuador; y cualquier límite de filtro contra esas columnas debe construirse con el mismo criterio, no con `toISOString()`. Vale la pena una auditoría dedicada de los `timestamp without time zone` que SÍ se escriben desde el cliente (no los `created_at`/`updated_at` con `default now()`, que son de bajo riesgo por ser puramente informativos).
+
+---
+
 ## 1. Seguridad
 
 ### 1.1 Hallazgos críticos

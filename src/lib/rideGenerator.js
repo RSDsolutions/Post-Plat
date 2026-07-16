@@ -30,14 +30,20 @@ function accessKeyBarcode(accessKey) {
 
 // Generates the RIDE (Representación Impresa del Documento Electrónico) as a PDF.
 // Only meaningful for invoices already authorized by the SRI (needs a real
-// authorization_number/date).
+// authorization_number/date). Also used for notas de crédito (invoice.invoice_type
+// === 'nota_credito') - misma plantilla, con el rótulo del recuadro cambiado y
+// un bloque adicional de "comprobante que se modifica" que el SRI exige mostrar
+// en el RIDE de una NC. modifiedInvoice (solo para NC) es la factura original
+// {invoice_number, issue_date} - se resuelve en el caller porque este módulo no
+// hace fetch de datos, solo renderiza lo que recibe.
 //   output = 'save'   -> triggers a browser download (default, unchanged behavior)
 //   output = 'base64' -> returns the PDF as a raw Base64 string (no data-URI
 //                        prefix), for attaching to an email via api/emails/*.
-export async function generateRidePdf({ invoice, details, company, sriEnvironment, output = 'save' }) {
+export async function generateRidePdf({ invoice, details, company, sriEnvironment, modifiedInvoice, output = 'save' }) {
   if (!invoice.authorization_number) {
-    throw new Error('Esta factura aún no tiene autorización del SRI');
+    throw new Error(invoice.invoice_type === 'nota_credito' ? 'Esta nota de crédito aún no tiene autorización del SRI' : 'Esta factura aún no tiene autorización del SRI');
   }
+  const isCreditNote = invoice.invoice_type === 'nota_credito';
 
   const logo = await loadImageAsDataUrl(company?.logo_url);
 
@@ -92,7 +98,7 @@ export async function generateRidePdf({ invoice, details, company, sriEnvironmen
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text('FACTURA', boxX + boxW / 2, boxY + 6, { align: 'center' });
+  doc.text(isCreditNote ? 'NOTA DE CRÉDITO' : 'FACTURA', boxX + boxW / 2, boxY + 6, { align: 'center' });
 
   doc.setTextColor(0, 0, 0);
   doc.setFontSize(8);
@@ -147,6 +153,28 @@ export async function generateRidePdf({ invoice, details, company, sriEnvironmen
   const dateText = `Fecha de Emisión: ${new Date(invoice.issue_date).toLocaleDateString()}`;
   doc.text(dateText, pageWidth - margin - 2 - doc.getTextWidth(dateText), y + 10);
   y += 12 + 6;
+
+  // ---- Comprobante que se modifica (solo notas de crédito) ----
+  if (isCreditNote) {
+    doc.setFillColor(...ACCENT);
+    doc.rect(margin, y, pageWidth - margin * 2, 5.5, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.text('COMPROBANTE QUE SE MODIFICA', margin + 2, y + 3.8);
+    y += 5.5;
+    doc.setDrawColor(...BORDER);
+    const refBoxH = 16;
+    doc.rect(margin, y, pageWidth - margin * 2, refBoxH);
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.text(`Factura No.: ${modifiedInvoice?.invoice_number || '-'}`, margin + 2, y + 5);
+    const fechaSustento = modifiedInvoice?.issue_date ? new Date(modifiedInvoice.issue_date).toLocaleDateString() : '-';
+    doc.text(`Fecha de Emisión: ${fechaSustento}`, margin + 2, y + 10);
+    doc.text(`Motivo: ${invoice.credit_note_reason || '-'}`, margin + 2, y + 15, { maxWidth: pageWidth - margin * 2 - 4 });
+    y += refBoxH + 6;
+  }
 
   // ---- Line items table ----
   const colQty = margin + 2;
@@ -247,5 +275,5 @@ export async function generateRidePdf({ invoice, details, company, sriEnvironmen
     return doc.output('datauristring').split('base64,')[1];
   }
 
-  doc.save(`RIDE_${estab}-${ptoEmi}-${secuencial}.pdf`);
+  doc.save(`RIDE_${isCreditNote ? 'NC_' : ''}${estab}-${ptoEmi}-${secuencial}.pdf`);
 }
