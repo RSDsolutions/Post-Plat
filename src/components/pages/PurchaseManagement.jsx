@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingBag, Plus, Trash2, X, Save, Receipt } from 'lucide-react';
+import { ShoppingBag, Plus, Trash2, X, Save, Receipt, FileCheck2, Loader } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import {
   fetchSuppliers, createSupplier, fetchBranches, fetchRetentionConcepts,
-  createPurchaseWithDetails, fetchPurchases
+  createPurchaseWithDetails, fetchPurchases, submitRetentionToSri, getNextDocumentSequential
 } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
 import Table from '../ui/Table.jsx';
@@ -31,6 +31,7 @@ export default function PurchaseManagement() {
   const [branches, setBranches] = useState([]);
   const [retentionConcepts, setRetentionConcepts] = useState([]);
   const [recentPurchases, setRecentPurchases] = useState([]);
+  const [submittingRetentionId, setSubmittingRetentionId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -204,6 +205,31 @@ export default function PurchaseManagement() {
       showToast('error', error.message || 'Error al registrar la compra');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSubmitRetention = async (purchase) => {
+    setSubmittingRetentionId(purchase.id);
+    try {
+      // El punto de emisión y su secuencial se resuelven acá, con la
+      // sesión real del gerente (mismo patrón que la nota de crédito) - el
+      // de la sucursal de la compra si tiene, si no el primero disponible.
+      const branchPos = branches.find(b => b.id === purchase.branch_id)?.point_of_sales?.[0];
+      const anyPos = branches.flatMap(b => b.point_of_sales || [])[0];
+      const pos = branchPos || anyPos;
+      if (!pos) {
+        showToast('error', 'No hay ningún punto de venta configurado para emitir la retención');
+        return;
+      }
+      const sequential = await getNextDocumentSequential(pos.id, 'comprobante_retencion');
+      const result = await submitRetentionToSri(purchase.id, pos.id, sequential);
+      showToast('success', `Comprobante de retención autorizado (clave de acceso: ${result.accessKey})`);
+      await loadAll();
+    } catch (error) {
+      console.error('Error submitting retention:', error);
+      showToast('error', error.message || 'Error al emitir el comprobante de retención');
+    } finally {
+      setSubmittingRetentionId(null);
     }
   };
 
@@ -532,22 +558,46 @@ export default function PurchaseManagement() {
           </div>
         ) : (
           <Table
-            columns={['Fecha', 'Proveedor', 'Documento', 'Tipo', 'Total', 'Estado']}
+            columns={['Fecha', 'Proveedor', 'Documento', 'Tipo', 'Total', 'Estado', 'Retención']}
             data={recentPurchases}
-            renderRow={(p) => (
-              <tr key={p.id} className="hover:bg-panel-surface-2">
-                <td className="px-4 py-3 text-sm text-panel-text-muted">{p.document_date}</td>
-                <td className="px-4 py-3 font-bold text-panel-text">{p.suppliers?.razon_social}</td>
-                <td className="px-4 py-3 font-mono text-sm text-panel-text-muted">{p.supplier_document_number}</td>
-                <td className="px-4 py-3 text-sm text-panel-text-muted">{DOC_TYPE_LABELS[p.purchase_doc_type] || p.purchase_doc_type}</td>
-                <td className="px-4 py-3 font-bold text-panel-text">{formatUSD(p.total)}</td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs font-bold px-2 py-1 rounded ${p.status === 'registrada' ? 'bg-panel-success/10 text-panel-success' : 'bg-panel-danger/10 text-panel-danger'}`}>
-                    {p.status === 'registrada' ? 'Registrada' : 'Anulada'}
-                  </span>
-                </td>
-              </tr>
-            )}
+            renderRow={(p) => {
+              const retentions = p.purchase_retentions || [];
+              const hasRetentions = retentions.length > 0;
+              const isAuthorized = retentions.some(r => r.retention_sri_status === 'autorizada');
+              const isSubmitting = submittingRetentionId === p.id;
+              return (
+                <tr key={p.id} className="hover:bg-panel-surface-2">
+                  <td className="px-4 py-3 text-sm text-panel-text-muted">{p.document_date}</td>
+                  <td className="px-4 py-3 font-bold text-panel-text">{p.suppliers?.razon_social}</td>
+                  <td className="px-4 py-3 font-mono text-sm text-panel-text-muted">{p.supplier_document_number}</td>
+                  <td className="px-4 py-3 text-sm text-panel-text-muted">{DOC_TYPE_LABELS[p.purchase_doc_type] || p.purchase_doc_type}</td>
+                  <td className="px-4 py-3 font-bold text-panel-text">{formatUSD(p.total)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${p.status === 'registrada' ? 'bg-panel-success/10 text-panel-success' : 'bg-panel-danger/10 text-panel-danger'}`}>
+                      {p.status === 'registrada' ? 'Registrada' : 'Anulada'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {!hasRetentions ? (
+                      <span className="text-xs text-panel-text-muted">Sin retención</span>
+                    ) : isAuthorized ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded bg-panel-success/10 text-panel-success">
+                        <FileCheck2 size={12} /> Autorizada
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleSubmitRetention(p)}
+                        disabled={isSubmitting}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-panel-accent/20 hover:bg-panel-accent/30 disabled:opacity-50 text-panel-accent-soft rounded text-xs font-bold transition-colors"
+                      >
+                        {isSubmitting ? <Loader size={12} className="animate-spin" /> : <FileCheck2 size={12} />}
+                        {isSubmitting ? 'Emitiendo...' : 'Emitir'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            }}
           />
         )}
       </div>

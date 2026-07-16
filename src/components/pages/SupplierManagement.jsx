@@ -10,7 +10,7 @@ const TIPO_CONTRIBUYENTE_LABELS = {
   rimpe: 'RIMPE'
 };
 
-const EMPTY_FORM = { ruc: '', razon_social: '', nombre_comercial: '', direccion: '', telefono: '', email: '', tipo_contribuyente: 'sociedad' };
+const EMPTY_FORM = { ruc: '', razon_social: '', nombre_comercial: '', direccion: '', telefono: '', email: '', tipo_contribuyente: 'sociedad', es_parte_relacionada: false };
 
 export default function SupplierManagement() {
   const { currentUser, showToast, can } = useStore();
@@ -60,6 +60,7 @@ export default function SupplierManagement() {
       telefono: supplier.telefono || '',
       email: supplier.email || '',
       tipo_contribuyente: supplier.tipo_contribuyente,
+      es_parte_relacionada: supplier.es_parte_relacionada || false,
       is_active: supplier.is_active
     });
   };
@@ -206,6 +207,15 @@ export default function SupplierManagement() {
                   </select>
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-sm text-panel-text-muted cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newSupplier.es_parte_relacionada}
+                  onChange={(e) => setNewSupplier({ ...newSupplier, es_parte_relacionada: e.target.checked })}
+                  className="rounded border-panel-border"
+                />
+                Es parte relacionada (para fines tributarios)
+              </label>
               <div>
                 <label className="block text-xs font-bold text-panel-text-muted mb-2">Razón Social (Requerido)</label>
                 <input
@@ -305,6 +315,15 @@ export default function SupplierManagement() {
                   <option value="rimpe">RIMPE</option>
                 </select>
               </div>
+              <label className="flex items-center gap-2 text-sm text-panel-text-muted cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editForm.es_parte_relacionada}
+                  onChange={(e) => setEditForm({ ...editForm, es_parte_relacionada: e.target.checked })}
+                  className="rounded border-panel-border"
+                />
+                Es parte relacionada (para fines tributarios)
+              </label>
               <div>
                 <label className="block text-xs font-bold text-panel-text-muted mb-2">Razón Social</label>
                 <input

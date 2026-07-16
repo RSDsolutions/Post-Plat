@@ -1118,7 +1118,8 @@ export async function createSupplier(supplierData) {
       direccion: supplierData.direccion || null,
       telefono: supplierData.telefono || null,
       email: supplierData.email || null,
-      tipo_contribuyente: supplierData.tipo_contribuyente
+      tipo_contribuyente: supplierData.tipo_contribuyente,
+      es_parte_relacionada: supplierData.es_parte_relacionada || false
     }])
     .select()
     .single();
@@ -1140,6 +1141,7 @@ export async function updateSupplier(supplierId, supplierData) {
       telefono: supplierData.telefono || null,
       email: supplierData.email || null,
       tipo_contribuyente: supplierData.tipo_contribuyente,
+      es_parte_relacionada: supplierData.es_parte_relacionada || false,
       is_active: supplierData.is_active
     })
     .eq('id', supplierId)
@@ -1191,7 +1193,7 @@ export async function createRetentionConcept(conceptData) {
 export async function fetchPurchases(companyId) {
   const { data, error } = await supabase
     .from('purchases')
-    .select('*, suppliers(razon_social, ruc), branches(name)')
+    .select('*, suppliers(razon_social, ruc), branches(name), purchase_retentions(id, retention_sri_status)')
     .eq('company_id', companyId)
     .order('document_date', { ascending: false });
 
@@ -1515,6 +1517,35 @@ export async function submitCreditNoteToSRI(invoiceId) {
 
   if (!response.ok) {
     const error = new Error(result.error || 'Error al enviar la nota de crédito al SRI');
+    error.detail = result.detail;
+    throw error;
+  }
+
+  return result;
+}
+
+// pointOfSaleId/sequential deben resolverse ANTES de llamar esto, con la
+// sesión real del gerente (getNextDocumentSequential) - el endpoint corre
+// con service_role y no puede resolverlos él mismo (current_company_id()
+// depende de auth.uid(), que no existe en ese contexto). Mismo patrón que
+// ya usa la nota de crédito en InvoiceManagement.jsx.
+export async function submitRetentionToSri(purchaseId, pointOfSaleId, sequential) {
+  const response = await fetch('/api/sri/submit-retention', {
+    method: 'POST',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ purchaseId, pointOfSaleId, sequential })
+  });
+
+  const rawText = await response.text();
+  let result;
+  try {
+    result = JSON.parse(rawText);
+  } catch {
+    throw new Error(`El servidor no respondió correctamente (status ${response.status}). Respuesta: ${rawText.slice(0, 300)}`);
+  }
+
+  if (!response.ok) {
+    const error = new Error(result.error || 'Error al enviar el comprobante de retención al SRI');
     error.detail = result.detail;
     throw error;
   }
