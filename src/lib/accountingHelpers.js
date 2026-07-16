@@ -14,7 +14,7 @@ import { STATUS_LABELS, PAYMENT_METHOD_LABELS } from './reportsHelpers.js';
 // reportes cuadren siempre (no solo cuando las líneas casualmente coinciden
 // con la cabecera). El tax_percent de cada línea solo decide qué fracción de
 // esa base es 0% vs gravada.
-function splitInvoiceByTaxRate(invoice) {
+export function splitInvoiceByTaxRate(invoice) {
   const invoiceBase = Number(invoice.subtotal) || 0;
   const invoiceIva = Number(invoice.tax_amount) || 0;
   const details = invoice.invoice_details || [];
