@@ -1,12 +1,28 @@
 import React, { useState, useEffect } from 'react';
-import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus, Trash2, Loader, MapPin, Lock } from 'lucide-react';
+import { Package, AlertTriangle, Edit2, Tag, Percent, X, Save, Info, Plus, Trash2, Loader, MapPin, Lock, ArrowLeftRight, PackagePlus, Download, History } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { createProduct, updateProduct, deleteProduct, getBillingConfig, fetchBranches, fetchProductStock, fetchProductStockAllBranches, upsertProductStock, fetchCompanyFeatureOverrides } from '../../lib/supabaseHelpers.js';
+import { createProduct, updateProduct, deleteProduct, getBillingConfig, fetchBranches, fetchProductStock, fetchProductStockAllBranches, updateProductMinStock, adjustProductStock, transferStock, fetchInventoryMovements, fetchCompanyFeatureOverrides } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
+import Tabs from '../ui/Tabs.jsx';
 import { formatUSD } from '../../lib/format.js';
+import { formatDateTime } from '../../lib/reportsHelpers.js';
+import { downloadReportCsv } from '../../lib/csvExport.js';
 import { checkLimit, limitReachedMessage, hasFeature } from '../../lib/planLimits.js';
 
 const ALL_BRANCHES = 'all';
+
+const INVENTORY_TABS = [
+  { id: 'products', label: 'Productos', permission: null },
+  { id: 'kardex', label: 'Kardex', permission: null }
+];
+
+const MOVEMENT_TYPE_LABELS = {
+  venta: 'Venta',
+  nota_credito_reingreso: 'Reingreso (Nota de Crédito)',
+  ajuste_manual: 'Ajuste Manual',
+  transferencia_salida: 'Transferencia (Salida)',
+  transferencia_entrada: 'Transferencia (Entrada)'
+};
 
 export default function InventoryManagement() {
   const { currentUser, showToast, companies, plans, can } = useStore();
@@ -35,6 +51,22 @@ export default function InventoryManagement() {
     promotion: ''
   });
   const [taxRate, setTaxRate] = useState(12);
+  const [tab, setTab] = useState('products');
+
+  // Ajuste manual de stock (permiso inventory.write, solo gerente).
+  const [adjustingProduct, setAdjustingProduct] = useState(null);
+  const [adjustForm, setAdjustForm] = useState({ direction: 'entrada', quantity: '', reason: '' });
+  const [adjustSubmitting, setAdjustSubmitting] = useState(false);
+
+  // Transferencia entre sucursales (permiso inventory.write, solo gerente).
+  const [transferringProduct, setTransferringProduct] = useState(null);
+  const [transferForm, setTransferForm] = useState({ toBranchId: '', quantity: '', notes: '' });
+  const [transferSubmitting, setTransferSubmitting] = useState(false);
+
+  // Kardex
+  const [kardexProductId, setKardexProductId] = useState('');
+  const [kardexMovements, setKardexMovements] = useState([]);
+  const [kardexLoading, setKardexLoading] = useState(false);
 
   const isAllBranches = selectedBranchId === ALL_BRANCHES;
 
@@ -89,10 +121,69 @@ export default function InventoryManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBranchId]);
 
+  useEffect(() => {
+    const loadKardex = async () => {
+      if (!kardexProductId || !currentUser?.company_id) {
+        setKardexMovements([]);
+        return;
+      }
+      setKardexLoading(true);
+      try {
+        const data = await fetchInventoryMovements({
+          companyId: currentUser.company_id,
+          productId: kardexProductId,
+          branchId: isAllBranches ? null : selectedBranchId
+        });
+        setKardexMovements(data);
+      } catch (error) {
+        console.error('Error:', error);
+        showToast('error', 'Error al cargar el kardex');
+      } finally {
+        setKardexLoading(false);
+      }
+    };
+    if (tab === 'kardex') loadKardex();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, kardexProductId, selectedBranchId]);
+
   const categories = [...new Set(products.map(p => p.category))];
   const filtered = filterCategory === 'all' ? products : products.filter(p => p.category === filterCategory);
   const lowStock = filtered.filter(p => p.quantity <= p.min_stock);
   const totalValue = filtered.reduce((sum, p) => sum + (p.sale_price * p.quantity), 0);
+
+  // Saldo corrida: kardexMovements ya viene ordenado ascendente (más viejo
+  // primero) desde fetchInventoryMovements, así que sumar en ese orden y
+  // recién después invertir para mostrar más reciente arriba es lo que
+  // garantiza que el último saldo calculado coincida con product_stock.
+  let runningBalance = 0;
+  const kardexRows = kardexMovements.map(m => {
+    runningBalance += parseFloat(m.quantity);
+    return { ...m, balance: runningBalance };
+  });
+  const kardexRowsDisplay = [...kardexRows].reverse();
+
+  const handleExportKardexCsv = () => {
+    const product = products.find(p => p.id === kardexProductId);
+    const columns = [
+      { key: 'created_at', label: 'Fecha', format: 'datetime' },
+      { key: 'branch_name', label: 'Sucursal' },
+      { key: 'type_label', label: 'Tipo' },
+      { key: 'quantity', label: 'Cantidad', format: 'number' },
+      { key: 'balance', label: 'Saldo', format: 'number' },
+      { key: 'user_name', label: 'Usuario' },
+      { key: 'notes', label: 'Notas' }
+    ];
+    const rows = kardexRowsDisplay.map(m => ({
+      created_at: m.created_at,
+      branch_name: m.branches?.name || '',
+      type_label: MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type,
+      quantity: m.quantity,
+      balance: m.balance,
+      user_name: m.users?.name || '',
+      notes: m.notes || ''
+    }));
+    downloadReportCsv(`kardex_${product?.code || 'producto'}.csv`, columns, rows);
+  };
 
   const openEdit = (product) => {
     setEditingProduct(product);
@@ -102,9 +193,87 @@ export default function InventoryManagement() {
       priceIncludesVat: product.price_includes_vat !== false,
       discount: product.discount || 0,
       promotion: product.promotion || '',
-      quantity: product.quantity,
       minStock: product.min_stock
     });
+  };
+
+  const openAdjust = (product) => {
+    setAdjustingProduct(product);
+    setAdjustForm({ direction: 'entrada', quantity: '', reason: '' });
+  };
+
+  const handleAdjustStock = async () => {
+    if (!adjustingProduct || isAllBranches) return;
+    const qty = parseFloat(adjustForm.quantity);
+    if (!qty || qty <= 0) {
+      showToast('error', 'Ingresa una cantidad mayor a 0');
+      return;
+    }
+    if (!adjustForm.reason.trim()) {
+      showToast('error', 'Indica un motivo para el ajuste');
+      return;
+    }
+
+    setAdjustSubmitting(true);
+    try {
+      const delta = adjustForm.direction === 'entrada' ? qty : -qty;
+      const result = await adjustProductStock({
+        productId: adjustingProduct.id,
+        branchId: selectedBranchId,
+        delta,
+        movementType: 'ajuste_manual',
+        notes: adjustForm.reason.trim()
+      });
+      await loadProducts(selectedBranchId);
+      if (result && Math.abs(result.applied_delta) < Math.abs(delta)) {
+        showToast('warning', `Ajuste recortado: se restaron ${Math.abs(result.applied_delta)} de ${qty} solicitadas (no había suficiente stock)`);
+      } else {
+        showToast('success', `Stock ajustado: ${delta > 0 ? '+' : ''}${delta} unidades`);
+      }
+      setAdjustingProduct(null);
+    } catch (error) {
+      console.error('Error adjusting stock:', error);
+      showToast('error', error.message || 'Error al ajustar stock');
+    } finally {
+      setAdjustSubmitting(false);
+    }
+  };
+
+  const openTransfer = (product) => {
+    setTransferringProduct(product);
+    setTransferForm({ toBranchId: branches.find(b => b.id !== selectedBranchId)?.id || '', quantity: '', notes: '' });
+  };
+
+  const handleTransferStock = async () => {
+    if (!transferringProduct || isAllBranches) return;
+    const qty = parseFloat(transferForm.quantity);
+    if (!qty || qty <= 0) {
+      showToast('error', 'Ingresa una cantidad mayor a 0');
+      return;
+    }
+    if (!transferForm.toBranchId) {
+      showToast('error', 'Selecciona la sucursal de destino');
+      return;
+    }
+
+    setTransferSubmitting(true);
+    try {
+      await transferStock({
+        productId: transferringProduct.id,
+        fromBranchId: selectedBranchId,
+        toBranchId: transferForm.toBranchId,
+        quantity: qty,
+        notes: transferForm.notes.trim() || null
+      });
+      await loadProducts(selectedBranchId);
+      showToast('success', `Se transfirieron ${qty} unidades de "${transferringProduct.name}"`);
+      setTransferringProduct(null);
+    } catch (error) {
+      console.error('Error transferring stock:', error);
+      showToast('error', error.message || 'Error al transferir stock');
+    } finally {
+      setTransferSubmitting(false);
+    }
   };
 
   const getPriceWithoutVat = (price, includesVat) => {
@@ -188,10 +357,9 @@ export default function InventoryManagement() {
       });
 
       if (!isAllBranches) {
-        await upsertProductStock({
+        await updateProductMinStock({
           productId: editingProduct.id,
           branchId: selectedBranchId,
-          quantity: parseInt(editForm.quantity),
           minStock: parseInt(editForm.minStock)
         });
       }
@@ -251,6 +419,12 @@ export default function InventoryManagement() {
         ))}
       </div>
 
+      <div className="bg-panel-surface border border-panel-border rounded-2xl overflow-hidden">
+        <Tabs tabs={INVENTORY_TABS} activeTab={tab} onTabChange={setTab} />
+      </div>
+
+      {tab === 'products' && (
+      <>
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-panel-surface rounded-xl border border-panel-border p-4">
@@ -313,7 +487,7 @@ export default function InventoryManagement() {
       <div className="bg-panel-surface rounded-2xl border border-panel-border overflow-hidden">
         {!loading ? (
           <Table
-            columns={['Código', 'Producto', 'Categoría', 'Stock', 'Precio', 'Descuento', 'Promoción', 'Editar', 'Eliminar']}
+            columns={['Código', 'Producto', 'Categoría', 'Stock', 'Precio', 'Descuento', 'Promoción', 'Editar', 'Eliminar', 'Ajustar', 'Transferir']}
             data={filtered}
             renderRow={(product) => {
               const isLowStock = product.quantity <= product.min_stock;
@@ -376,6 +550,32 @@ export default function InventoryManagement() {
                       </button>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    {can('inventory.write') && (
+                      <button
+                        onClick={() => isAllBranches ? showToast('warning', 'Selecciona una sucursal específica para ajustar stock') : openAdjust(product)}
+                        disabled={isAllBranches}
+                        title={isAllBranches ? 'Selecciona una sucursal específica primero' : ''}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-panel-accent/20 hover:bg-panel-accent/30 disabled:opacity-40 disabled:cursor-not-allowed text-panel-accent-soft rounded text-xs font-bold transition-colors"
+                      >
+                        <PackagePlus size={14} />
+                        Ajustar
+                      </button>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {can('inventory.write') && (
+                      <button
+                        onClick={() => isAllBranches ? showToast('warning', 'Selecciona una sucursal específica para transferir stock') : openTransfer(product)}
+                        disabled={isAllBranches || branches.length < 2}
+                        title={isAllBranches ? 'Selecciona una sucursal específica primero' : branches.length < 2 ? 'Necesitas al menos 2 sucursales' : ''}
+                        className="inline-flex items-center gap-1 px-3 py-1 bg-panel-accent/20 hover:bg-panel-accent/30 disabled:opacity-40 disabled:cursor-not-allowed text-panel-accent-soft rounded text-xs font-bold transition-colors"
+                      >
+                        <ArrowLeftRight size={14} />
+                        Transferir
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             }}
@@ -384,6 +584,68 @@ export default function InventoryManagement() {
           <div className="p-8 text-center text-panel-text-muted">Cargando...</div>
         )}
       </div>
+      </>
+      )}
+
+      {tab === 'kardex' && (
+        <div className="bg-panel-surface rounded-2xl border border-panel-border p-4 sm:p-6 space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
+            <div className="flex-1 max-w-md">
+              <label className="block text-xs font-bold text-panel-text-muted mb-2">Producto</label>
+              <select
+                value={kardexProductId}
+                onChange={(e) => setKardexProductId(e.target.value)}
+                className="w-full bg-panel-surface-2 border border-panel-border rounded-lg px-4 py-2 text-panel-text"
+              >
+                <option value="">Selecciona un producto...</option>
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+                ))}
+              </select>
+            </div>
+            {kardexProductId && kardexRows.length > 0 && (
+              <button
+                onClick={handleExportKardexCsv}
+                className="bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-2 px-4 rounded-lg flex items-center gap-2 transition-colors border border-panel-border"
+              >
+                <Download size={16} />
+                Exportar CSV
+              </button>
+            )}
+          </div>
+
+          {!kardexProductId ? (
+            <div className="p-8 text-center text-panel-text-muted flex flex-col items-center gap-2">
+              <History size={32} className="opacity-50" />
+              Selecciona un producto para ver su historial de movimientos
+            </div>
+          ) : kardexLoading ? (
+            <div className="p-8 text-center text-panel-text-muted">Cargando...</div>
+          ) : kardexRows.length === 0 ? (
+            <div className="p-8 text-center text-panel-text-muted">Este producto no tiene movimientos registrados{!isAllBranches ? ' en esta sucursal' : ''}.</div>
+          ) : (
+            <div className="rounded-xl border border-panel-border overflow-hidden">
+              <Table
+                columns={['Fecha', 'Sucursal', 'Tipo', 'Cantidad', 'Saldo', 'Usuario', 'Notas']}
+                data={kardexRowsDisplay}
+                renderRow={(m) => (
+                  <tr key={m.id} className="hover:bg-panel-surface-2">
+                    <td className="px-4 py-3 text-sm text-panel-text-muted whitespace-nowrap">{formatDateTime(m.created_at)}</td>
+                    <td className="px-4 py-3 text-sm text-panel-text-muted">{m.branches?.name || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-panel-text">{MOVEMENT_TYPE_LABELS[m.movement_type] || m.movement_type}</td>
+                    <td className={`px-4 py-3 font-bold ${parseFloat(m.quantity) >= 0 ? 'text-panel-success' : 'text-panel-danger'}`}>
+                      {parseFloat(m.quantity) > 0 ? '+' : ''}{m.quantity}
+                    </td>
+                    <td className="px-4 py-3 font-bold text-panel-text">{m.balance}</td>
+                    <td className="px-4 py-3 text-sm text-panel-text-muted">{m.users?.name || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-panel-text-muted max-w-xs truncate" title={m.notes || ''}>{m.notes || '-'}</td>
+                  </tr>
+                )}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Edit Modal */}
       {editingProduct && (
@@ -428,13 +690,9 @@ export default function InventoryManagement() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-bold text-panel-text-muted mb-2">Cantidad Actual</label>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editForm.quantity}
-                        onChange={(e) => setEditForm({...editForm, quantity: e.target.value})}
-                        className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
-                      />
+                      <div className="w-full bg-panel-bg/50 border border-panel-border rounded px-3 py-2 text-panel-text-muted">
+                        {editingProduct.quantity} <span className="text-xs">(usa "Ajustar" en la tabla para cambiarla)</span>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-panel-text-muted mb-2">Stock Mínimo</label>
@@ -826,6 +1084,171 @@ export default function InventoryManagement() {
               >
                 <Plus size={18} />
                 Agregar Producto
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Adjust Stock Modal */}
+      {adjustingProduct && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-panel-text">Ajustar Stock</h2>
+              <button onClick={() => setAdjustingProduct(null)} className="text-panel-text-muted hover:text-panel-text">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-panel-bg/50 rounded-lg border border-panel-border">
+              <div className="font-bold text-panel-text">{adjustingProduct.name}</div>
+              <div className="text-xs text-panel-text-muted">
+                Stock actual: {adjustingProduct.quantity} - {branches.find(b => b.id === selectedBranchId)?.name}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Tipo de Ajuste</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setAdjustForm({ ...adjustForm, direction: 'entrada' })}
+                    className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
+                      adjustForm.direction === 'entrada'
+                        ? 'bg-panel-accent text-panel-accent-text'
+                        : 'bg-panel-surface-2 text-panel-text-muted hover:bg-panel-text/10'
+                    }`}
+                  >
+                    Entrada (+)
+                  </button>
+                  <button
+                    onClick={() => setAdjustForm({ ...adjustForm, direction: 'salida' })}
+                    className={`flex-1 py-2 px-3 rounded font-bold text-sm transition-all ${
+                      adjustForm.direction === 'salida'
+                        ? 'bg-panel-accent text-panel-accent-text'
+                        : 'bg-panel-surface-2 text-panel-text-muted hover:bg-panel-text/10'
+                    }`}
+                  >
+                    Salida (-)
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Cantidad</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={adjustForm.quantity}
+                  onChange={(e) => setAdjustForm({ ...adjustForm, quantity: e.target.value })}
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Motivo (Requerido)</label>
+                <input
+                  type="text"
+                  placeholder="Ej: Conteo físico, producto dañado, ajuste inicial..."
+                  value={adjustForm.reason}
+                  onChange={(e) => setAdjustForm({ ...adjustForm, reason: e.target.value })}
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 border-t border-panel-border pt-4 mt-6">
+              <button
+                onClick={() => setAdjustingProduct(null)}
+                disabled={adjustSubmitting}
+                className="flex-1 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-2 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleAdjustStock}
+                disabled={adjustSubmitting}
+                className="flex-1 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {adjustSubmitting ? <Loader size={18} className="animate-spin" /> : <Save size={18} />}
+                Guardar Ajuste
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Stock Modal */}
+      {transferringProduct && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-panel-surface border border-panel-border rounded-2xl p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-panel-text">Transferir Stock</h2>
+              <button onClick={() => setTransferringProduct(null)} className="text-panel-text-muted hover:text-panel-text">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="mb-4 p-3 bg-panel-bg/50 rounded-lg border border-panel-border">
+              <div className="font-bold text-panel-text">{transferringProduct.name}</div>
+              <div className="text-xs text-panel-text-muted">
+                Stock actual: {transferringProduct.quantity} - {branches.find(b => b.id === selectedBranchId)?.name}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Sucursal de Destino</label>
+                <select
+                  value={transferForm.toBranchId}
+                  onChange={(e) => setTransferForm({ ...transferForm, toBranchId: e.target.value })}
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
+                >
+                  {branches.filter(b => b.id !== selectedBranchId).map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Cantidad</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={transferForm.quantity}
+                  onChange={(e) => setTransferForm({ ...transferForm, quantity: e.target.value })}
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text"
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-panel-text-muted mb-2">Notas (Opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ej: Reabastecimiento, redistribución de temporada..."
+                  value={transferForm.notes}
+                  onChange={(e) => setTransferForm({ ...transferForm, notes: e.target.value })}
+                  className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 border-t border-panel-border pt-4 mt-6">
+              <button
+                onClick={() => setTransferringProduct(null)}
+                disabled={transferSubmitting}
+                className="flex-1 bg-panel-surface-2 hover:bg-panel-text/10 text-panel-text font-bold py-2 rounded-lg transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleTransferStock}
+                disabled={transferSubmitting}
+                className="flex-1 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {transferSubmitting ? <Loader size={18} className="animate-spin" /> : <ArrowLeftRight size={18} />}
+                Transferir
               </button>
             </div>
           </div>

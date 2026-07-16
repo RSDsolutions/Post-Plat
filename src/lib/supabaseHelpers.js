@@ -462,13 +462,16 @@ export async function fetchProductStockAllBranches(companyId) {
   });
 }
 
-export async function upsertProductStock({ productId, branchId, quantity, minStock }) {
+// Solo toca min_stock (el umbral de "stock bajo") - la cantidad real ya no
+// se edita como upsert crudo, ver adjustProductStock más abajo. Separar los
+// dos evita que alguien pise una cantidad ajustada por otra vía al mismo
+// tiempo (upsert no es atómico ni queda auditado en el kardex).
+export async function updateProductMinStock({ productId, branchId, minStock }) {
   const { data, error } = await supabase
     .from('product_stock')
     .upsert([{
       product_id: productId,
       branch_id: branchId,
-      quantity: parseInt(quantity) || 0,
       min_stock: parseInt(minStock) || 0,
       updated_at: new Date().toISOString()
     }], { onConflict: 'product_id,branch_id' })
@@ -479,28 +482,60 @@ export async function upsertProductStock({ productId, branchId, quantity, minSto
   return data;
 }
 
-// Deducts sold quantity from a branch's stock at sale time (read-then-write,
-// same pattern as getNextInvoiceSequential/getNextPosSequential - this app
-// has no atomic counters anywhere, so this isn't a new risk class). Floors
-// at 0 instead of going negative if stock was already short.
-export async function decrementProductStock(productId, branchId, amount) {
-  const { data: current, error: fetchError } = await supabase
-    .from('product_stock')
-    .select('quantity')
-    .eq('product_id', productId)
-    .eq('branch_id', branchId)
-    .maybeSingle();
+// Único camino para tocar product_stock.quantity (Fase 6 - kardex): la RPC
+// adjust_product_stock es atómica (SELECT...FOR UPDATE) y deja un
+// inventory_movements por cada llamada, con el delta REALMENTE aplicado
+// (recortado a 0 como mínimo) - nunca el solicitado, así el saldo del
+// kardex nunca diverge de product_stock. Reemplaza los upserts sueltos que
+// tenían decrementProductStock (POS) y restockProduct (notas de crédito).
+export async function adjustProductStock({ productId, branchId, delta, movementType, referenceId = null, referenceType = null, notes = null }) {
+  const { data, error } = await supabase.rpc('adjust_product_stock', {
+    p_product_id: productId,
+    p_branch_id: branchId,
+    p_delta: delta,
+    p_movement_type: movementType,
+    p_reference_id: referenceId,
+    p_reference_type: referenceType,
+    p_notes: notes
+  });
 
-  if (fetchError) throw new Error(fetchError.message);
+  if (error) throw new Error(`Error ajustando inventario: ${error.message}`);
+  return data?.[0] || null; // { new_quantity, applied_delta }
+}
 
-  const newQuantity = Math.max(0, (current?.quantity || 0) - amount);
+// Transferencia atómica entre sucursales (dos movimientos que comparten
+// transfer_id, todo o nada - ver la función en la migración de Fase 6).
+export async function transferStock({ productId, fromBranchId, toBranchId, quantity, notes = null }) {
+  const { data, error } = await supabase.rpc('transfer_stock', {
+    p_product_id: productId,
+    p_from_branch_id: fromBranchId,
+    p_to_branch_id: toBranchId,
+    p_quantity: quantity,
+    p_notes: notes
+  });
 
-  const { error } = await supabase
-    .from('product_stock')
-    .upsert([{ product_id: productId, branch_id: branchId, quantity: newQuantity, updated_at: new Date().toISOString() }], { onConflict: 'product_id,branch_id' });
+  if (error) throw new Error(`Error transfiriendo stock: ${error.message}`);
+  return data?.[0] || null; // { transfer_id, from_new_quantity, to_new_quantity }
+}
 
-  if (error) throw new Error(`Error updating stock: ${error.message}`);
-  return newQuantity;
+// Historial de movimientos (kardex) de un producto en una sucursal, más
+// viejo primero - así el balance corrida se puede calcular sumando en
+// orden en el cliente sin necesitar una función de ventana en SQL.
+export async function fetchInventoryMovements({ companyId, productId = null, branchId = null, startDate = null, endDate = null, limit = 500 }) {
+  let query = supabase
+    .from('inventory_movements')
+    .select('*, products(code, name), branches(name), users(name)')
+    .eq('company_id', companyId);
+
+  if (productId) query = query.eq('product_id', productId);
+  if (branchId) query = query.eq('branch_id', branchId);
+  if (startDate) query = query.gte('created_at', startDate);
+  if (endDate) query = query.lte('created_at', endDate);
+
+  const { data, error } = await query.order('created_at', { ascending: true }).limit(limit);
+
+  if (error) throw new Error(`Error cargando movimientos de inventario: ${error.message}`);
+  return data || [];
 }
 
 // Subscriptions & Plans

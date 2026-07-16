@@ -1,8 +1,8 @@
 // Efectos que deben aplicarse una vez que una nota de crédito queda
 // AUTORIZADA de verdad ante el SRI: si salda el 100% de la factura original,
 // anularla; si el gerente pidió reingresar stock, hacerlo; en ambos casos
-// dejar un movimiento en inventory_movements (best-effort). Se llama tanto
-// desde submit-credit-note.js (cuando el SRI autoriza en el acto) como desde
+// dejar un movimiento en inventory_movements. Se llama tanto desde
+// submit-credit-note.js (cuando el SRI autoriza en el acto) como desde
 // reconcile-invoice.js (cuando una NC quedó 'devuelta' por timeout y se
 // autoriza después, al reconsultar) - sin este módulo compartido, una NC que
 // tarda en autorizarse nunca dispara la cascada ni el reingreso de stock.
@@ -12,21 +12,23 @@
 // qué endpoint la autorizó.
 const AMOUNT_EPSILON = 0.01;
 
-async function restockProduct(supabase, productId, branchId, amount) {
-  const { data: current, error: fetchError } = await supabase
-    .from('product_stock')
-    .select('quantity')
-    .eq('product_id', productId)
-    .eq('branch_id', branchId)
-    .maybeSingle();
-
-  if (fetchError) throw new Error(fetchError.message);
-
-  const newQuantity = (current?.quantity || 0) + amount;
-
-  const { error } = await supabase
-    .from('product_stock')
-    .upsert([{ product_id: productId, branch_id: branchId, quantity: newQuantity, updated_at: new Date().toISOString() }], { onConflict: 'product_id,branch_id' });
+// Reingresa stock y deja el movimiento en un solo paso atómico vía la RPC
+// de Fase 6 (adjust_product_stock) - reemplaza el upsert + insert separados
+// que tenía esta función antes, que podían dejar el kardex desincronizado
+// de product_stock si el segundo paso fallaba. Este endpoint corre con
+// service_role (sin JWT de usuario), así que auth.uid() es NULL dentro de
+// la RPC - ese caso ya está contemplado ahí como "llamado de confianza".
+async function restockProduct(supabase, productId, branchId, amount, creditNoteId, notes, actingUserId) {
+  const { error } = await supabase.rpc('adjust_product_stock', {
+    p_product_id: productId,
+    p_branch_id: branchId,
+    p_delta: amount,
+    p_movement_type: 'nota_credito_reingreso',
+    p_reference_id: creditNoteId,
+    p_reference_type: 'invoice',
+    p_notes: notes,
+    p_acting_user_id: actingUserId
+  });
 
   if (error) throw new Error(error.message);
 }
@@ -96,24 +98,13 @@ export async function applyCreditNoteAuthorizedEffects({ supabase, creditNoteId,
         for (const d of details || []) {
           if (!d.product_id) continue;
           try {
-            await restockProduct(supabase, d.product_id, branchId, parseFloat(d.quantity));
+            await restockProduct(
+              supabase, d.product_id, branchId, parseFloat(d.quantity), creditNote.id,
+              `Reingreso por nota de crédito ${creditNote.invoice_number} sobre factura ${originalInvoice.invoice_number}`,
+              userId
+            );
           } catch (stockError) {
             warnings.push(`No se pudo reingresar stock de "${d.product_name}": ${stockError.message}`);
-            continue;
-          }
-          try {
-            await supabase.from('inventory_movements').insert([{
-              company_id: companyId,
-              product_id: d.product_id,
-              movement_type: 'nota_credito_reingreso',
-              quantity: parseFloat(d.quantity),
-              reference_id: creditNote.id,
-              reference_type: 'invoice',
-              user_id: userId,
-              notes: `Reingreso por nota de crédito ${creditNote.invoice_number} sobre factura ${originalInvoice.invoice_number}`
-            }]);
-          } catch (movementError) {
-            console.error('No se pudo registrar el movimiento de inventario (no crítico):', movementError);
           }
         }
       }

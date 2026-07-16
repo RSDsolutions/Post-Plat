@@ -5,7 +5,7 @@ import {
   PauseCircle, Printer, X, Tag, Loader2, UserCheck
 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { createInvoice, createInvoiceDetail, getBillingConfig, fetchCompanyById, findOrCreateCustomer, findCustomerByIdentification, updateCustomer, resolveCashierPointOfSale, getNextPosSequential, fetchProductStock, decrementProductStock } from '../../lib/supabaseHelpers.js';
+import { createInvoice, createInvoiceDetail, getBillingConfig, fetchCompanyById, findOrCreateCustomer, findCustomerByIdentification, updateCustomer, resolveCashierPointOfSale, getNextPosSequential, fetchProductStock, adjustProductStock } from '../../lib/supabaseHelpers.js';
 import { formatUSD } from '../../lib/format.js';
 import { generateAccessKey } from '../../lib/invoiceUtils.js';
 import { generateSaleReceipt } from '../../lib/receiptGenerator.js';
@@ -539,7 +539,14 @@ export default function POSInterface() {
           total: itemTotal
         });
 
-        await decrementProductStock(item.id, posContext.branch.id, item.quantity);
+        await adjustProductStock({
+          productId: item.id,
+          branchId: posContext.branch.id,
+          delta: -item.quantity,
+          movementType: 'venta',
+          referenceId: invoice.id,
+          referenceType: 'invoice'
+        });
 
         receiptItems.push({
           name: item.name,
@@ -552,7 +559,7 @@ export default function POSInterface() {
       }
 
       // Reflect the stock just deducted without waiting for a full reload -
-      // decrementProductStock already persisted this server-side per item.
+      // adjustProductStock already persisted this server-side per item.
       setProducts(prev => prev.map(p => {
         const cartItem = cart.find(c => c.id === p.id);
         return cartItem ? { ...p, quantity: Math.max(0, p.quantity - cartItem.quantity) } : p;

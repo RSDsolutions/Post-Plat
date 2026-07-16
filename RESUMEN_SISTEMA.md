@@ -77,7 +77,7 @@ Existe también una tabla legada `admin_users` (1 fila) — de una versión ante
 |---|---|
 | `gerente` | Todos (23) |
 | `vendedor` / `operario` | `pos.operate`, `products.read`, `customers.read`, `customers.write`, `cash_closure.create` |
-| `contador` | `invoices.read`, `invoices.export`, `invoices.resend_sri` (solo reconsulta, no reenvío), `reports.read`, `reports.export`, `accounting.read`, `accounting.export`, `cash_closure.read`, `customers.read`, `products.read` |
+| `contador` | `invoices.read`, `invoices.export`, `invoices.resend_sri` (solo reconsulta, no reenvío), `reports.read`, `reports.export`, `accounting.read`, `accounting.export`, `cash_closure.read`, `customers.read`, `products.read`, `inventory.read` (desde la Fase 6 — ve el Kardex, no `inventory.write`) |
 
 `src/lib/permissions.js` (`fetchRolePermissions`, `can()`) carga el set del rol al hacer login/`restoreAuth()` y queda expuesto como `useStore().can(key)`. El sidebar de `StoreManagerLayout` y los botones de acción sensibles (crear/editar producto, enviar RIDE, exportar reportes, aprobar/anular factura) se condicionan con `can()`, no con `role === '...'` — así el mismo código sirve para gerente y contador sin casos especiales. Fail-closed: sin permisos cargados, `can()` deniega todo.
 
@@ -103,7 +103,7 @@ Existe también una tabla legada `admin_users` (1 fila) — de una versión ante
 
 ## 5. Facturación electrónica SRI — flujo completo
 
-1. **Venta en el POS** (`POSInterface.jsx`): el cajero arma la venta, se calcula IVA/descuentos, se crea la factura en estado **`borrador`** con sus líneas en `invoice_details`, y se descuenta `product_stock` de la sucursal correspondiente.
+1. **Venta en el POS** (`POSInterface.jsx`): el cajero arma la venta, se calcula IVA/descuentos, se crea la factura en estado **`borrador`** con sus líneas en `invoice_details`, y se descuenta `product_stock` de la sucursal correspondiente vía la RPC `adjust_product_stock` (atómica, deja movimiento `venta` en el kardex — ver §6).
 2. **Envío al SRI**: dispara `api/sri/submit-invoice.js` (Vercel Function, Node; solo `gerente`/`admin`, gateado en la UI por `invoices.approve`), pasando `invoiceId`/`companyId`/`userId`.
 3. Dentro de esa función:
    - Verifica que el `userId` pertenezca a la `companyId` y tenga rol habilitado.
@@ -127,7 +127,10 @@ El sidebar se arma dinámicamente según los permisos del rol (§3) — la lista
 
 - **Dashboard** — `StoreManagerDashboard.jsx` (gerente: métricas comerciales) o `AccountantDashboard.jsx` (contador: resumen contable del mes en curso — ventas, IVA, comprobantes por estado, últimos cierres de caja; reutiliza los mismos helpers que Contabilidad, sin queries propias).
 - **POS / Ventas** (`POSInterface.jsx`, dentro de `POSLayout` para cajeros) — pantalla de cobro, y **cierre de caja** (`POSSettings.jsx`) — ver §7.
-- **Inventario** (`InventoryManagement.jsx`, permiso `inventory.read`) — catálogo (precio, descuento, promoción — compartido) y stock por sucursal o vista agregada. Solo gerente la ve (contador tiene `products.read` para otros fines, pero no `inventory.read`).
+- **Inventario** (`InventoryManagement.jsx`, permiso `inventory.read` — gerente y, desde la Fase 6, también contador en modo solo lectura) — dos pestañas:
+  - **Productos** — catálogo (precio, descuento, promoción — compartido) y stock por sucursal o vista agregada. Alta/edición/baja de producto sigue gateada por `products.write` (solo gerente); el stock mínimo se edita ahí mismo, pero la **cantidad** ya no se edita como campo suelto — solo vía "Ajustar" (ver abajo).
+  - **Kardex** — historial de movimientos de un producto (venta, reingreso por nota de crédito, ajuste manual, transferencia entrada/salida) con saldo corrida y exportación CSV. Cada fila sale de `inventory_movements`, que solo se escribe a través de las funciones `SECURITY DEFINER` de abajo — nunca por `UPDATE` directo a `product_stock`.
+  - Acciones **Ajustar Stock** y **Transferir** (entre sucursales), gateadas por `inventory.write` (solo gerente), usan las RPCs atómicas `adjust_product_stock`/`transfer_stock`: mueven `product_stock` y dejan el movimiento en la misma transacción, recortando (nunca negativo) pero siempre logueando el delta realmente aplicado, así el saldo del kardex nunca diverge del stock real. La venta del POS y el reingreso por nota de crédito (§5) pasan por la misma función.
 - **Clientes** (`CustomerManagement.jsx`) — base de clientes global de la empresa, solo lectura (el alta de cliente ocurre en el POS).
 - **Facturación / Comprobantes** (`InvoiceManagement.jsx`) — historial, filtro por sucursal y estado SRI, detalle, descarga de XML, y en modo lectura+export para contador: aprobar/anular (`invoices.approve`/`invoices.void`) y enviar RIDE (`invoices.send_ride`) son solo-gerente.
 - **Contabilidad** (`Accounting.jsx`, permiso `accounting.read`) — nueva sección con 4 pestañas:
@@ -285,7 +288,7 @@ POST-PLAT/
 | Facturación | `invoices`, `invoice_details`, `billing_configs`, `payment_methods` |
 | Contabilidad | `cash_closures` *(nueva — arqueo de caja, inmutable)* |
 | Cobros SaaS | `payments` (cobros a las empresas clientes por su suscripción) |
-| Movimientos | `inventory_movements` *(esquema presente, sin uso activo)* |
+| Movimientos | `inventory_movements` (kardex — desde la Fase 6, incluye `branch_id`; solo se escribe vía las RPCs `adjust_product_stock`/`transfer_stock`, nunca `INSERT` directo, ver §6) |
 | Auditoría | `audit_log` *(esquema presente, sin uso activo)*, `activity_log` (feed real del panel admin, incluye altas de usuario) |
 
 Además, esquema `auth` (Supabase Auth): `auth.users` es ahora la fuente de verdad de credenciales, `public.users.id` es FK a `auth.users.id`.
