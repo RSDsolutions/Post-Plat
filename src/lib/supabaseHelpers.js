@@ -1350,6 +1350,45 @@ export async function verifySupplierDocument(accessKey) {
   return result;
 }
 
+// Accounts Payable (Compras - Fase 6)
+
+// Trae cada cuenta con sus pagos embebidos - el saldo restante se calcula
+// en el cliente (original_amount - suma de pagos), no se guarda una
+// columna aparte que se pueda desincronizar (mismo criterio que el kardex
+// de inventario en Ventas). status (pendiente/parcial/pagada) sí es una
+// columna real, pero la mantiene el trigger de la Fase 1, nunca esta capa.
+export async function fetchAccountsPayable(companyId) {
+  const { data, error } = await supabase
+    .from('accounts_payable')
+    .select('*, suppliers(razon_social, ruc), purchases(supplier_document_number, purchase_doc_type, document_date), accounts_payable_payments(id, amount, payment_date, payment_method_id, notes, created_at, payment_methods(name))')
+    .eq('company_id', companyId)
+    .order('due_date', { ascending: true, nullsFirst: false });
+
+  if (error) throw new Error(`Error fetching accounts payable: ${error.message}`);
+  return data || [];
+}
+
+// Inmutable por diseño (sin política de UPDATE/DELETE, ver migración de la
+// Fase 1) - una corrección se registra como un pago nuevo, incluso negativo
+// si hace falta reversar, nunca editando uno existente.
+export async function createAccountsPayablePayment({ accountsPayableId, amount, paymentMethodId, paymentDate, notes, createdBy }) {
+  const { data, error } = await supabase
+    .from('accounts_payable_payments')
+    .insert([{
+      accounts_payable_id: accountsPayableId,
+      amount,
+      payment_method_id: paymentMethodId,
+      payment_date: paymentDate || new Date().toISOString().slice(0, 10),
+      notes: notes || null,
+      created_by: createdBy
+    }])
+    .select()
+    .single();
+
+  if (error) throw new Error(`Error registering payment: ${error.message}`);
+  return data;
+}
+
 // Invoices & Billing
 // pos_id must be resolved by the caller (the cashier's assigned branch's
 // active point of sale - see resolveCashierPointOfSale) rather than guessed
