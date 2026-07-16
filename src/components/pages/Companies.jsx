@@ -9,7 +9,7 @@ import { computeHealthScore } from '../../lib/healthScore.js';
 const HEALTH_DOT = { Alto: 'bg-emerald-500', Medio: 'bg-amber-500', Bajo: 'bg-red-500' };
 
 export default function Companies() {
-  const { companies, plans, companySearch, setCompanySearch, companyStatusFilter, setCompanyStatusFilter, companyPlanFilter, setCompanyPlanFilter, openWizard, selectCompany, globalSearch } = useStore();
+  const { companies, plans, companySearch, setCompanySearch, companyStatusFilter, setCompanyStatusFilter, companyPlanFilter, setCompanyPlanFilter, openWizard, selectCompany, globalSearch, monthlyInvoiceCounts } = useStore();
 
   const filtered = companies.filter(c => {
     const search = (companySearch || globalSearch).toLowerCase();
@@ -64,8 +64,9 @@ export default function Companies() {
             data={filtered}
             renderRow={(company) => {
               const plan = plans.find(p => p.id === company.planId);
-              const pct = plan?.comprobantesLimit ? (company.monthlyComprobantes / plan.comprobantesLimit) * 100 : 0;
-              const health = computeHealthScore(company, plan);
+              const invoiceUsage = monthlyInvoiceCounts[company.id] || { current: 0, previous: 0 };
+              const pct = plan?.comprobantesLimit ? (invoiceUsage.current / plan.comprobantesLimit) * 100 : 0;
+              const health = computeHealthScore(company, plan, invoiceUsage);
 
               return (
                 <tr key={company.id} className="hover:bg-[var(--surface-2)]/50 transition-colors">
@@ -90,7 +91,7 @@ export default function Companies() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="text-sm text-[var(--text-primary)] font-bold">{company.monthlyComprobantes}</div>
+                    <div className="text-sm text-[var(--text-primary)] font-bold">{invoiceUsage.current}</div>
                     <div className="w-24 h-1.5 bg-[var(--surface-2)] rounded-full mt-1 overflow-hidden">
                       <div className={`h-full rounded-full ${pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                     </div>

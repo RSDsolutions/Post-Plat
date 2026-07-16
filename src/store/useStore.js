@@ -68,6 +68,9 @@ export const useStore = create((set, get) => ({
   plans: [],
   activityLog: [],
   alerts: [],
+  // Facturas del mes en curso por empresa, id -> conteo (solo lo pobla
+  // fetchMonthlyInvoiceCounts para admin de plataforma - ver initData).
+  monthlyInvoiceCounts: {},
 
   selectedCompanyId: null,
   companyDetailTab: 'resumen',
@@ -558,9 +561,9 @@ export const useStore = create((set, get) => ({
   closeConfirm: () => set({ confirmDialog: null }),
 
   recalculateAlerts: () => {
-    const { companies, plans } = get();
+    const { companies, plans, monthlyInvoiceCounts } = get();
     const existingAttended = get().alerts.filter(a => a.attended).map(a => a.id);
-    const newAlerts = generateAlerts(companies, plans).map(a => ({
+    const newAlerts = generateAlerts(companies, plans, new Date(), monthlyInvoiceCounts).map(a => ({
       ...a,
       attended: existingAttended.includes(a.id)
     }));
@@ -582,8 +585,8 @@ export const useStore = create((set, get) => ({
     }
   },
 
-  initData: (companiesData, plansData, logData) => {
-     set({ companies: [...companiesData], plans: [...plansData], activityLog: [...logData] });
+  initData: (companiesData, plansData, logData, monthlyInvoiceCounts = {}) => {
+     set({ companies: [...companiesData], plans: [...plansData], activityLog: [...logData], monthlyInvoiceCounts });
      get().recalculateAlerts();
   }
 }));

@@ -1,6 +1,6 @@
 import { daysFrom } from './dates.js';
 
-export function generateAlerts(companies, plans, referenceDate = new Date()) {
+export function generateAlerts(companies, plans, referenceDate = new Date(), monthlyInvoiceCounts = {}) {
   const alerts = [];
 
   companies.forEach(company => {
@@ -57,7 +57,7 @@ export function generateAlerts(companies, plans, referenceDate = new Date()) {
     const plan = plans.find(p => p.id === company.planId);
     if (plan && plan.comprobantesLimit) {
       const limit = plan.comprobantesLimit;
-      const usage = company.monthlyComprobantes;
+      const usage = monthlyInvoiceCounts[company.id]?.current || 0;
       if (usage / limit >= 0.85) {
         alerts.push({
           id: `usage_${company.id}`,

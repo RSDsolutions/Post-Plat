@@ -26,7 +26,7 @@ export default function CompanyDetail() {
     companies, plans, selectedCompanyId, setActivePage, companyDetailTab, setCompanyDetailTab,
     openEditCompany, suspendCompany, reactivateCompany, openConfirm, changeCompanyPlan,
     updateCompanyNotes, updateCompanyCustomPrice, updateCompanyTrialEndsAt, showToast, currentUser,
-    impersonateCompany
+    impersonateCompany, monthlyInvoiceCounts
   } = useStore();
 
   const [showPlanModal, setShowPlanModal] = useState(false);
@@ -47,6 +47,10 @@ export default function CompanyDetail() {
 
   const company = companies.find(c => c.id === selectedCompanyId);
   const plan = plans.find(p => p.id === company?.planId);
+  // Contado en vivo contra invoices (mismo criterio que el trigger de límite
+  // de plan), no companies.monthly_comprobantes/prev_month_comprobantes ya
+  // retirados - ver supabase/migrations/20260724_plan_limit_enforcement.sql.
+  const invoiceUsage = (company && monthlyInvoiceCounts[company.id]) || { current: 0, previous: 0 };
 
   const loadPayments = async (companyId) => {
     try {
@@ -162,7 +166,7 @@ export default function CompanyDetail() {
   };
 
   const paymentSequence = buildPaymentSequence(payments, company.subscriptionRenewal);
-  const health = computeHealthScore(company, plan);
+  const health = computeHealthScore(company, plan, invoiceUsage);
   const checklist = onboarding ? computeOnboardingChecklist({ certUploaded: company.certUploaded, ...onboarding }) : null;
   const checklistDone = checklist ? checklist.every(i => i.done) : false;
 
@@ -448,11 +452,11 @@ export default function CompanyDetail() {
                  <div className="bg-[var(--surface-0)]/50 border border-[var(--border-subtle)] p-5 rounded-3xl mb-6">
                     <div className="flex justify-between text-sm mb-3">
                       <span className="font-bold text-zinc-400">Comprobantes emitidos</span>
-                      <span className="font-bold text-[var(--text-primary)]">{company.monthlyComprobantes} / {plan?.comprobantesLimit ?? 'Sin límite'}</span>
+                      <span className="font-bold text-[var(--text-primary)]">{invoiceUsage.current} / {plan?.comprobantesLimit ?? 'Sin límite'}</span>
                     </div>
                     <div className="w-full h-2.5 bg-[var(--surface-2)] rounded-full overflow-hidden">
                       {plan?.comprobantesLimit && (() => {
-                        const pct = (company.monthlyComprobantes / plan.comprobantesLimit) * 100;
+                        const pct = (invoiceUsage.current / plan.comprobantesLimit) * 100;
                         const color = pct > 85 ? 'bg-red-500' : pct > 60 ? 'bg-amber-500' : 'bg-emerald-500';
                         return <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(pct, 100)}%` }} />;
                       })()}
@@ -461,7 +465,7 @@ export default function CompanyDetail() {
 
                  <div className="grid grid-cols-2 gap-4">
                    <div className="border border-[var(--border-subtle)] bg-[var(--surface-0)]/50 p-5 rounded-3xl text-center">
-                     <div className="text-3xl font-bold text-[var(--text-primary)]">{company.prevMonthComprobantes}</div>
+                     <div className="text-3xl font-bold text-[var(--text-primary)]">{invoiceUsage.previous}</div>
                      <div className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest mt-2">Mes anterior</div>
                    </div>
                    <div className="border border-[var(--border-subtle)] bg-[var(--surface-0)]/50 p-5 rounded-3xl text-center">

@@ -3,7 +3,7 @@
 // so it can be shown as a column in Companies.jsx without an extra query
 // per row. Deliberately simple: a handful of real signals, not a model.
 
-export function computeHealthScore(company, plan) {
+export function computeHealthScore(company, plan, invoiceUsage) {
   const reasons = [];
   let score = 100;
 
@@ -26,7 +26,7 @@ export function computeHealthScore(company, plan) {
   }
 
   if (plan?.comprobantesLimit) {
-    const usage = (company.monthlyComprobantes || 0) / plan.comprobantesLimit;
+    const usage = (invoiceUsage?.current || 0) / plan.comprobantesLimit;
     if (usage >= 1) {
       score -= 15;
       reasons.push('Límite de facturas alcanzado');

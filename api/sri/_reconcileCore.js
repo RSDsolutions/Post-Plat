@@ -4,7 +4,11 @@ import { applyCreditNoteAuthorizedEffects } from './_creditNoteEffects.js';
 // una factura a la vez, gerente/admin/contador) y api/sri/retry-pending.js
 // (cron, barrido de todas las empresas) - extraída para que un comprobante
 // que se autoriza en una reconsulta automática dispare exactamente los
-// mismos efectos (cascada de NC, cupo del plan) que una reconsulta manual.
+// mismos efectos (cascada de NC) que una reconsulta manual. El cupo mensual
+// de facturas ya no se cuenta acá - se aplica a nivel de base de datos en el
+// momento de CREAR el borrador (trigger invoices_check_plan_limit contra
+// date_trunc(issue_date), ver supabase/migrations/20260724_plan_limit_enforcement.sql),
+// no cuando el SRI autoriza.
 //
 // Solo tiene sentido para facturas 'devuelta' que ya tienen authorization_number
 // (= clave de acceso) - el escenario que resuelve es "el SRI respondió
@@ -35,11 +39,6 @@ export async function reconcileInvoiceCore({ supabase, invoiceId, companyId, use
     .select('sri_environment')
     .eq('company_id', companyId)
     .single();
-  const { data: company } = await supabase
-    .from('companies')
-    .select('monthly_comprobantes')
-    .eq('id', companyId)
-    .single();
   const isTest = billingConfig?.sri_environment !== 'production';
   const url = isTest ? SRI_URLS.test.authorization : SRI_URLS.production.authorization;
 
@@ -55,10 +54,6 @@ export async function reconcileInvoiceCore({ supabase, invoiceId, companyId, use
       signed_xml: authObj?.comprobante || undefined,
       sri_response_message: 'Autorizado por el SRI (reconsulta)'
     }).eq('id', invoiceId);
-
-    if (invoice.invoice_type !== 'nota_credito') {
-      await supabase.from('companies').update({ monthly_comprobantes: (company?.monthly_comprobantes || 0) + 1 }).eq('id', companyId);
-    }
 
     let warnings, originalInvoiceVoided;
     if (invoice.invoice_type === 'nota_credito') {

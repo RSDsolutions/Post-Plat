@@ -6,7 +6,7 @@ import { formatUSD, formatMRR, formatNumber } from '../../lib/format.js';
 import { checkSriStatus } from '../../lib/supabaseHelpers.js';
 
 export default function Metrics() {
-  const { companies, plans, selectCompany } = useStore();
+  const { companies, plans, selectCompany, monthlyInvoiceCounts } = useStore();
   const [sriStatus, setSriStatus] = useState(null);
   const [checkingSri, setCheckingSri] = useState(false);
 
@@ -24,8 +24,9 @@ export default function Metrics() {
   const maxPlanCount = Math.max(1, ...planDistribution.map(p => p.count));
 
   const topByUsage = [...companies]
-    .filter(c => c.monthlyComprobantes > 0)
-    .sort((a, b) => b.monthlyComprobantes - a.monthlyComprobantes)
+    .map(c => ({ ...c, currentInvoiceUsage: monthlyInvoiceCounts[c.id]?.current || 0 }))
+    .filter(c => c.currentInvoiceUsage > 0)
+    .sort((a, b) => b.currentInvoiceUsage - a.currentInvoiceUsage)
     .slice(0, 5);
 
   const handleCheckSri = async () => {
@@ -89,7 +90,7 @@ export default function Metrics() {
                   <li key={c.id} className="p-3">
                     <button onClick={() => selectCompany(c.id)} className="w-full text-left hover:bg-[var(--surface-2)]/50 p-2 rounded-xl transition-colors flex justify-between items-center">
                       <span className="text-sm font-bold text-[var(--text-primary)] truncate">{c.nombreComercial}</span>
-                      <span className="text-sm font-bold text-[var(--brand)] flex-shrink-0 ml-2">{formatNumber(c.monthlyComprobantes)}</span>
+                      <span className="text-sm font-bold text-[var(--brand)] flex-shrink-0 ml-2">{formatNumber(c.currentInvoiceUsage)}</span>
                     </button>
                   </li>
                 ))}

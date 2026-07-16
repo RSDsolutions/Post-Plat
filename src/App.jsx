@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useStore } from './store/useStore.js';
-import { fetchCompanies, fetchPlans, fetchActivityLog } from './lib/supabaseHelpers.js';
+import { fetchCompanies, fetchPlans, fetchActivityLog, fetchMonthlyInvoiceCounts } from './lib/supabaseHelpers.js';
 import { transformCompany, transformPlan, transformActivityEvent } from './lib/transforms.js';
 import { applyBrandColors } from './lib/brand.js';
 import Layout from './components/layout/Layout.jsx';
@@ -48,17 +48,20 @@ export default function App() {
 
     const loadData = async () => {
       try {
-        const [companies, plans, activityLog] = await Promise.all([
+        const [companies, plans, activityLog, monthlyInvoiceCounts] = await Promise.all([
           fetchCompanies(),
           fetchPlans(),
-          fetchActivityLog()
+          fetchActivityLog(),
+          // Vacío (no error) para cualquier rol que no sea admin de plataforma -
+          // ver get_monthly_invoice_counts en la migración de límites de plan.
+          fetchMonthlyInvoiceCounts().catch(() => ({}))
         ]);
 
         const transformedCompanies = companies.map(transformCompany);
         const transformedPlans = plans.map(transformPlan);
         const transformedActivityLog = (activityLog || []).map(transformActivityEvent);
 
-        initData(transformedCompanies, transformedPlans, transformedActivityLog);
+        initData(transformedCompanies, transformedPlans, transformedActivityLog, monthlyInvoiceCounts);
       } catch (error) {
         console.error('Error loading data from Supabase:', error);
       }

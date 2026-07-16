@@ -19,6 +19,18 @@ function toLocalNaiveTimestamp(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${String(date.getMilliseconds()).padStart(3, '0')}`;
 }
 
+// Los triggers de límite de plan (supabase/migrations/20260724_plan_limit_enforcement.sql)
+// rechazan el INSERT con un mensaje que empieza "PLAN_LIMIT: <texto humano>".
+// Sin esto, cada create* de acá abajo antepone su propio "Error creating X:",
+// y el usuario terminaría viendo "Error creating invoice: PLAN_LIMIT: ..." -
+// technobabble duplicado sobre un mensaje que ya es humano de por sí. Se usa
+// en cualquier create* que ahora puede chocar con uno de esos triggers.
+function formatSupabaseError(error, fallbackPrefix) {
+  const raw = error?.message || String(error);
+  if (raw.startsWith('PLAN_LIMIT:')) return raw.slice('PLAN_LIMIT:'.length).trim();
+  return `${fallbackPrefix}: ${raw}`;
+}
+
 // Header de autorización real para los endpoints de api/* que verifican el
 // JWT (api/_authHelpers.js) en vez de confiar en un userId/companyId que el
 // body simplemente afirmaba (Fase 1 de hardening, ver AUDITORIA_SISTEMA.md).
@@ -144,7 +156,7 @@ export async function createPointOfSale(posData) {
     .select()
     .single();
 
-  if (error) throw new Error(`Error creating POS: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError(error, 'Error creating POS'));
   return data;
 }
 
@@ -188,7 +200,7 @@ export async function createBranch(branchData) {
     .select()
     .single();
 
-  if (error) throw new Error(`Error creating branch: ${error.message}`);
+  if (error) throw new Error(formatSupabaseError(error, 'Error creating branch'));
   return data;
 }
 
@@ -765,6 +777,24 @@ export async function fetchLastSriRetrySweep() {
   return data?.[0] || null;
 }
 
+// Conteo de facturas del mes en curso por empresa, contado EN VIVO contra
+// invoices (mismo criterio que el trigger de límite de plan - ver
+// supabase/migrations/20260724_plan_limit_enforcement.sql), no el contador
+// companies.monthly_comprobantes ya retirado. Solo admin de plataforma (la
+// RPC devuelve vacío para cualquier otro rol, no un error).
+export async function fetchMonthlyInvoiceCounts() {
+  const { data, error } = await supabase.rpc('get_monthly_invoice_counts');
+  if (error) throw new Error(`Error obteniendo el consumo de comprobantes: ${error.message}`);
+  const byCompany = {};
+  (data || []).forEach(row => {
+    byCompany[row.company_id] = {
+      current: Number(row.invoice_count) || 0,
+      previous: Number(row.prev_month_count) || 0
+    };
+  });
+  return byCompany;
+}
+
 // Admin-side password reset for any company user (gerente included) - goes
 // through api/admin/users.js (action: 'reset-user-password', service role),
 // which emails the new temp password to the user. The underlying RPC is not
@@ -887,7 +917,7 @@ export async function createProduct(productData) {
 
     return data;
   } catch (error) {
-    throw new Error(`Error creating product: ${error.message}`);
+    throw new Error(formatSupabaseError(error, 'Error creating product'));
   }
 }
 
@@ -1065,7 +1095,7 @@ export async function createInvoice(invoiceData) {
     if (error) throw new Error(error.message);
     return data;
   } catch (error) {
-    throw new Error(`Error creating invoice: ${error.message}`);
+    throw new Error(formatSupabaseError(error, 'Error creating invoice'));
   }
 }
 
