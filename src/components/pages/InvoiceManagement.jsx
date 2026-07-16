@@ -102,8 +102,6 @@ export default function InvoiceManagement() {
     const pdfBase64 = await generateRidePdf({ invoice, details, company, sriEnvironment, output: 'base64' });
     return emailInvoiceRide({
       invoiceId: invoice.id,
-      companyId: currentUser.company_id,
-      userId: currentUser.id,
       pdfBase64
     });
   };
@@ -139,7 +137,7 @@ export default function InvoiceManagement() {
         setSubmittingId(invoice.id);
         setLastError(null);
         try {
-          await submitInvoiceToSRI(invoice.id, currentUser.company_id, currentUser.id);
+          await submitInvoiceToSRI(invoice.id);
           showToast('success', `Factura ${invoice.invoice_number} autorizada por el SRI`);
           await loadInvoices();
           setSelectedInvoice(null);
@@ -170,8 +168,7 @@ export default function InvoiceManagement() {
           showToast('error', error.message || 'Error al enviar la factura al SRI');
           setLastError({
             message: error.message,
-            detail: error.detail,
-            stack: error.stack_remote
+            detail: error.detail
           });
           await loadInvoices();
         } finally {
@@ -302,11 +299,6 @@ export default function InvoiceManagement() {
           {lastError.detail && (
             <pre className="text-xs text-panel-danger/80 whitespace-pre-wrap break-all bg-panel-danger/10 rounded p-2 max-h-48 overflow-y-auto">
               {typeof lastError.detail === 'string' ? lastError.detail : JSON.stringify(lastError.detail, null, 2)}
-            </pre>
-          )}
-          {lastError.stack && (
-            <pre className="text-[10px] text-panel-danger/60 whitespace-pre-wrap break-all bg-panel-danger/10 rounded p-2 max-h-48 overflow-y-auto">
-              {lastError.stack}
             </pre>
           )}
         </div>

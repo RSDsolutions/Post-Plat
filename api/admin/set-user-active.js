@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from '../emails/_lib.js';
+import { getAuthenticatedUser } from '../_authHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Admin-side activate/deactivate for any company user (gerente or cajero).
@@ -11,6 +11,9 @@ import { getSupabaseAdmin } from '../emails/_lib.js';
 // supabase.auth.signInWithPassword no lo conoce. current_role()/
 // current_company_id() también revisan is_active como defensa en profundidad
 // para sesiones ya emitidas antes del ban.
+//
+// Quién llama: admin real, verificado con JWT (api/_authHelpers.js), no con
+// un adminId que el body simplemente afirmaba (Fase 1 de hardening).
 // ---------------------------------------------------------------------------
 
 export default async function handler(req, res) {
@@ -18,25 +21,20 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { adminId, companyId, userId, isActive } = req.body || {};
-  if (!adminId || !companyId || !userId || typeof isActive !== 'boolean') {
-    return res.status(400).json({ error: 'adminId, companyId, userId e isActive son requeridos' });
+  const { companyId, userId, isActive } = req.body || {};
+  if (!companyId || !userId || typeof isActive !== 'boolean') {
+    return res.status(400).json({ error: 'companyId, userId e isActive son requeridos' });
   }
 
   try {
-    const supabase = getSupabaseAdmin();
-
-    const { data: admin, error: adminError } = await supabase
-      .from('users')
-      .select('id, role')
-      .eq('id', adminId)
-      .single();
-    if (adminError || !admin || admin.role !== 'admin') {
+    const { supabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
+    if (authError) return res.status(authStatus).json({ error: authError });
+    if (user.role !== 'admin') {
       return res.status(403).json({ error: 'No autorizado' });
     }
 
     const { data, error } = await supabase.rpc('admin_set_user_active', {
-      p_admin_id: adminId,
+      p_admin_id: user.id,
       p_company_id: companyId,
       p_user_id: userId,
       p_is_active: isActive
@@ -45,11 +43,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: error.message });
     }
 
-    const { error: authError } = await supabase.auth.admin.updateUserById(userId, {
+    const { error: updateAuthError } = await supabase.auth.admin.updateUserById(userId, {
       ban_duration: isActive ? 'none' : '876000h'
     });
-    if (authError) {
-      return res.status(400).json({ error: `No se pudo ${isActive ? 'reactivar' : 'bloquear'} la sesión: ${authError.message}` });
+    if (updateAuthError) {
+      return res.status(400).json({ error: `No se pudo ${isActive ? 'reactivar' : 'bloquear'} la sesión: ${updateAuthError.message}` });
     }
 
     return res.status(200).json({ ok: true, user: data?.[0] || null });

@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { getAuthenticatedUser } from '../_authHelpers.js';
 
 // Sube el certificado .p12 y guarda su contraseña cifrada. Antes esto lo
 // hacía el navegador directo contra Supabase (anon key): el archivo iba al
@@ -11,33 +11,27 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { companyId, userId, certPassword, fileBase64 } = req.body || {};
-  if (!companyId || !userId || !certPassword || !fileBase64) {
-    return res.status(400).json({ error: 'companyId, userId, certPassword y el archivo son requeridos' });
+  const { certPassword, fileBase64 } = req.body || {};
+  if (!certPassword || !fileBase64) {
+    return res.status(400).json({ error: 'certPassword y el archivo son requeridos' });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    || process.env.SUPABASE_SECRET_KEY
-    || process.env.VITE_SUPABASE_SECRET_KEY;
   const encryptionKey = process.env.CERT_ENCRYPTION_KEY;
-  if (!supabaseUrl || !serviceKey || !encryptionKey) {
-    return res.status(500).json({ error: 'Configuración de servidor incompleta: falta Supabase o CERT_ENCRYPTION_KEY en las variables de entorno de Vercel' });
+  if (!encryptionKey) {
+    return res.status(500).json({ error: 'Configuración de servidor incompleta: falta CERT_ENCRYPTION_KEY en las variables de entorno de Vercel' });
   }
 
-  const supabase = createClient(supabaseUrl, serviceKey);
+  const { supabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
+  if (authError) return res.status(authStatus).json({ error: authError });
+  if (!['gerente', 'admin'].includes(user.role)) {
+    return res.status(403).json({ error: 'No autorizado para configurar el certificado de esta empresa' });
+  }
+  const companyId = user.company_id;
+  if (!companyId) {
+    return res.status(403).json({ error: 'No autorizado para configurar el certificado de esta empresa' });
+  }
 
   try {
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, company_id, role')
-      .eq('id', userId)
-      .single();
-
-    if (userError || !user || user.company_id !== companyId || !['gerente', 'admin'].includes(user.role)) {
-      return res.status(403).json({ error: 'No autorizado para configurar el certificado de esta empresa' });
-    }
-
     const { data: existingConfig, error: configError } = await supabase
       .from('billing_configs')
       .select('id')

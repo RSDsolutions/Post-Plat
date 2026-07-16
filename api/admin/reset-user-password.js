@@ -1,5 +1,6 @@
-import { getSupabaseAdmin, sendEmail } from '../emails/_lib.js';
+import { sendEmail } from '../emails/_lib.js';
 import { passwordResetEmail } from '../emails/_templates.js';
+import { getAuthenticatedUser } from '../_authHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Admin-side password reset for ANY company user (gerente incluido). Desde la
@@ -8,6 +9,9 @@ import { passwordResetEmail } from '../emails/_templates.js';
 // (RPC, cuyo EXECUTE sigue revocado para anon/authenticated), y este endpoint
 // hace el cambio real vía auth.admin.updateUserById con la service role, la
 // única forma de tocar auth.users. Mismo patrón que api/admin/create-gerente.js.
+//
+// Quién llama: admin real, verificado con JWT (api/_authHelpers.js), no con
+// un adminId que el body simplemente afirmaba (Fase 1 de hardening).
 // ---------------------------------------------------------------------------
 
 export default async function handler(req, res) {
@@ -15,20 +19,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { adminId, companyId, userId, newPassword } = req.body || {};
-  if (!adminId || !companyId || !userId || !newPassword) {
-    return res.status(400).json({ error: 'adminId, companyId, userId y newPassword son requeridos' });
+  const { companyId, userId, newPassword } = req.body || {};
+  if (!companyId || !userId || !newPassword) {
+    return res.status(400).json({ error: 'companyId, userId y newPassword son requeridos' });
   }
 
   try {
-    const supabase = getSupabaseAdmin();
-
-    const { data: admin, error: adminError } = await supabase
-      .from('users')
-      .select('id, role')
-      .eq('id', adminId)
-      .single();
-    if (adminError || !admin || admin.role !== 'admin') {
+    const { supabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
+    if (authError) return res.status(authStatus).json({ error: authError });
+    if (user.role !== 'admin') {
       return res.status(403).json({ error: 'No autorizado' });
     }
 
@@ -37,7 +36,7 @@ export default async function handler(req, res) {
     }
 
     const { data, error } = await supabase.rpc('admin_reset_user_password', {
-      p_admin_id: adminId,
+      p_admin_id: user.id,
       p_company_id: companyId,
       p_user_id: userId
     });
@@ -47,9 +46,9 @@ export default async function handler(req, res) {
 
     const target = data?.[0];
 
-    const { error: authError } = await supabase.auth.admin.updateUserById(userId, { password: newPassword });
-    if (authError) {
-      return res.status(400).json({ error: `No se pudo actualizar la contraseña: ${authError.message}` });
+    const { error: updateAuthError } = await supabase.auth.admin.updateUserById(userId, { password: newPassword });
+    if (updateAuthError) {
+      return res.status(400).json({ error: `No se pudo actualizar la contraseña: ${updateAuthError.message}` });
     }
     const { data: company } = await supabase
       .from('companies')

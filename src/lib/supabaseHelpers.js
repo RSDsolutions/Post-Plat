@@ -1,5 +1,14 @@
 import { supabase } from './supabase.js';
 
+// Header de autorización real para los endpoints de api/* que verifican el
+// JWT (api/_authHelpers.js) en vez de confiar en un userId/companyId que el
+// body simplemente afirmaba (Fase 1 de hardening, ver AUDITORIA_SISTEMA.md).
+async function getAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('No hay sesión activa');
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` };
+}
+
 // Companies
 export async function fetchCompanies() {
   const { data, error } = await supabase
@@ -608,11 +617,11 @@ export async function fetchCompanyUsers(companyId) {
 // create-cashier.js, que solo aceptaba vendedor/operario) so the plaintext
 // password can be emailed server-side without ever living in the browser
 // bundle. contador no lleva branchId (a nivel empresa, no de sucursal).
-export async function createCompanyUser({ callerId, companyId, email, password, name, role, phone, branchId }) {
+export async function createCompanyUser({ companyId, email, password, name, role, phone, branchId }) {
   const response = await fetch('/api/admin/create-user', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callerId, companyId, email, password, name, role, phone, branchId })
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ companyId, email, password, name, role, phone, branchId })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al crear el usuario');
@@ -640,11 +649,11 @@ export async function updateUserBranch({ companyId, userId, branchId, callerId }
 // invoking the RPC (with p_admin_id) using the service role. The RPC itself also
 // re-verifies the admin internally, closing the §1.1.1 audit hole where anyone
 // could self-provision a gerente login.
-export async function createCompanyGerente({ adminId, companyId, email, password, name }) {
+export async function createCompanyGerente({ companyId, email, password, name }) {
   const response = await fetch('/api/admin/create-gerente', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ adminId, companyId, email, password, name })
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ companyId, email, password, name })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al crear el gerente');
@@ -655,11 +664,11 @@ export async function createCompanyGerente({ adminId, companyId, email, password
 // authorized invoice to the customer. The endpoint re-validates the invoice is
 // 'autorizada' and pulls the recipient from the DB - the browser never chooses
 // who receives it.
-export async function emailInvoiceRide({ invoiceId, companyId, userId, pdfBase64 }) {
+export async function emailInvoiceRide({ invoiceId, pdfBase64 }) {
   const response = await fetch('/api/emails/send-invoice-ride', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ invoiceId, companyId, userId, pdfBase64 })
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ invoiceId, pdfBase64 })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al enviar el RIDE por correo');
@@ -670,11 +679,11 @@ export async function emailInvoiceRide({ invoiceId, companyId, userId, pdfBase64
 // api/admin/reset-cashier-password.js (service role) because resetting an
 // Auth password requires auth.admin.updateUserById, never available to the
 // browser - this used to be a direct RPC call with the anon key.
-export async function resetCashierPassword({ companyId, userId, newPassword, callerId }) {
+export async function resetCashierPassword({ companyId, userId, newPassword }) {
   const response = await fetch('/api/admin/reset-cashier-password', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callerId, companyId, userId, newPassword })
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ companyId, userId, newPassword })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al resetear la contraseña');
@@ -685,11 +694,11 @@ export async function resetCashierPassword({ companyId, userId, newPassword, cal
 // reenviarla - ver api/sri/reconcile-invoice.js para por qué esto no podía
 // ser simplemente api/sri/status.js (ese endpoint no consulta comprobantes,
 // solo hace ping a las URLs del SRI).
-export async function reconcileInvoiceStatus({ invoiceId, companyId, userId }) {
+export async function reconcileInvoiceStatus({ invoiceId }) {
   const response = await fetch('/api/sri/reconcile-invoice', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ invoiceId, companyId, userId })
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ invoiceId })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al reconsultar la factura');
@@ -699,11 +708,11 @@ export async function reconcileInvoiceStatus({ invoiceId, companyId, userId }) {
 // Admin-side password reset for any company user (gerente included) - goes
 // through api/admin/reset-user-password.js (service role), which emails the
 // new temp password to the user. The underlying RPC is not anon-executable.
-export async function adminResetUserPassword({ adminId, companyId, userId, newPassword }) {
+export async function adminResetUserPassword({ companyId, userId, newPassword }) {
   const response = await fetch('/api/admin/reset-user-password', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ adminId, companyId, userId, newPassword })
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ companyId, userId, newPassword })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al restablecer la contraseña');
@@ -711,11 +720,11 @@ export async function adminResetUserPassword({ adminId, companyId, userId, newPa
 }
 
 // Admin-side activate/deactivate for any company user (gerente or cajero).
-export async function adminSetUserActive({ adminId, companyId, userId, isActive }) {
+export async function adminSetUserActive({ companyId, userId, isActive }) {
   const response = await fetch('/api/admin/set-user-active', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ adminId, companyId, userId, isActive })
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ companyId, userId, isActive })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al actualizar el estado del usuario');
@@ -1130,11 +1139,11 @@ export async function voidInvoice(invoiceId, reason) {
   }
 }
 
-export async function submitInvoiceToSRI(invoiceId, companyId, userId) {
+export async function submitInvoiceToSRI(invoiceId) {
   const response = await fetch('/api/sri/submit-invoice', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ invoiceId, companyId, userId })
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ invoiceId })
   });
 
   const rawText = await response.text();
@@ -1148,7 +1157,6 @@ export async function submitInvoiceToSRI(invoiceId, companyId, userId) {
   if (!response.ok) {
     const error = new Error(result.error || 'Error al enviar la factura al SRI');
     error.detail = result.detail;
-    error.stack_remote = result.stack;
     throw error;
   }
 
@@ -1345,7 +1353,7 @@ async function fileToBase64(file) {
 // escribir directo a Supabase desde el navegador: la contraseña del .p12 se
 // cifra server-side (pgcrypto) antes de guardarse, nunca viaja en claro a la
 // tabla. Ver supabase/migrations/20260715_encrypt_cert_password.sql.
-export async function uploadSriCertificate(companyId, userId, file, certPassword) {
+export async function uploadSriCertificate(file, certPassword) {
   try {
     if (!file || !certPassword) {
       throw new Error('Archivo de certificado y contraseña son requeridos');
@@ -1355,8 +1363,8 @@ export async function uploadSriCertificate(companyId, userId, file, certPassword
 
     const response = await fetch('/api/sri/upload-certificate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ companyId, userId, certPassword, fileBase64 })
+      headers: await getAuthHeaders(),
+      body: JSON.stringify({ certPassword, fileBase64 })
     });
 
     const result = await response.json();

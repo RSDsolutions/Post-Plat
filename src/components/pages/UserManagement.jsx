@@ -85,7 +85,6 @@ export default function UserManagement() {
     try {
       setCreating(true);
       await createCompanyUser({
-        callerId: currentUser.id,
         companyId: currentUser.company_id,
         email: newUser.email.trim(),
         password: newUser.password,
@@ -139,8 +138,7 @@ export default function UserManagement() {
       await resetCashierPassword({
         companyId: currentUser.company_id,
         userId: resetTarget.id,
-        newPassword: resetForm.newPassword,
-        callerId: currentUser.id
+        newPassword: resetForm.newPassword
       });
       showToast('success', `Contraseña de "${resetTarget.name}" actualizada`);
       setResetTarget(null);

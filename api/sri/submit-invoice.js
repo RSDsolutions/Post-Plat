@@ -1,6 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { signXml } from './_xadesSign.js';
 import { generateAccessKey } from './_accessKey.js';
+import { getAuthenticatedUser } from '../_authHelpers.js';
 
 const SRI_URLS = {
   test: {
@@ -35,20 +35,24 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { invoiceId, companyId, userId } = req.body || {};
-  if (!invoiceId || !companyId || !userId) {
-    return res.status(400).json({ error: 'invoiceId, companyId y userId son requeridos' });
+  const { invoiceId } = req.body || {};
+  if (!invoiceId) {
+    return res.status(400).json({ error: 'invoiceId es requerido' });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    || process.env.SUPABASE_SECRET_KEY
-    || process.env.VITE_SUPABASE_SECRET_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    return res.status(500).json({ error: 'Configuración de servidor incompleta: falta la URL o la clave secreta de Supabase en las variables de entorno de Vercel' });
+  // JWT real en vez de confiar en un userId/companyId que el body afirmaba -
+  // ver api/_authHelpers.js. companyId ya no es un parámetro: es el de la
+  // sesión autenticada, así nadie puede aprobar una factura de una empresa
+  // que no es la suya con solo cambiar el body.
+  const { supabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
+  if (authError) return res.status(authStatus).json({ error: authError });
+  if (!['gerente', 'admin'].includes(user.role)) {
+    return res.status(403).json({ error: 'No autorizado para aprobar facturas de esta empresa' });
   }
-
-  const supabase = createClient(supabaseUrl, serviceKey);
+  const companyId = user.company_id;
+  if (!companyId) {
+    return res.status(403).json({ error: 'No autorizado para aprobar facturas de esta empresa' });
+  }
 
   // signXml is our own local implementation (see _xadesSign.js) - open-factura's version
   // uses `import * as forge from "node-forge"`, which under native Node.js ESM/CJS interop
@@ -63,23 +67,11 @@ export default async function handler(req, res) {
   } catch (importError) {
     console.error('Failed to load open-factura:', importError);
     return res.status(500).json({
-      error: 'No se pudo cargar el módulo de firma electrónica en el servidor',
-      detail: importError.message
+      error: 'No se pudo cargar el módulo de firma electrónica en el servidor'
     });
   }
 
   try {
-    // Verificar que el usuario pertenece a la empresa y tiene rol autorizado
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, company_id, role')
-      .eq('id', userId)
-      .single();
-
-    if (userError || !user || user.company_id !== companyId || !['gerente', 'admin'].includes(user.role)) {
-      return res.status(403).json({ error: 'No autorizado para aprobar facturas de esta empresa' });
-    }
-
     // Factura
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')

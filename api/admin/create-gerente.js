@@ -1,5 +1,6 @@
-import { getSupabaseAdmin, sendEmail } from '../emails/_lib.js';
+import { sendEmail } from '../emails/_lib.js';
 import { tempPasswordEmail } from '../emails/_templates.js';
+import { getAuthenticatedUser } from '../_authHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Crea el primer login 'gerente' de una empresa recién dada de alta y le envía
@@ -13,7 +14,9 @@ import { tempPasswordEmail } from '../emails/_templates.js';
 // camino muerto que crea un perfil sin auth.users correspondiente = login roto.
 //
 // Sigue cerrando la vulnerabilidad §1.1.1 de AUDITORIA_SISTEMA.md: solo un
-// admin real (verificado acá, con service role) puede llegar a este punto.
+// admin real puede llegar a este punto - verificado con JWT real
+// (api/_authHelpers.js), no con un adminId que el body simplemente afirmaba
+// (Fase 1 de hardening).
 // ---------------------------------------------------------------------------
 
 export default async function handler(req, res) {
@@ -21,24 +24,18 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { adminId, companyId, email, password, name } = req.body || {};
-  if (!adminId || !companyId || !email || !password || !name) {
-    return res.status(400).json({ error: 'adminId, companyId, email, password y name son requeridos' });
+  const { companyId, email, password, name } = req.body || {};
+  if (!companyId || !email || !password || !name) {
+    return res.status(400).json({ error: 'companyId, email, password y name son requeridos' });
   }
   if (String(password).length < 6) {
     return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
   }
 
   try {
-    const supabase = getSupabaseAdmin();
-
-    // Verifica que quien llama es admin del sistema.
-    const { data: admin, error: adminError } = await supabase
-      .from('users')
-      .select('id, role')
-      .eq('id', adminId)
-      .single();
-    if (adminError || !admin || admin.role !== 'admin') {
+    const { supabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
+    if (authError) return res.status(authStatus).json({ error: authError });
+    if (user.role !== 'admin') {
       return res.status(403).json({ error: 'Sólo un administrador puede dar de alta empresas' });
     }
 
@@ -53,13 +50,13 @@ export default async function handler(req, res) {
     }
 
     // Paso 1: credenciales reales en Auth.
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+    const { data: authUser, error: createAuthError } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true
     });
-    if (authError) {
-      return res.status(400).json({ error: authError.message });
+    if (createAuthError) {
+      return res.status(400).json({ error: createAuthError.message });
     }
 
     // Paso 2: perfil de negocio, mismo id que Auth le asignó.

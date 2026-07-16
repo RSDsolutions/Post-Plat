@@ -107,7 +107,7 @@ export default function Accounting() {
     let authorizedCount = 0;
     for (let i = 0; i < targets.length; i++) {
       try {
-        const result = await reconcileInvoiceStatus({ invoiceId: targets[i].id, companyId: currentUser.company_id, userId: currentUser.id });
+        const result = await reconcileInvoiceStatus({ invoiceId: targets[i].id });
         if (result.status === 'autorizada') authorizedCount++;
       } catch (error) {
         console.error('Error reconciling invoice:', error);

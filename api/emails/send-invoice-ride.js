@@ -1,18 +1,19 @@
-import { getSupabaseAdmin, sendEmail } from './_lib.js';
+import { sendEmail } from './_lib.js';
 import { newInvoiceEmail } from './_templates.js';
+import { getAuthenticatedUser } from '../_authHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Envía el RIDE (PDF) de una factura autorizada al correo del cliente.
 //
 // El PDF se genera en el navegador con jsPDF (rideGenerator.js) y llega aquí
 // en Base64. NO confiamos en el navegador para nada sensible:
-//   - Re-validamos con service role que la factura exista, pertenezca a la
-//     empresa y esté en estado 'autorizada'.
+//   - JWT real (api/_authHelpers.js) resuelve quién llama y de qué empresa es -
+//     ya no un userId/companyId que el body simplemente afirmaba.
 //   - El destinatario (email) se resuelve desde la tabla customers, no del body.
-//   - Verificamos que el userId que pide pertenezca a la empresa Y tenga rol
-//     gerente/admin (mismo patrón que api/sri/submit-invoice.js) - antes no
-//     se restringía el rol acá, solo la UI lo ocultaba (can('invoices.send_ride')),
-//     así que un contador podía llamarlo directo y el servidor lo dejaba pasar.
+//   - Solo gerente/admin (mismo patrón que api/sri/submit-invoice.js) -
+//     antes no se restringía el rol acá, solo la UI lo ocultaba
+//     (can('invoices.send_ride')), así que un contador podía llamarlo
+//     directo y el servidor lo dejaba pasar.
 // ---------------------------------------------------------------------------
 
 export default async function handler(req, res) {
@@ -20,21 +21,19 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { invoiceId, companyId, userId, pdfBase64 } = req.body || {};
-  if (!invoiceId || !companyId || !userId || !pdfBase64) {
-    return res.status(400).json({ error: 'invoiceId, companyId, userId y pdfBase64 son requeridos' });
+  const { invoiceId, pdfBase64 } = req.body || {};
+  if (!invoiceId || !pdfBase64) {
+    return res.status(400).json({ error: 'invoiceId y pdfBase64 son requeridos' });
   }
 
   try {
-    const supabase = getSupabaseAdmin();
-
-    // El usuario debe pertenecer a la empresa.
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, company_id, role')
-      .eq('id', userId)
-      .single();
-    if (userError || !user || user.company_id !== companyId || !['gerente', 'admin'].includes(user.role)) {
+    const { supabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
+    if (authError) return res.status(authStatus).json({ error: authError });
+    if (!['gerente', 'admin'].includes(user.role)) {
+      return res.status(403).json({ error: 'No autorizado para enviar el RIDE de esta empresa' });
+    }
+    const companyId = user.company_id;
+    if (!companyId) {
       return res.status(403).json({ error: 'No autorizado para enviar el RIDE de esta empresa' });
     }
 

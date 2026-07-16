@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { getAuthenticatedUser } from '../_authHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Reconsulta el estado de UNA factura ya recibida por el SRI, sin volver a
@@ -29,19 +29,20 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { invoiceId, companyId, userId } = req.body || {};
-  if (!invoiceId || !companyId || !userId) {
-    return res.status(400).json({ error: 'invoiceId, companyId y userId son requeridos' });
+  const { invoiceId } = req.body || {};
+  if (!invoiceId) {
+    return res.status(400).json({ error: 'invoiceId es requerido' });
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    || process.env.SUPABASE_SECRET_KEY
-    || process.env.VITE_SUPABASE_SECRET_KEY;
-  if (!supabaseUrl || !serviceKey) {
-    return res.status(500).json({ error: 'Configuración de servidor incompleta' });
+  const { supabase, user, error: authError, status: authStatusCode } = await getAuthenticatedUser(req);
+  if (authError) return res.status(authStatusCode).json({ error: authError });
+  if (!['gerente', 'admin', 'contador'].includes(user.role)) {
+    return res.status(403).json({ error: 'No autorizado para reconsultar facturas de esta empresa' });
   }
-  const supabase = createClient(supabaseUrl, serviceKey);
+  const companyId = user.company_id;
+  if (!companyId) {
+    return res.status(403).json({ error: 'No autorizado para reconsultar facturas de esta empresa' });
+  }
 
   let documentAuthorization;
   try {
@@ -52,15 +53,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('id, company_id, role')
-      .eq('id', userId)
-      .single();
-    if (userError || !user || user.company_id !== companyId || !['gerente', 'admin', 'contador'].includes(user.role)) {
-      return res.status(403).json({ error: 'No autorizado para reconsultar facturas de esta empresa' });
-    }
-
     const { data: invoice, error: invoiceError } = await supabase
       .from('invoices')
       .select('id, status, authorization_number, company_id')

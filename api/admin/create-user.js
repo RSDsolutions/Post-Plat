@@ -1,5 +1,6 @@
-import { getSupabaseAdmin, sendEmail } from '../emails/_lib.js';
+import { sendEmail } from '../emails/_lib.js';
 import { welcomeCashierEmail } from '../emails/_templates.js';
+import { getAuthenticatedUser } from '../_authHelpers.js';
 
 // ---------------------------------------------------------------------------
 // Generaliza api/admin/create-cashier.js (que quedó retirado) a los tres
@@ -12,6 +13,10 @@ import { welcomeCashierEmail } from '../emails/_templates.js';
 // welcomeCashierEmail ya era genérica (recibe roleLabel, no asume "cajero"
 // en ningún lado del texto), así que se reutiliza tal cual para contador en
 // vez de duplicar una plantilla nueva.
+//
+// Quién llama (antes callerId en el body, ahora JWT real vía
+// api/_authHelpers.js - Fase 1 de hardening): admin (cualquier empresa) o
+// gerente de la MISMA empresa que companyId.
 // ---------------------------------------------------------------------------
 
 const ROLE_LABELS = { vendedor: 'Vendedor', operario: 'Operario', contador: 'Contador' };
@@ -21,9 +26,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { callerId, companyId, email, password, name, role, phone, branchId } = req.body || {};
-  if (!callerId || !companyId || !email || !password || !name || !role) {
-    return res.status(400).json({ error: 'callerId, companyId, email, password, name y role son requeridos' });
+  const { companyId, email, password, name, role, phone, branchId } = req.body || {};
+  if (!companyId || !email || !password || !name || !role) {
+    return res.status(400).json({ error: 'companyId, email, password, name y role son requeridos' });
   }
   if (!['vendedor', 'operario', 'contador'].includes(role)) {
     return res.status(400).json({ error: 'Rol no permitido para este endpoint' });
@@ -37,18 +42,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabase = getSupabaseAdmin();
-
-    const { data: caller, error: callerError } = await supabase
-      .from('users')
-      .select('id, company_id, role')
-      .eq('id', callerId)
-      .single();
-    const isAuthorized = caller && (
-      caller.role === 'admin' ||
-      (caller.role === 'gerente' && caller.company_id === companyId)
-    );
-    if (callerError || !isAuthorized) {
+    const { supabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
+    if (authError) return res.status(authStatus).json({ error: authError });
+    const isAuthorized = user.role === 'admin' || (user.role === 'gerente' && user.company_id === companyId);
+    if (!isAuthorized) {
       return res.status(403).json({ error: 'No autorizado para crear usuarios en esta empresa' });
     }
 
@@ -91,13 +88,13 @@ export default async function handler(req, res) {
       }
     }
 
-    const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
+    const { data: authUser, error: createAuthError } = await supabase.auth.admin.createUser({
       email,
       password,
       email_confirm: true
     });
-    if (authError) {
-      return res.status(400).json({ error: authError.message });
+    if (createAuthError) {
+      return res.status(400).json({ error: createAuthError.message });
     }
 
     const { data: profile, error: profileError } = await supabase

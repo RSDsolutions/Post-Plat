@@ -81,7 +81,6 @@ export default function CompanyUsersTab({ company }) {
     try {
       const tempPassword = generateTempPassword();
       const result = await createCompanyUser({
-        callerId: currentUser.id,
         companyId: company.id,
         email,
         password: tempPassword,
@@ -113,7 +112,6 @@ export default function CompanyUsersTab({ company }) {
     try {
       const tempPassword = generateTempPassword();
       const result = await createCompanyGerente({
-        adminId: currentUser.id,
         companyId: company.id,
         email,
         password: tempPassword,
@@ -135,7 +133,7 @@ export default function CompanyUsersTab({ company }) {
     setBusyUserId(user.id);
     try {
       const tempPassword = generateTempPassword();
-      const result = await adminResetUserPassword({ adminId: currentUser.id, companyId: company.id, userId: user.id, newPassword: tempPassword });
+      const result = await adminResetUserPassword({ companyId: company.id, userId: user.id, newPassword: tempPassword });
       openConfirm('Contraseña restablecida', credentialsMessage(user.name, user.email, tempPassword, result?.emailStatus), () => {});
     } catch (error) {
       console.error('Error resetting password:', error);
@@ -148,7 +146,7 @@ export default function CompanyUsersTab({ company }) {
   const doToggleActive = async (user, activate) => {
     setBusyUserId(user.id);
     try {
-      await adminSetUserActive({ adminId: currentUser.id, companyId: company.id, userId: user.id, isActive: activate });
+      await adminSetUserActive({ companyId: company.id, userId: user.id, isActive: activate });
       showToast('success', `"${user.name}" ${activate ? 'activado' : 'desactivado'}`);
       await load();
     } catch (error) {

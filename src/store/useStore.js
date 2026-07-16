@@ -271,7 +271,6 @@ export const useStore = create((set, get) => ({
       // stays open (not a toast) so there's actually time to copy it.
       const tempPassword = generateTempPassword();
       const gerenteResult = await createCompanyGerente({
-        adminId: currentUser?.id,
         companyId: dbCompany.id,
         email: wizardData.adminEmail,
         password: tempPassword,
@@ -287,7 +286,6 @@ export const useStore = create((set, get) => ({
         try {
           const cajeroPassword = generateTempPassword();
           const cajeroResult = await createCompanyUser({
-            callerId: currentUser?.id,
             companyId: dbCompany.id,
             email: cajero.email,
             password: cajeroPassword,
