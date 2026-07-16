@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { useStore } from './store/useStore.js';
+import { supabase } from './lib/supabase.js';
 import { fetchCompanies, fetchPlans, fetchActivityLog, fetchMonthlyInvoiceCounts } from './lib/supabaseHelpers.js';
 import { transformCompany, transformPlan, transformActivityEvent } from './lib/transforms.js';
 import { applyBrandColors } from './lib/brand.js';
@@ -7,6 +8,7 @@ import Layout from './components/layout/Layout.jsx';
 import StoreManagerLayout from './components/layout/StoreManagerLayout.jsx';
 import POSLayout from './components/layout/POSLayout.jsx';
 import Login from './components/pages/Login.jsx';
+import ResetPassword from './components/pages/ResetPassword.jsx';
 
 function ImpersonationBanner() {
   const impersonating = useStore(state => state.impersonating);
@@ -35,12 +37,30 @@ export default function App() {
   const brand = useStore(state => state.brand);
   const restoreAuth = useStore(state => state.restoreAuth);
   const impersonating = useStore(state => state.impersonating);
+  const passwordRecoveryMode = useStore(state => state.passwordRecoveryMode);
+  const enterPasswordRecoveryMode = useStore(state => state.enterPasswordRecoveryMode);
 
   useEffect(() => {
+    // supabase-js detecta sola los tokens de recuperación en la URL (el link
+    // del correo de request-password-reset.js) y arma una sesión real para
+    // poder llamar auth.updateUser() - pero dispara el evento PASSWORD_RECOVERY
+    // en vez de SIGNED_IN para que la app pueda distinguirlo de un login
+    // normal. Sin este listener, restoreAuth() (abajo) trataría esa sesión
+    // como si el usuario hubiera iniciado sesión de verdad y lo mandaría
+    // directo al dashboard, saltándose por completo la pantalla para elegir
+    // la contraseña nueva.
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        enterPasswordRecoveryMode();
+      }
+    });
+
     // Restaura la sesión de Supabase Auth si hay una vigente (ver
     // useStore.js restoreAuth) - ya no lee un objeto propio de localStorage.
     restoreAuth();
     applyBrandColors(brand.color);
+
+    return () => authListener?.subscription?.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -70,6 +90,14 @@ export default function App() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
+
+  // Antes que isAuthenticated a propósito: si venimos de un link de
+  // recuperación, Supabase ya armó una sesión real (necesaria para
+  // updateUser), pero eso no debe mandar a nadie al dashboard sin haber
+  // elegido antes una contraseña nueva.
+  if (passwordRecoveryMode) {
+    return <ResetPassword />;
+  }
 
   if (!isAuthenticated) {
     return <Login />;

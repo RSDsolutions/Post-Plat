@@ -124,6 +124,26 @@ export function passwordResetEmail({ name, email, tempPassword, companyName, log
   };
 }
 
+// --- 2c. Recuperación de contraseña self-service (usuario la pide) ---------
+// actionLink viene de supabase.auth.admin.generateLink({type:'recovery'}) -
+// apunta primero al endpoint de verificación de Supabase (que valida el
+// token) y de ahí redirige a EMAIL_APP_URL con la sesión de recuperación ya
+// armada en el fragmento de la URL. Ese primer salto es invisible para quien
+// lee el correo - todo el contenido que ve es esta plantilla propia, no un
+// correo con la marca de Supabase.
+export function passwordRecoveryEmail({ email, name, actionLink }) {
+  const body = `
+    <h1 style="margin:0 0 16px;font-size:22px;color:${TEXT};">Recupera tu contraseña</h1>
+    <p style="margin:0 0 12px;">${name ? `Hola ${esc(name)}, r` : 'R'}ecibimos una solicitud para restablecer la contraseña de la cuenta <strong>${esc(email)}</strong> en POST-PLAT.</p>
+    ${button(actionLink, 'Elegir nueva contraseña')}
+    <p style="margin:16px 0 0;color:${MUTED};font-size:13px;">Este enlace es válido por tiempo limitado y solo puede usarse una vez. Si no pediste este cambio, ignora este correo — tu contraseña actual sigue funcionando.</p>
+  `;
+  return {
+    subject: 'Recupera tu contraseña de POST-PLAT',
+    html: layout({ title: 'Recuperar contraseña', preheader: 'Elige una nueva contraseña para tu cuenta', bodyHtml: body })
+  };
+}
+
 // --- 3. Alerta de stock bajo (a la empresa) ---------------------------------
 export function lowStockEmail({ companyName, productName, productCode, branchName, quantity, minStock }) {
   const body = `

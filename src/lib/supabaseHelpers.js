@@ -1297,6 +1297,20 @@ export async function checkSriStatus() {
   return result;
 }
 
+// "Olvidé mi contraseña" - sin sesión (quien llama todavía no puede
+// autenticarse), por eso no usa getAuthHeaders(). La respuesta es siempre
+// {ok:true, message} sin importar si el correo existe o no - ver
+// api/admin/request-password-reset.js.
+export async function requestPasswordReset(email) {
+  const response = await fetch('/api/admin/request-password-reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email })
+  });
+  const result = await response.json().catch(() => ({}));
+  return result.message || 'Si el correo está registrado, te enviamos un enlace para restablecer tu contraseña.';
+}
+
 export async function getNextInvoiceSequential(companyId) {
   try {
     // Read current sequential counter from billing config

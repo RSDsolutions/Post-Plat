@@ -71,6 +71,13 @@ export const useStore = create((set, get) => ({
   // Facturas del mes en curso por empresa, id -> conteo (solo lo pobla
   // fetchMonthlyInvoiceCounts para admin de plataforma - ver initData).
   monthlyInvoiceCounts: {},
+  // true cuando supabase-js detecta una sesión de recuperación de contraseña
+  // en la URL (link del correo de request-password-reset.js) - ver el
+  // listener de onAuthStateChange armado en App.jsx. Mientras esté en true,
+  // App.jsx muestra ResetPassword.jsx en vez del login/dashboard normal,
+  // sin importar isAuthenticated (Supabase sí arma una sesión real para
+  // poder llamar updateUser, pero no debe tratarse como un login normal).
+  passwordRecoveryMode: false,
 
   selectedCompanyId: null,
   companyDetailTab: 'resumen',
@@ -138,6 +145,26 @@ export const useStore = create((set, get) => ({
     ]);
     set({ currentUser: user, userRole: user.role, permissions, posTheme, panelMode, isAuthenticated: true, isAuthenticating: false });
     return true;
+  },
+  // App.jsx llama esto desde su listener de onAuthStateChange cuando
+  // supabase-js dispara el evento 'PASSWORD_RECOVERY' (URL con el link del
+  // correo de request-password-reset.js) - independiente de isAuthenticated,
+  // que el render de App.jsx debe revisar primero.
+  enterPasswordRecoveryMode: () => set({ passwordRecoveryMode: true }),
+  // Cierra el flujo de recuperación: fija la contraseña nueva sobre la
+  // sesión de recuperación ya armada por Supabase, y cierra esa sesión de
+  // inmediato en vez de dejar al usuario "adentro" - vuelve al login normal
+  // para que inicie sesión ya con su contraseña nueva, sin ambigüedad sobre
+  // si la sesión de recuperación cuenta como un login real.
+  completePasswordRecovery: async (newPassword) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw new Error(error.message);
+    await supabase.auth.signOut();
+    set({
+      passwordRecoveryMode: false,
+      currentUser: null, userRole: null, permissions: new Set(),
+      isAuthenticated: false
+    });
   },
 
   // Toggle del modo claro/oscuro en el TopBar de StoreManagerLayout. Aplica

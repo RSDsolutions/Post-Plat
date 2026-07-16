@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store/useStore.js';
-import { Lock, AlertCircle, CheckCircle } from 'lucide-react';
+import { requestPasswordReset } from '../../lib/supabaseHelpers.js';
+import { Lock, AlertCircle, CheckCircle, KeyRound, ArrowLeft } from 'lucide-react';
 
 export default function Login() {
   const { login, showToast } = useStore();
   const [userType, setUserType] = useState('admin');
   const [email, setEmail] = useState('admin@postplat.com');
   const [password, setPassword] = useState('');
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState(null);
 
   React.useEffect(() => {
     if (userType === 'admin') {
@@ -34,6 +39,91 @@ export default function Login() {
       setIsLoading(false);
     }
   };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail.trim()) return;
+    setForgotSubmitting(true);
+    setForgotMessage(null);
+    try {
+      // La respuesta es siempre el mismo mensaje genérico exista o no la
+      // cuenta - ver api/admin/request-password-reset.js. No hay nada que
+      // distinguir acá, a propósito.
+      const message = await requestPasswordReset(forgotEmail.trim());
+      setForgotMessage(message);
+    } catch {
+      setForgotMessage('Si el correo está registrado, te enviamos un enlace para restablecer tu contraseña.');
+    } finally {
+      setForgotSubmitting(false);
+    }
+  };
+
+  if (showForgotPassword) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-500/20 rounded-lg mb-4">
+              <KeyRound className="w-8 h-8 text-emerald-500" />
+            </div>
+            <h1 className="text-2xl font-bold text-white mb-2">Recuperar contraseña</h1>
+            <p className="text-zinc-400">Te enviaremos un enlace a tu correo para elegir una nueva</p>
+          </div>
+
+          {forgotMessage ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span className="text-sm text-emerald-400">{forgotMessage}</span>
+              </div>
+              <button
+                onClick={() => { setShowForgotPassword(false); setForgotMessage(null); setForgotEmail(''); }}
+                className="w-full py-2 border border-zinc-700 text-zinc-300 font-medium rounded-lg hover:border-zinc-600 hover:bg-zinc-900/50 transition-colors flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" /> Volver a iniciar sesión
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">Correo Electrónico</label>
+                <input
+                  type="email"
+                  value={forgotEmail}
+                  onChange={(e) => setForgotEmail(e.target.value)}
+                  placeholder="tu@correo.com"
+                  autoFocus
+                  className="w-full px-4 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                  disabled={forgotSubmitting}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={forgotSubmitting}
+                className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-zinc-700 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {forgotSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-emerald-300 border-t-transparent rounded-full animate-spin" />
+                    <span>Enviando...</span>
+                  </>
+                ) : (
+                  <span>Enviar enlace de recuperación</span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(false)}
+                className="w-full py-2 text-zinc-400 text-sm hover:text-zinc-200 transition-colors flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" /> Volver a iniciar sesión
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const handleDemoLogin = async () => {
     // For development: login with default credentials based on userType
@@ -130,6 +220,13 @@ export default function Login() {
                 ABC123456
               </span>
             </p>
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              className="text-xs text-zinc-400 hover:text-emerald-400 transition-colors mt-2"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
           </div>
 
           {/* Error Message */}
