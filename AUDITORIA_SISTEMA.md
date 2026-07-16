@@ -332,33 +332,33 @@ Para que quede balanceado — esto ya se corrigió y verificó en sesiones recie
 
 ## 6. Hoja de ruta priorizada
 
-*(actualizada 2026-07-15 — los ítems 1-3 originales y el cifrado de `cert_password` ya están resueltos, ver §1.4 y la actualización del 2026-07-15)*
+*(barrido final 2026-07-16 — de los 21 ítems originales, 12 quedaron resueltos a lo largo de las Fases 0-6 de este proyecto; ver fecha y commit de cada uno abajo)*
 
 **🔴 Urgente — riesgo activo en producción**
 1. ~~`create_company_gerente`: agregar verificación de que quien llama es admin (§1.1.1).~~ ✅ Resuelto.
 2. ~~Agregar política `SELECT` a `plans` (§1.1.2).~~ ✅ Resuelto.
 3. ~~Agregar políticas `INSERT`/`SELECT` a `activity_log` (§1.1.3).~~ ✅ Resuelto.
-4. ~~Implementar de verdad el bloqueo por intentos fallidos en `verify_user_password`/`verify_admin_password` (§1.1.4).~~ ✅ Obsoleto: ambas funciones ya no existen — `verify_user_password` se retiró en la Fase 0 (login real vía Supabase Auth) y `verify_admin_password` se eliminó 2026-07-16 (Fase 6, era código muerto y alcanzable por `anon`, ver actualización de esa fecha, hallazgo #12). El bloqueo por intentos fallidos ahora lo maneja Supabase Auth.
-5. Quitar `stack` de las respuestas HTTP en `api/sri/submit-invoice.js` (§1.2). **Sigue pendiente.**
+4. ~~Implementar de verdad el bloqueo por intentos fallidos en `verify_user_password`/`verify_admin_password` (§1.1.4).~~ ✅ Obsoleto: ambas funciones ya no existen — `verify_user_password` se retiró en la Fase 0 (login real vía Supabase Auth) y `verify_admin_password` se eliminó 2026-07-16 (Fase 6, era código muerto y alcanzable por `anon`, ver hallazgo #12). El bloqueo por intentos fallidos ahora lo maneja Supabase Auth.
+5. ~~Quitar `stack` de las respuestas HTTP en `api/sri/submit-invoice.js` (§1.2).~~ ✅ Resuelto 2026-07-15 (Fase 1, commit `22ff677`) — confirmado en el código actual: solo se devuelve `error.message`.
 6. ~~Sesiones sin JWT/expiración — migrar a Supabase Auth (§8).~~ ✅ Resuelto 2026-07-15 (Fase 0). Queda como seguimiento menor: migrar `api/sri/*`/`api/emails/send-invoice-ride.js` de `userId` en el body a verificar el JWT real (ver la actualización de esa fecha).
-7. Nota de crédito / anulación fiscal real de comprobantes autorizados (§6 de la actualización 2026-07-15). **Sigue pendiente — feature grande, priorizar antes de operar con clientes reales.**
+7. ~~Nota de crédito / anulación fiscal real de comprobantes autorizados (§6 de la actualización 2026-07-15).~~ ✅ Resuelto 2026-07-15 (Fase 2, commit `d7c36bf`) — ver actualización "Fase 2 — Nota de crédito", probado contra el SRI de producción real.
 
 **🟠 Alta**
-8. Contingencia/reintentos automáticos ante caídas del SRI (§7 de la actualización 2026-07-15). **Sigue pendiente.**
-9. Hacer cumplir los límites de plan (facturas/mes, usuarios, sucursales) en el momento de crear el recurso, no solo mostrarlos.
-10. `SET search_path` en las funciones `SECURITY DEFINER` (§1.2).
-11. Acotar la política de listado del bucket `company-logos` (§1.2).
+8. ~~Contingencia/reintentos automáticos ante caídas del SRI (§7 de la actualización 2026-07-15).~~ ✅ Resuelto 2026-07-15 (Fase 3, commit `05082a8`) — cron cada 15 min (`api/sri/retry-pending.js`), clasifica el tipo de rechazo y reintenta o reconsulta según corresponda.
+9. ~~Hacer cumplir los límites de plan (facturas/mes, usuarios, sucursales) en el momento de crear el recurso, no solo mostrarlos.~~ ✅ Resuelto 2026-07-16 (Fase 4, commit `9709e09`) — triggers `BEFORE INSERT` en Postgres (`enforce_*_plan_limit`), no solo validación de UI.
+10. ~~`SET search_path` en las funciones `SECURITY DEFINER` (§1.2).~~ ✅ Resuelto 2026-07-15 (Fase 1, commit `22ff677`) — confirmado: 0 de 25 funciones `SECURITY DEFINER` actuales están sin `search_path`.
+11. ~~Acotar la política de listado del bucket `company-logos` (§1.2).~~ ✅ Resuelto 2026-07-15 (Fase 1, commit `22ff677`) — se quitó la política `SELECT` amplia; `getPublicUrl()` sigue funcionando porque el bucket ya es `public=true`, pero ya no se puede listar el contenido completo vía API.
 
 **🟡 Media**
-12. Code-splitting por rol (admin / gerente / POS) para bajar el bundle inicial.
-13. Integración de pasarela de pago real.
-14. Flujo de recuperación de contraseña por correo para `gerente`/`admin` (el sistema de correos con Resend ya existe desde el 2026-07-11 — falta este flujo puntual).
-15. Quitar índices duplicados, agregar índices a las FK listadas en §2, consolidar las políticas duplicadas de `invoices`.
-16. Responsividad móvil del panel admin.
+12. Code-splitting por rol (admin / gerente / POS) para bajar el bundle inicial. **Sigue pendiente.**
+13. Integración de pasarela de pago real. **Sigue pendiente.**
+14. ~~Flujo de recuperación de contraseña por correo para `gerente`/`admin`.~~ ✅ Resuelto 2026-07-16 (Fase 5, commit `872db16`) — self-service, plantilla propia (no el correo genérico de Supabase), rate-limited.
+15. Quitar índices duplicados, agregar índices a las FK listadas en §2, consolidar las políticas duplicadas de `invoices`. **Sigue pendiente.**
+16. Responsividad móvil del panel admin. **Sigue pendiente.**
 
 **🟢 Baja**
-17. Suite de tests mínima, empezando por generación de clave de acceso SRI y los RPCs de negocio (es el código con más riesgo y menos visibilidad cuando falla).
-18. Evaluar TypeScript (o al menos JSDoc) — varios bugs de esta sesión eran discrepancias de forma que un tipado hubiera atrapado antes de ejecutar.
-19. Pipeline de CI (build + lint) en cada push a `main`.
-20. Limpieza de código muerto: `src/data/companies.js`, `src/data/activityLog.js`, tabla `admin_users`, columnas `products.quantity`/`min_stock`, dependencia `@modelcontextprotocol/sdk`.
-21. Actualizar la sección de esquema de `CLAUDE.md` para reflejar las 21 tablas reales.
+17. Suite de tests mínima, empezando por generación de clave de acceso SRI y los RPCs de negocio (es el código con más riesgo y menos visibilidad cuando falla). **Sigue pendiente** (nota: cada fase de este proyecto sí corrió pruebas reales contra Supabase con datos descartables, pero son scripts ad-hoc en `scripts/`/scratch, no una suite versionada y repetible — la excepción es `scripts/smoke-login.mjs`, agregado en la Fase 6, que sí quedó como chequeo permanente).
+18. Evaluar TypeScript (o al menos JSDoc). **Sigue pendiente.**
+19. Pipeline de CI (build + lint) en cada push a `main`. **Sigue pendiente.**
+20. Limpieza de código muerto: `src/data/companies.js`, `src/data/activityLog.js`, tabla `admin_users`, columnas `products.quantity`/`min_stock`, dependencia `@modelcontextprotocol/sdk`. **Parcialmente resuelto 2026-07-16** (Fase 6 eliminó `verify_admin_password`, la única función que aún tocaba `admin_users`) — la tabla en sí y el resto de la lista siguen pendientes.
+21. Actualizar la sección de esquema de `CLAUDE.md` para reflejar las tablas reales. **Sigue pendiente** — `CLAUDE.md` todavía describe el esquema v1 original (16 tablas, `admin_users` con `password_hash`); el sistema real hoy tiene 22 tablas y usa Supabase Auth. `RESUMEN_SISTEMA.md` sí está al día (actualizado en cada fase) y es la referencia correcta mientras tanto.

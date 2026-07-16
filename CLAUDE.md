@@ -193,6 +193,8 @@ mcp__supabase__execute_sql("ALTER TABLE products ADD COLUMN ...")
 # Then apply via MCP
 ```
 
+**⚠️ Si la migración toca `users`, `companies`, o sus políticas RLS/GRANTs: corré `npm run smoke:login` antes de dar el cambio por terminado.** El 2026-07-15 una migración agregó una columna a `users` sin otorgarle `SELECT` a `authenticated` y el login quedó roto para el 100% de usuarios reales sin que ningún build/test lo detectara — el script replica el login real end-to-end (Auth + el mismo `SELECT` de perfil que usa `useStore.js`) contra la base de datos real, con una cuenta canario fija (no se borra, se crea sola la primera vez). Ver `scripts/smoke-login.mjs`.
+
 ### 2. Making Code Changes
 ```bash
 # Edit components/pages/features
@@ -307,6 +309,11 @@ VITE_SUPABASE_ANON_KEY=eyJhbGc...
 - ✅ Database schema updates
 - ✅ New features
 - ✅ Bug fixes
+
+### MUST RUN `npm run smoke:login` AFTER:
+- ✅ Cualquier migración que toque `users`, `companies`, o sus políticas RLS/GRANTs
+- ✅ Cambios a `loginWithPassword()`, `useStore.js` (`login`/`restoreAuth`), o las funciones `current_company_id()`/`current_role()`/`is_platform_admin()`
+- Ver detalle y motivo (incidente real) en la sección "Making Database Changes" arriba.
 
 ### DO NOT COMMIT:
 - ❌ `.env.local` (secrets)

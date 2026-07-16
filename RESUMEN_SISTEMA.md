@@ -87,8 +87,8 @@ Existe también una tabla legada `admin_users` (1 fila) — de una versión ante
 
 ## 4. Modelo multi-tenant y multi-sucursal
 
-- **`companies`** es la raíz de cada tenant: identidad fiscal (RUC, razón social, nombre comercial, dirección, régimen), configuración SRI heredada (establecimiento/punto de venta/secuencial — hoy vive realmente en `point_of_sales`), suscripción (`subscription_status`: activa/suspendida/cancelada/vencida, `subscription_start`, `subscription_renewal`, `trial_ends_at`), contadores de uso (`monthly_comprobantes`, `prev_month_comprobantes`, `active_users`, `branches`), `custom_price` (override manual de precio por cliente), logo (`logo_url`), y `deleted_at` (soft delete).
-- **`plans`** define los planes comerciales: precio, ciclo de facturación, límites (`max_users`, `max_branches`, `max_invoices_monthly`, `max_products`, `max_pos`) y `features` (array JSON de claves de funcionalidad).
+- **`companies`** es la raíz de cada tenant: identidad fiscal (RUC, razón social, nombre comercial, dirección, régimen), configuración SRI heredada (establecimiento/punto de venta/secuencial — hoy vive realmente en `point_of_sales`), suscripción (`subscription_status`: activa/suspendida/cancelada/vencida, `subscription_start`, `subscription_renewal`, `trial_ends_at`), `custom_price` (override manual de precio por cliente), logo (`logo_url`), y `deleted_at` (soft delete). Las columnas `monthly_comprobantes`/`prev_month_comprobantes` siguen ahí pero **inertes** desde la Fase 4 — el conteo real de uso se calcula en vivo desde `invoices` (`get_monthly_invoice_counts()`), no se guarda en una columna que pueda desincronizarse.
+- **`plans`** define los planes comerciales: precio, ciclo de facturación, límites (`max_users`, `max_branches`, `max_invoices_monthly`, `max_products`, `max_pos`) y `features` (array JSON de claves de funcionalidad). Los límites se hacen cumplir con triggers `BEFORE INSERT` en Postgres (`enforce_*_plan_limit`, ver `20260724_plan_limit_enforcement.sql`) — no alcanza con ocultar el botón en la UI, el `INSERT` mismo falla con un mensaje `PLAN_LIMIT: ...` si la empresa ya llegó a su tope.
 - **`feature_flags`** + **`company_feature_overrides`**: catálogo global de funcionalidades activables (7 definidas) y una tabla de excepciones por empresa (activar/desactivar una feature puntual sin cambiarle el plan completo). `planLimits.js` (`getEffectiveFeatures`, `hasFeature`) combina las features del plan con los overrides para decidir qué ve cada empresa.
 - El **wizard de alta** (`CompanyWizard.jsx`) crea en una sola operación: la fila en `companies`, su primera sucursal ("Matriz"), el primer punto de venta, y el primer login `gerente` — mostrando la contraseña temporal una sola vez (y, si el correo está configurado, enviándosela automáticamente al gerente).
 - **`branches`** — sucursales de la empresa (nombre, código, dirección, establecimiento SRI).
@@ -112,10 +112,11 @@ Existe también una tabla legada `admin_users` (1 fila) — de una versión ante
    - Genera la **clave de acceso** (49 dígitos) desde un objeto `Date` real; se guarda en `invoices.authorization_number` tanto si el SRI autoriza como si rechaza.
    - Envía el XML firmado al webservice de **Recepción** SRI (SOAP). Si es `RECIBIDA`, consulta **Autorización** con reintentos (el SRI tarda unos segundos).
    - Según el resultado, la factura queda `autorizada` (con XML autorizado y número de autorización) o `devuelta` (con motivo del rechazo en `sri_response_message`, y dispara automáticamente un correo de alerta — ver §8).
-4. **Reconsulta de una factura `devuelta`**: `api/sri/reconcile-invoice.js` — consulta de nuevo el estado de autorización usando la clave de acceso ya guardada, **sin volver a firmar ni reenviar**. Cubre el caso real de que el SRI haya recibido el comprobante pero submit-invoice.js haya agotado sus reintentos mientras el SRI seguía "EN PROCESO" — al reconsultar más tarde puede aparecer autorizado. Distinto de `api/sri/status.js`, que solo hace ping a si las URLs del SRI están arriba (no consulta ningún comprobante puntual). Gateado por `invoices.resend_sri`, permitido también para `contador` (puede reconsultar, no reenviar).
+4. **Reconsulta de una factura `devuelta`**: `api/sri/reconcile-invoice.js` — consulta de nuevo el estado de autorización usando la clave de acceso ya guardada, **sin volver a firmar ni reenviar**. Cubre el caso real de que el SRI haya recibido el comprobante pero submit-invoice.js haya agotado sus reintentos mientras el SRI seguía "EN PROCESO" — al reconsultar más tarde puede aparecer autorizado. Distinto de `api/sri/status.js`, que solo hace ping a si las URLs del SRI están arriba (no consulta ningún comprobante puntual). Gateado por `invoices.resend_sri`, permitido también para `contador` (puede reconsultar, no reenviar). Además corre **automáticamente**: un cron de Vercel (`vercel.json`, cada 15 min) dispara `api/sri/retry-pending.js`, que clasifica cada `devuelta` (`_retryClassifier.js`) y decide si solo hace falta reconsultar o si hay que reenviar el comprobante entero — sin que nadie tenga que entrar a Contabilidad a apretar el botón manual. Último barrido visible en la pestaña "Conciliación SRI".
 5. **PDF (RIDE)**: generado del lado del cliente con `jsPDF` + `jsbarcode` (código de barras de la clave de acceso), incluye el logo de la empresa. También puede generarse en `base64` server-side para adjuntarlo a un correo.
 6. **Envío del RIDE por correo**: `api/emails/send-invoice-ride.js` (solo `gerente`/`admin`) adjunta el PDF y lo envía al cliente final; se dispara manualmente desde `InvoiceManagement.jsx` o automáticamente en ambiente de producción.
-7. **Descarga de XML autorizados**: individual (`downloadInvoiceXml`) o masiva por rango de fechas/sucursal (`downloadInvoicesXmlZip`, `src/lib/invoiceXmlExport.js`) — arma un `.zip` **100% en el navegador** (sin pasar por ninguna Vercel Function) con un `.xml` por factura autorizada, nombrado con su clave de acceso, más un `resumen.csv`. Gateado por `invoices.export`, accesible desde `InvoiceManagement.jsx` y desde la pestaña "Descarga de XML" de Contabilidad.
+7. **Descarga de XML autorizados**: individual (`downloadInvoiceXml`) o masiva por rango de fechas/sucursal (`downloadInvoicesXmlZip`, `src/lib/invoiceXmlExport.js`) — arma un `.zip` **100% en el navegador** (sin pasar por ninguna Vercel Function) con un `.xml` por factura autorizada, nombrado con su clave de acceso, más un `resumen.csv` (facturas y notas de crédito en subcarpetas separadas). Gateado por `invoices.export`, accesible desde `InvoiceManagement.jsx` y desde la pestaña "Descarga de XML" de Contabilidad.
+8. **Notas de crédito** (`invoice_type = 'nota_credito'`): anulación fiscal real de un comprobante ya autorizado, no solo un cambio de estado local. `api/sri/submit-credit-note.js` arma y firma el XML `notaCredito` (misma firma XAdES-BES, XSD propio con `codigoInterno`/`codigoAdicional` en el detalle — distinto del `codigoPrincipal`/`codigoAuxiliar` de una factura). El SRI **rechaza** una NC sobre una factura a consumidor final (identificador 69) — regla real confirmada en producción, con guard tanto en la UI como en el servidor. Si la NC autorizada salda el 100% del monto original, la factura original pasa a `anulada`; si el gerente marcó "reingresar stock", cada línea dispara `adjust_product_stock` (movimiento `nota_credito_reingreso` en el kardex, ver §6). La cascada (anular + reingresar) vive en `api/sri/_creditNoteEffects.js`, compartida entre el camino síncrono (`submit-credit-note.js`) y el asíncrono (una NC que queda `devuelta` y se autoriza después al reconciliar).
 
 Ambientes: cada empresa elige **Pruebas** o **Producción** en `billing_configs.sri_environment`; el endpoint apunta a las URLs SOAP correspondientes automáticamente.
 
@@ -134,7 +135,7 @@ El sidebar se arma dinámicamente según los permisos del rol (§3) — la lista
 - **Clientes** (`CustomerManagement.jsx`) — base de clientes global de la empresa, solo lectura (el alta de cliente ocurre en el POS).
 - **Facturación / Comprobantes** (`InvoiceManagement.jsx`) — historial, filtro por sucursal y estado SRI, detalle, descarga de XML, y en modo lectura+export para contador: aprobar/anular (`invoices.approve`/`invoices.void`) y enviar RIDE (`invoices.send_ride`) son solo-gerente.
 - **Contabilidad** (`Accounting.jsx`, permiso `accounting.read`) — nueva sección con 4 pestañas:
-  - **Libro de Ventas** — base imponible 0%/gravada, IVA generado, descuentos, totales por forma de pago y sucursal, conteo por estado. Cálculo en `src/lib/accountingHelpers.js` (`buildSalesLedger`), sobre `invoices.subtotal`/`tax_amount` (la cabecera, no la suma de líneas — ver nota técnica abajo). Ya resta notas de crédito de todos los totales si algún día existen (`invoice_type = 'nota_credito'`). Exportable a PDF/CSV.
+  - **Libro de Ventas** — base imponible 0%/gravada, IVA generado, descuentos, totales por forma de pago y sucursal, conteo por estado. Cálculo en `src/lib/accountingHelpers.js` (`buildSalesLedger`), sobre `invoices.subtotal`/`tax_amount` (la cabecera, no la suma de líneas — ver nota técnica abajo). Resta las notas de crédito (`invoice_type = 'nota_credito'`, ver §5 punto 8) de los totales del período en el que se emiten, y muestra la factura original anulada por una NC dentro de su propio período (en vez de ocultarla). Exportable a PDF/CSV.
   - **Conciliación SRI** — tarjetas de conteo por estado, listado de no-autorizadas con motivo, botón "Reconsultar estados" (llama `api/sri/reconcile-invoice.js` en serie).
   - **Cierres de Caja** (`CashClosures.jsx`) — historial de `cash_closures`, filtrable por sucursal/cajero/fecha, diferencias resaltadas, export CSV.
   - **Descarga de XML** — mismo mecanismo que en Facturas, sobre el rango ya seleccionado en la página.
@@ -277,16 +278,16 @@ POST-PLAT/
 
 ---
 
-## 12. Base de datos — tablas actuales (22)
+## 12. Base de datos — tablas actuales (24)
 
 | Grupo | Tablas |
 |---|---|
 | Plataforma / SaaS | `companies` (incluye `ui_settings jsonb` — tema/paleta del POS, ver §7.1), `plans`, `feature_flags` (incluye `pos_theming`), `company_feature_overrides` |
-| Identidad y permisos | `users` (perfil, FK a `auth.users`, incluye `ui_preferences jsonb` — modo claro/oscuro del panel, ver §7.2), `admin_users` *(legado, sin uso real)*, `permissions`, `role_permissions` *(catálogo `modulo.accion`, ver §3)* |
-| Sucursales | `branches`, `point_of_sales`, `product_stock` |
+| Identidad y permisos | `users` (perfil, FK a `auth.users`, incluye `ui_preferences jsonb` — modo claro/oscuro del panel, ver §7.2), `admin_users` *(legado, sin uso real)*, `permissions`, `role_permissions` *(catálogo `modulo.accion`, ver §3)*, `password_reset_attempts` *(Fase 5 — rate limit de "olvidé mi contraseña", sin políticas RLS directas, solo vía RPC)* |
+| Sucursales | `branches`, `point_of_sales`, `product_stock`, `document_sequentials` *(numeración SRI atómica por punto de venta/tipo de documento — `get_next_document_sequential()`)* |
 | Catálogo y clientes | `products`, `customers` |
-| Facturación | `invoices`, `invoice_details`, `billing_configs`, `payment_methods` |
-| Contabilidad | `cash_closures` *(nueva — arqueo de caja, inmutable)* |
+| Facturación | `invoices` (incluye `nota_credito` en `invoice_type` desde la Fase 2), `invoice_details`, `billing_configs`, `payment_methods` |
+| Contabilidad | `cash_closures` *(arqueo de caja, inmutable)* |
 | Cobros SaaS | `payments` (cobros a las empresas clientes por su suscripción) |
 | Movimientos | `inventory_movements` (kardex — desde la Fase 6, incluye `branch_id`; solo se escribe vía las RPCs `adjust_product_stock`/`transfer_stock`, nunca `INSERT` directo, ver §6) |
 | Auditoría | `audit_log` *(esquema presente, sin uso activo)*, `activity_log` (feed real del panel admin, incluye altas de usuario) |
@@ -295,7 +296,7 @@ Además, esquema `auth` (Supabase Auth): `auth.users` es ahora la fuente de verd
 
 Storage buckets: `sri-certificates` (privado, certificados `.p12` — subida solo vía endpoint service-role), `company-logos` (público, logos de empresas clientes).
 
-RLS está habilitado en las 22 tablas de `public`, con políticas reales basadas en `auth.uid()` (no `USING(true)`) en las tablas operativas. No hay Edge Functions de Supabase en uso (toda la lógica serverless vive en Vercel Functions, ver §2).
+RLS está habilitado en las 24 tablas de `public`, con políticas reales basadas en `auth.uid()` (no `USING(true)`) en las tablas operativas. No hay Edge Functions de Supabase en uso (toda la lógica serverless vive en Vercel Functions, ver §2).
 
 ---
 
@@ -320,4 +321,6 @@ RLS está habilitado en las 22 tablas de `public`, con políticas reales basadas
 - La UI se condiciona con `can(permiso)` (`src/lib/permissions.js`), no con `role === '...'` — al agregar una pantalla o botón nuevo, sumar su permiso al catálogo (`permissions`/`role_permissions`) en vez de hardcodear el rol.
 - La firma XML (`xadesjs`) es frágil: no modificar las rutinas de canonicalización salvo estrictamente necesario, el SRI rechaza firmas inválidas sin mensajes claros.
 - Cualquier paquete Node nuevo en `api/*` debe ser compatible con el runtime y límites de tamaño/ejecución de Vercel Functions (~4.5 MB de body).
+- **`revoke all on function ... from public` NO le quita `EXECUTE` a `anon`/`authenticated`** — Supabase se lo concede por defecto a nivel de schema, aparte del rol `PUBLIC`. Hay que nombrar `anon`/`authenticated` explícitamente en el `revoke`, y después verificar con `select has_function_privilege('anon', '<función>(<tipos>)', 'EXECUTE')` — no alcanza con leer el SQL de la migración a ojo (pasó de verdad en la Fase 6: dos funciones nuevas y dos preexistentes quedaron alcanzables por `anon`, ver `AUDITORIA_SISTEMA.md` hallazgo #12).
+- **Correr `npm run smoke:login` después de cualquier migración que toque `users`/`companies`/RLS** (ver `CLAUDE.md`) — replica el login real (Auth + el mismo `SELECT` de perfil que usa la app) contra la base real, con una cuenta canario fija. Nace de un incidente real (login roto para el 100% de usuarios por un `GRANT` de columna faltante, ver el punto anterior sobre `public.users`).
 - Para contexto de riesgos conocidos y roadmap, revisar `AUDITORIA_SISTEMA.md` y `MEJORAS_ADMIN_SAAS.md` antes de asumir que algo es un bug nuevo.
