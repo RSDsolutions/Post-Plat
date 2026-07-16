@@ -1153,6 +1153,150 @@ export async function updateSupplier(supplierId, supplierData) {
   return data;
 }
 
+// Purchases (Compras - Fase 3)
+
+// Catálogo global (sin company_id, ver migración de la Fase 1) - lo puede
+// leer cualquier usuario autenticado, así que no filtra por empresa.
+export async function fetchRetentionConcepts() {
+  const { data, error } = await supabase
+    .from('retention_concepts')
+    .select('*')
+    .eq('is_active', true)
+    .order('codigo_sri', { ascending: true });
+
+  if (error) throw new Error(`Error fetching retention concepts: ${error.message}`);
+  return data || [];
+}
+
+export async function createRetentionConcept(conceptData) {
+  const { data, error } = await supabase
+    .from('retention_concepts')
+    .insert([{
+      codigo_sri: conceptData.codigo_sri,
+      descripcion: conceptData.descripcion,
+      porcentaje_renta_sugerido: conceptData.porcentaje_renta_sugerido || 0,
+      aplica_iva: conceptData.aplica_iva || false,
+      porcentaje_iva_sugerido: conceptData.porcentaje_iva_sugerido || 0
+    }])
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === '23505') throw new Error('Ya existe un concepto con ese código SRI');
+    throw new Error(`Error creating retention concept: ${error.message}`);
+  }
+  return data;
+}
+
+export async function fetchPurchases(companyId) {
+  const { data, error } = await supabase
+    .from('purchases')
+    .select('*, suppliers(razon_social, ruc), branches(name)')
+    .eq('company_id', companyId)
+    .order('document_date', { ascending: false });
+
+  if (error) throw new Error(`Error fetching purchases: ${error.message}`);
+  return data || [];
+}
+
+export async function fetchPurchaseDetail(purchaseId) {
+  const [{ data: purchase, error: purchaseError }, { data: details, error: detailsError }, { data: retentions, error: retentionsError }] = await Promise.all([
+    supabase.from('purchases').select('*, suppliers(*), branches(name)').eq('id', purchaseId).single(),
+    supabase.from('purchase_details').select('*').eq('purchase_id', purchaseId).order('created_at', { ascending: true }),
+    supabase.from('purchase_retentions').select('*, retention_concepts(codigo_sri, descripcion)').eq('purchase_id', purchaseId).order('created_at', { ascending: true })
+  ]);
+
+  if (purchaseError) throw new Error(`Error fetching purchase: ${purchaseError.message}`);
+  if (detailsError) throw new Error(`Error fetching purchase details: ${detailsError.message}`);
+  if (retentionsError) throw new Error(`Error fetching purchase retentions: ${retentionsError.message}`);
+
+  return { purchase, details: details || [], retentions: retentions || [] };
+}
+
+// Orquesta el alta completa de una compra: cabecera -> líneas -> retenciones
+// -> cuenta por pagar (saldo neto = total - retenciones). Mismo patrón que
+// createInvoice()+createInvoiceDetail() en POSInterface.jsx - inserts
+// secuenciales desde el cliente, sin una transacción real que los agrupe
+// (igual riesgo de fallo parcial que ya acepta ese camino existente, no es
+// un estándar nuevo para esta fase). Si algo después de crear la cabecera
+// falla, la compra queda registrada sin su detalle/retención/CxP - el
+// caller debe mostrarle el error al usuario para que reintente o corrija a
+// mano, no hay rollback automático.
+export async function createPurchaseWithDetails({ header, lines, retentions }) {
+  const { data: purchase, error: purchaseError } = await supabase
+    .from('purchases')
+    .insert([{
+      company_id: header.company_id,
+      branch_id: header.branch_id || null,
+      supplier_id: header.supplier_id,
+      purchase_doc_type: header.purchase_doc_type,
+      supplier_document_number: header.supplier_document_number,
+      supplier_access_key: header.supplier_access_key || null,
+      document_date: header.document_date,
+      subtotal_0: header.subtotal_0,
+      subtotal_iva: header.subtotal_iva,
+      iva_amount: header.iva_amount,
+      total: header.total,
+      source: header.source || 'manual',
+      xml_file_path: header.xml_file_path || null,
+      created_by: header.created_by
+    }])
+    .select()
+    .single();
+
+  if (purchaseError) {
+    if (purchaseError.code === '23505') throw new Error('Ya registraste una compra con ese número de documento para este proveedor');
+    throw new Error(`Error creating purchase: ${purchaseError.message}`);
+  }
+
+  if (lines.length > 0) {
+    const { error: linesError } = await supabase.from('purchase_details').insert(
+      lines.map(l => ({
+        purchase_id: purchase.id,
+        description: l.description,
+        quantity: l.quantity,
+        unit_price: l.unit_price,
+        discount: l.discount || 0,
+        iva_rate: l.iva_rate || 0,
+        subtotal: l.subtotal
+      }))
+    );
+    if (linesError) throw new Error(`Error saving purchase details: ${linesError.message}`);
+  }
+
+  let totalRetained = 0;
+  if (retentions.length > 0) {
+    const { error: retentionsError } = await supabase.from('purchase_retentions').insert(
+      retentions.map(r => ({
+        purchase_id: purchase.id,
+        retention_type: r.retention_type,
+        retention_concept_id: r.retention_concept_id,
+        retention_percentage: r.retention_percentage,
+        retention_base: r.retention_base,
+        retention_amount: r.retention_amount
+      }))
+    );
+    if (retentionsError) throw new Error(`Error saving purchase retentions: ${retentionsError.message}`);
+    totalRetained = retentions.reduce((sum, r) => sum + parseFloat(r.retention_amount), 0);
+  }
+
+  const netAmount = parseFloat(header.total) - totalRetained;
+  const { data: accountsPayable, error: apError } = await supabase
+    .from('accounts_payable')
+    .insert([{
+      purchase_id: purchase.id,
+      company_id: header.company_id,
+      supplier_id: header.supplier_id,
+      original_amount: netAmount,
+      due_date: header.due_date || null
+    }])
+    .select()
+    .single();
+  if (apError) throw new Error(`Error creating accounts payable: ${apError.message}`);
+
+  return { purchase, accountsPayable };
+}
+
 // Invoices & Billing
 // pos_id must be resolved by the caller (the cashier's assigned branch's
 // active point of sale - see resolveCashierPointOfSale) rather than guessed
