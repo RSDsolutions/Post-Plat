@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { ShoppingBag, Plus, Trash2, X, Save, Receipt, FileCheck2, Loader } from 'lucide-react';
+import { ShoppingBag, Plus, Trash2, X, Save, Receipt, FileCheck2, Loader, UploadCloud, Download, ShieldCheck } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import {
   fetchSuppliers, createSupplier, fetchBranches, fetchRetentionConcepts,
-  createPurchaseWithDetails, fetchPurchases, submitRetentionToSri, getNextDocumentSequential
+  createPurchaseWithDetails, fetchPurchases, submitRetentionToSri, getNextDocumentSequential,
+  uploadSupplierInvoiceXml, downloadSupplierInvoiceXml, verifySupplierDocument
 } from '../../lib/supabaseHelpers.js';
+import { parseSupplierInvoiceXml } from '../../lib/supplierXmlParser.js';
 import { formatUSD } from '../../lib/format.js';
 import Table from '../ui/Table.jsx';
 
@@ -44,6 +46,11 @@ export default function PurchaseManagement() {
   const [dueDate, setDueDate] = useState('');
   const [lines, setLines] = useState([{ ...EMPTY_LINE }]);
   const [retentions, setRetentions] = useState([]);
+  const [source, setSource] = useState('manual');
+  const [xmlFilePath, setXmlFilePath] = useState(null);
+  const [importingXml, setImportingXml] = useState(false);
+  const [verifyingSri, setVerifyingSri] = useState(false);
+  const [sriVerifyResult, setSriVerifyResult] = useState(null);
 
   const [showQuickSupplier, setShowQuickSupplier] = useState(false);
   const [quickSupplierForm, setQuickSupplierForm] = useState(EMPTY_SUPPLIER_FORM);
@@ -158,6 +165,87 @@ export default function PurchaseManagement() {
     setSupplierDocumentNumber(''); setSupplierAccessKey('');
     setDocumentDate(new Date().toISOString().slice(0, 10)); setDueDate('');
     setLines([{ ...EMPTY_LINE }]); setRetentions([]);
+    setSource('manual'); setXmlFilePath(null); setSriVerifyResult(null);
+  };
+
+  const handleImportXml = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite volver a elegir el mismo archivo después
+    if (!file) return;
+
+    setImportingXml(true);
+    setSriVerifyResult(null);
+    try {
+      const xmlText = await file.text();
+      const parsed = parseSupplierInvoiceXml(xmlText);
+      const uploadedPath = await uploadSupplierInvoiceXml(currentUser.company_id, file);
+
+      const existingSupplier = suppliers.find(s => s.ruc === parsed.supplierRuc);
+      if (existingSupplier) {
+        setSupplierId(existingSupplier.id);
+      } else {
+        setSupplierId('');
+        setQuickSupplierForm({ ruc: parsed.supplierRuc, razon_social: parsed.supplierRazonSocial, tipo_contribuyente: 'sociedad' });
+        setShowQuickSupplier(true);
+        showToast('warning', `No existe un proveedor con RUC ${parsed.supplierRuc} - complétalo para continuar`);
+      }
+
+      setPurchaseDocType(parsed.purchaseDocType);
+      setSupplierDocumentNumber(parsed.documentNumber);
+      setSupplierAccessKey(parsed.accessKey || '');
+      if (parsed.documentDate) setDocumentDate(parsed.documentDate);
+      setLines(parsed.lines.map(l => ({
+        description: l.description, quantity: l.quantity, unit_price: l.unit_price, discount: l.discount, iva_rate: l.iva_rate
+      })));
+      setSource('xml_import');
+      setXmlFilePath(uploadedPath);
+
+      showToast('success', `XML importado: ${parsed.lines.length} línea(s). Revisa los datos antes de guardar.`);
+    } catch (error) {
+      console.error('Error importing XML:', error);
+      showToast('error', error.message || 'Error al importar el XML');
+    } finally {
+      setImportingXml(false);
+    }
+  };
+
+  const handleVerifySri = async () => {
+    if (!supplierAccessKey.trim()) return;
+    setVerifyingSri(true);
+    setSriVerifyResult(null);
+    try {
+      const result = await verifySupplierDocument(supplierAccessKey.trim());
+      setSriVerifyResult(result);
+      if (!result.found) {
+        showToast('error', 'El SRI no tiene ningún comprobante con esta clave de acceso');
+      } else if (result.estado !== 'AUTORIZADO') {
+        showToast('warning', `El comprobante NO está autorizado (estado: ${result.estado})`);
+      } else {
+        showToast('success', 'El comprobante está autorizado por el SRI');
+      }
+    } catch (error) {
+      console.error('Error verifying SRI document:', error);
+      showToast('error', error.message || 'Error al verificar ante el SRI');
+    } finally {
+      setVerifyingSri(false);
+    }
+  };
+
+  const handleDownloadXml = async (purchase) => {
+    try {
+      const blob = await downloadSupplierInvoiceXml(purchase.xml_file_path);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = purchase.xml_file_path.split('/').pop();
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading XML:', error);
+      showToast('error', error.message || 'Error al descargar el XML');
+    }
   };
 
   const handleSave = async () => {
@@ -185,6 +273,8 @@ export default function PurchaseManagement() {
           subtotal_iva: totals.subtotal_iva,
           iva_amount: totals.iva_amount,
           total: totals.total,
+          source,
+          xml_file_path: xmlFilePath,
           created_by: currentUser.id
         },
         lines: lines.map(l => ({
@@ -239,9 +329,24 @@ export default function PurchaseManagement() {
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
-      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-panel-text">Registro de Compras</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-panel-text">Registro de Compras</h1>
+        <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold cursor-pointer transition-colors ${importingXml ? 'bg-panel-surface-2 text-panel-text-muted cursor-wait' : 'bg-panel-accent/20 hover:bg-panel-accent/30 text-panel-accent-soft'}`}>
+          {importingXml ? <Loader size={16} className="animate-spin" /> : <UploadCloud size={16} />}
+          {importingXml ? 'Importando...' : 'Cargar XML del proveedor'}
+          <input type="file" accept=".xml" onChange={handleImportXml} disabled={importingXml} className="hidden" />
+        </label>
+      </div>
 
       <div className="bg-panel-surface rounded-2xl border border-panel-border p-6 space-y-6">
+        {source === 'xml_import' && (
+          <div className="bg-panel-accent/10 border border-panel-accent/30 rounded-lg p-3 flex items-center gap-2">
+            <FileCheck2 size={16} className="text-panel-accent-soft flex-shrink-0" />
+            <p className="text-xs text-panel-accent-soft">
+              Datos precargados desde un XML del proveedor - revísalos antes de guardar. El archivo original queda guardado para consultarlo después.
+            </p>
+          </div>
+        )}
         {/* Proveedor y documento */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -313,13 +418,33 @@ export default function PurchaseManagement() {
           </div>
           <div>
             <label className="block text-xs font-bold text-panel-text-muted mb-2">Clave de Acceso (Opcional)</label>
-            <input
-              type="text"
-              placeholder="49 dígitos"
-              value={supplierAccessKey}
-              onChange={(e) => setSupplierAccessKey(e.target.value)}
-              className="w-full bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="49 dígitos"
+                value={supplierAccessKey}
+                onChange={(e) => { setSupplierAccessKey(e.target.value); setSriVerifyResult(null); }}
+                className="flex-1 bg-panel-surface-2 border border-panel-border rounded px-3 py-2 text-panel-text placeholder-panel-text-muted"
+              />
+              {supplierAccessKey.trim().length === 49 && (
+                <button
+                  type="button"
+                  onClick={handleVerifySri}
+                  disabled={verifyingSri}
+                  title="Verificar ante el SRI"
+                  className="bg-panel-accent/20 hover:bg-panel-accent/30 disabled:opacity-50 text-panel-accent-soft rounded px-3 flex items-center justify-center transition-colors"
+                >
+                  {verifyingSri ? <Loader size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                </button>
+              )}
+            </div>
+            {sriVerifyResult && (
+              <p className={`text-xs mt-1 font-bold ${sriVerifyResult.found && sriVerifyResult.estado === 'AUTORIZADO' ? 'text-panel-success' : 'text-panel-danger'}`}>
+                {sriVerifyResult.found
+                  ? `SRI: ${sriVerifyResult.estado}${sriVerifyResult.fechaAutorizacion ? ' - ' + sriVerifyResult.fechaAutorizacion : ''}`
+                  : 'El SRI no tiene ningún comprobante con esta clave de acceso'}
+              </p>
+            )}
           </div>
         </div>
 
@@ -558,7 +683,7 @@ export default function PurchaseManagement() {
           </div>
         ) : (
           <Table
-            columns={['Fecha', 'Proveedor', 'Documento', 'Tipo', 'Total', 'Estado', 'Retención']}
+            columns={['Fecha', 'Proveedor', 'Documento', 'Tipo', 'Total', 'Estado', 'Retención', 'XML']}
             data={recentPurchases}
             renderRow={(p) => {
               const retentions = p.purchase_retentions || [];
@@ -593,6 +718,19 @@ export default function PurchaseManagement() {
                         {isSubmitting ? <Loader size={12} className="animate-spin" /> : <FileCheck2 size={12} />}
                         {isSubmitting ? 'Emitiendo...' : 'Emitir'}
                       </button>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {p.xml_file_path ? (
+                      <button
+                        onClick={() => handleDownloadXml(p)}
+                        title="Descargar XML original"
+                        className="text-panel-text-muted hover:text-panel-accent-soft transition-colors"
+                      >
+                        <Download size={16} />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-panel-text-muted">-</span>
                     )}
                   </td>
                 </tr>

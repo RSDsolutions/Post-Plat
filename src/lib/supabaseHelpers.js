@@ -1299,6 +1299,57 @@ export async function createPurchaseWithDetails({ header, lines, retentions }) {
   return { purchase, accountsPayable };
 }
 
+// Sube el XML original del proveedor sin tocarlo (nunca se firma ni se
+// reenvía como propio) a un bucket privado, scopeado por empresa vía RLS
+// (storage.foldername(name)[1] = current_company_id(), ver migración de
+// Fase 5) - subida directa desde el cliente, mismo patrón que
+// uploadCompanyLogo, no hace falta un endpoint server-side para esto.
+export async function uploadSupplierInvoiceXml(companyId, file) {
+  if (!file) throw new Error('Selecciona un archivo XML');
+  if (!file.name.toLowerCase().endsWith('.xml')) throw new Error('El archivo debe ser un .xml');
+  if (file.size > 5 * 1024 * 1024) throw new Error('El archivo no debe superar 5MB');
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `${companyId}/${Date.now()}-${safeName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('supplier-invoices')
+    .upload(storagePath, file, { cacheControl: '3600' });
+
+  if (uploadError) throw new Error(`Error subiendo el XML: ${uploadError.message}`);
+  return storagePath;
+}
+
+export async function downloadSupplierInvoiceXml(storagePath) {
+  const { data, error } = await supabase.storage.from('supplier-invoices').download(storagePath);
+  if (error) throw new Error(`Error descargando el XML: ${error.message}`);
+  return data; // Blob
+}
+
+// Consulta el estado de autorización real de un documento del proveedor
+// contra el SRI - nunca firma ni reenvía nada, solo pregunta.
+export async function verifySupplierDocument(accessKey) {
+  const response = await fetch('/api/sri/verify-supplier-document', {
+    method: 'POST',
+    headers: await getAuthHeaders(),
+    body: JSON.stringify({ accessKey })
+  });
+
+  const rawText = await response.text();
+  let result;
+  try {
+    result = JSON.parse(rawText);
+  } catch {
+    throw new Error(`El servidor no respondió correctamente (status ${response.status}). Respuesta: ${rawText.slice(0, 300)}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(result.error || 'Error al verificar el comprobante ante el SRI');
+  }
+
+  return result;
+}
+
 // Invoices & Billing
 // pos_id must be resolved by the caller (the cashier's assigned branch's
 // active point of sale - see resolveCashierPointOfSale) rather than guessed
