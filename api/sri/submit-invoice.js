@@ -1,6 +1,6 @@
 import { signXml } from './_xadesSign.js';
 import { generateAccessKey } from './_accessKey.js';
-import { getAuthenticatedUser } from '../_authHelpers.js';
+import { getAuthenticatedUser, getSupabaseAdmin, verifyCronSecret } from '../_authHelpers.js';
 import { mapTaxPercentCode, loadOpenFactura, submitSignedXmlToSri } from './_sriClient.js';
 
 function mapPaymentMethodToSRI(method) {
@@ -18,18 +18,31 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'invoiceId es requerido' });
   }
 
-  // JWT real en vez de confiar en un userId/companyId que el body afirmaba -
-  // ver api/_authHelpers.js. companyId ya no es un parámetro: es el de la
-  // sesión autenticada, así nadie puede aprobar una factura de una empresa
-  // que no es la suya con solo cambiar el body.
-  const { supabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
-  if (authError) return res.status(authStatus).json({ error: authError });
-  if (!['gerente', 'admin'].includes(user.role)) {
-    return res.status(403).json({ error: 'No autorizado para aprobar facturas de esta empresa' });
-  }
-  const companyId = user.company_id;
-  if (!companyId) {
-    return res.status(403).json({ error: 'No autorizado para aprobar facturas de esta empresa' });
+  // Dos caminos de autorización: JWT real de un gerente/admin (igual que
+  // siempre), o el secreto del cron de reintentos (api/sri/retry-pending.js)
+  // - el cron no actúa como ningún usuario en particular, así que confía en
+  // el companyId del body en vez de resolverlo de una sesión (no hay
+  // sesión). company_id ya no es nunca un parámetro en el camino JWT: es el
+  // de la sesión autenticada, así nadie puede aprobar una factura de una
+  // empresa que no es la suya con solo cambiar el body.
+  let supabase, companyId;
+  if (verifyCronSecret(req)) {
+    supabase = getSupabaseAdmin();
+    companyId = req.body?.companyId;
+    if (!companyId) {
+      return res.status(400).json({ error: 'companyId es requerido' });
+    }
+  } else {
+    const { supabase: authedSupabase, user, error: authError, status: authStatus } = await getAuthenticatedUser(req);
+    if (authError) return res.status(authStatus).json({ error: authError });
+    if (!['gerente', 'admin'].includes(user.role)) {
+      return res.status(403).json({ error: 'No autorizado para aprobar facturas de esta empresa' });
+    }
+    supabase = authedSupabase;
+    companyId = user.company_id;
+    if (!companyId) {
+      return res.status(403).json({ error: 'No autorizado para aprobar facturas de esta empresa' });
+    }
   }
 
   // signXml es nuestra propia implementación (ver _xadesSign.js) - la de
@@ -55,7 +68,12 @@ export default async function handler(req, res) {
     if (invoiceError || !invoice) {
       return res.status(404).json({ error: 'Factura no encontrada' });
     }
-    if (invoice.status !== 'borrador') {
+    // 'devuelta' se acepta para permitir el reintento completo (re-firmar y
+    // reenviar) desde api/sri/retry-pending.js sobre una factura que ya
+    // falló una vez - un envío nuevo siempre pide una clave de acceso nueva
+    // (generateAccessKey incluye un código numérico aleatorio), así que no
+    // hay riesgo de reusar una clave que el SRI ya haya visto.
+    if (invoice.status !== 'borrador' && invoice.status !== 'devuelta') {
       return res.status(400).json({ error: `La factura ya está en estado '${invoice.status}', no se puede reenviar` });
     }
 

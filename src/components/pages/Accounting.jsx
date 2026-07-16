@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Archive, Loader, MapPin, FileSpreadsheet, FileText, RefreshCw, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchInvoicesForReports, fetchBranches, fetchCompanyById, reconcileInvoiceStatus } from '../../lib/supabaseHelpers.js';
+import { fetchInvoicesForReports, fetchBranches, fetchCompanyById, reconcileInvoiceStatus, fetchLastSriRetrySweep } from '../../lib/supabaseHelpers.js';
 import { DATE_PRESETS, computeDateRange, formatDateRangeLabel, formatCellValue } from '../../lib/reportsHelpers.js';
 import { buildSalesLedger, buildSriReconciliation } from '../../lib/accountingHelpers.js';
 import { downloadReportCsv } from '../../lib/csvExport.js';
@@ -42,6 +42,7 @@ export default function Accounting() {
   const [reconciling, setReconciling] = useState(false);
   const [reconcileProgress, setReconcileProgress] = useState(null);
   const [downloadingZip, setDownloadingZip] = useState(false);
+  const [lastSweep, setLastSweep] = useState(null);
 
   const { start, end } = useMemo(() => computeDateRange(datePreset, customStart, customEnd), [datePreset, customStart, customEnd]);
   const dateRangeLabel = useMemo(() => formatDateRangeLabel(start, end), [start, end]);
@@ -50,6 +51,7 @@ export default function Accounting() {
     if (currentUser?.company_id) {
       fetchBranches(currentUser.company_id).then(setBranches).catch(() => {});
       fetchCompanyById(currentUser.company_id).then(setCompany).catch(() => {});
+      fetchLastSriRetrySweep().then(setLastSweep).catch(() => {});
     }
   }, [currentUser?.company_id]);
 
@@ -293,6 +295,15 @@ export default function Accounting() {
                       {reconciling ? <Loader size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                       {reconciling && reconcileProgress ? `Reconsultando ${reconcileProgress.done}/${reconcileProgress.total}...` : 'Reconsultar estados'}
                     </button>
+                  )}
+                </div>
+
+                <div className="bg-panel-surface-2/50 border border-panel-border rounded-xl px-4 py-2.5 flex items-center gap-2 text-xs text-panel-text-muted">
+                  <Clock size={14} className="flex-shrink-0" />
+                  {lastSweep ? (
+                    <span>Último barrido automático: <span className="text-panel-text font-medium">{formatCellValue(lastSweep.created_at, 'datetime')}</span> — {lastSweep.description}</span>
+                  ) : (
+                    <span>Todavía no se registró ningún barrido automático de reintentos para esta empresa.</span>
                   )}
                 </div>
 

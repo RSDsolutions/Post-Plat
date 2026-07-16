@@ -659,17 +659,17 @@ export async function fetchCompanyUsers(companyId) {
   return data || [];
 }
 
-// Creates an operario/vendedor login for the gerente's own company and emails
 // Creates a vendedor/operario/contador login and emails them a welcome +
-// temp password. Goes through api/admin/create-user.js (generaliza el viejo
-// create-cashier.js, que solo aceptaba vendedor/operario) so the plaintext
-// password can be emailed server-side without ever living in the browser
-// bundle. contador no lleva branchId (a nivel empresa, no de sucursal).
+// temp password. Goes through api/admin/users.js (action: 'create-user',
+// generaliza el viejo create-cashier.js, que solo aceptaba vendedor/operario)
+// so the plaintext password can be emailed server-side without ever living
+// in the browser bundle. contador no lleva branchId (a nivel empresa, no de
+// sucursal).
 export async function createCompanyUser({ companyId, email, password, name, role, phone, branchId }) {
-  const response = await fetch('/api/admin/create-user', {
+  const response = await fetch('/api/admin/users', {
     method: 'POST',
     headers: await getAuthHeaders(),
-    body: JSON.stringify({ companyId, email, password, name, role, phone, branchId })
+    body: JSON.stringify({ action: 'create-user', companyId, email, password, name, role, phone, branchId })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al crear el usuario');
@@ -693,15 +693,15 @@ export async function updateUserBranch({ companyId, userId, branchId, callerId }
 
 // Creates the initial gerente login for a newly onboarded client company
 // (admin-side, CompanyWizard) and emails them their temp password. Goes through
-// api/admin/create-gerente.js, which verifies the caller is an admin before
-// invoking the RPC (with p_admin_id) using the service role. The RPC itself also
-// re-verifies the admin internally, closing the §1.1.1 audit hole where anyone
-// could self-provision a gerente login.
+// api/admin/users.js (action: 'create-gerente'), which verifies the caller is
+// a real admin (JWT) before creating the Auth user + profile with the service
+// role - closing the §1.1.1 audit hole where anyone could self-provision a
+// gerente login.
 export async function createCompanyGerente({ companyId, email, password, name }) {
-  const response = await fetch('/api/admin/create-gerente', {
+  const response = await fetch('/api/admin/users', {
     method: 'POST',
     headers: await getAuthHeaders(),
-    body: JSON.stringify({ companyId, email, password, name })
+    body: JSON.stringify({ action: 'create-gerente', companyId, email, password, name })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al crear el gerente');
@@ -724,14 +724,15 @@ export async function emailInvoiceRide({ invoiceId, pdfBase64 }) {
 }
 
 // Lets a gerente set a new password for one of their cashiers. Goes through
-// api/admin/reset-cashier-password.js (service role) because resetting an
-// Auth password requires auth.admin.updateUserById, never available to the
-// browser - this used to be a direct RPC call with the anon key.
+// api/admin/users.js (action: 'reset-cashier-password', service role)
+// because resetting an Auth password requires auth.admin.updateUserById,
+// never available to the browser - this used to be a direct RPC call with
+// the anon key.
 export async function resetCashierPassword({ companyId, userId, newPassword }) {
-  const response = await fetch('/api/admin/reset-cashier-password', {
+  const response = await fetch('/api/admin/users', {
     method: 'POST',
     headers: await getAuthHeaders(),
-    body: JSON.stringify({ companyId, userId, newPassword })
+    body: JSON.stringify({ action: 'reset-cashier-password', companyId, userId, newPassword })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al resetear la contraseña');
@@ -753,14 +754,26 @@ export async function reconcileInvoiceStatus({ invoiceId }) {
   return result;
 }
 
+// Última corrida del cron de reintentos automáticos (api/sri/retry-pending.js,
+// Fase 3) para la empresa de quien llama - la función SQL ya filtra por
+// current_company_id() internamente, no hace falta (ni se puede) pedir la de
+// otra empresa. activity_log en general solo lo lee is_platform_admin(); esta
+// RPC expone selectivamente solo esta fila puntual, sin ampliar ese acceso.
+export async function fetchLastSriRetrySweep() {
+  const { data, error } = await supabase.rpc('get_last_sri_retry_sweep');
+  if (error) throw new Error(`Error obteniendo la última barrida automática: ${error.message}`);
+  return data?.[0] || null;
+}
+
 // Admin-side password reset for any company user (gerente included) - goes
-// through api/admin/reset-user-password.js (service role), which emails the
-// new temp password to the user. The underlying RPC is not anon-executable.
+// through api/admin/users.js (action: 'reset-user-password', service role),
+// which emails the new temp password to the user. The underlying RPC is not
+// anon-executable.
 export async function adminResetUserPassword({ companyId, userId, newPassword }) {
-  const response = await fetch('/api/admin/reset-user-password', {
+  const response = await fetch('/api/admin/users', {
     method: 'POST',
     headers: await getAuthHeaders(),
-    body: JSON.stringify({ companyId, userId, newPassword })
+    body: JSON.stringify({ action: 'reset-user-password', companyId, userId, newPassword })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al restablecer la contraseña');
@@ -769,10 +782,10 @@ export async function adminResetUserPassword({ companyId, userId, newPassword })
 
 // Admin-side activate/deactivate for any company user (gerente or cajero).
 export async function adminSetUserActive({ companyId, userId, isActive }) {
-  const response = await fetch('/api/admin/set-user-active', {
+  const response = await fetch('/api/admin/users', {
     method: 'POST',
     headers: await getAuthHeaders(),
-    body: JSON.stringify({ companyId, userId, isActive })
+    body: JSON.stringify({ action: 'set-user-active', companyId, userId, isActive })
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || 'Error al actualizar el estado del usuario');

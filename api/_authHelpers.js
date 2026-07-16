@@ -47,3 +47,27 @@ export async function getAuthenticatedUser(req) {
 
   return { supabase, user: profile };
 }
+
+// Autoriza al cron de reintentos (api/sri/retry-pending.js) y a las llamadas
+// que ese cron hace en nombre de una empresa a submit-invoice.js - un secreto
+// compartido fijo (nunca un JWT de usuario, el cron no actúa como nadie en
+// particular) guardado solo como variable de entorno de Vercel.
+//
+// Lee el mismo header Authorization: Bearer <...> que getAuthenticatedUser
+// (no un header custom) porque así es como Vercel Cron invoca el endpoint:
+// si existe una variable de entorno CRON_SECRET en el proyecto, Vercel
+// agrega automáticamente Authorization: Bearer $CRON_SECRET a cada
+// invocación programada - no hay que configurar nada del lado de Vercel más
+// que esa variable de entorno. Comparación de longitud fija para no filtrar
+// el secreto por temporización.
+export function verifyCronSecret(req) {
+  const authHeader = req.headers.authorization || req.headers.Authorization || '';
+  const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+  const expected = process.env.CRON_SECRET || '';
+  if (!expected || provided.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= provided.charCodeAt(i) ^ expected.charCodeAt(i);
+  }
+  return diff === 0;
+}
