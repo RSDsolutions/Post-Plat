@@ -3,6 +3,92 @@ import { loadOpenFactura, submitSignedXmlToSri } from './_sriClient.js';
 import { reconcileInvoiceCore } from './_reconcileCore.js';
 import { classifyDevueltaInvoice } from './_retryClassifier.js';
 import submitInvoiceHandler from './submit-invoice.js';
+import { sendEmail } from '../emails/_lib.js';
+import { trialEndingEmail } from '../emails/_templates.js';
+
+// Mejoras Admin Fase 6: mismo archivo/dispatcher (por el límite de 12
+// funciones serverless de Vercel Hobby, ver AUDITORIA_SISTEMA.md), pero
+// con su propio cron DIARIO (vercel.json apunta a esta misma ruta con
+// "?job=trials" en vez de crear un archivo nuevo) - un query param decide
+// qué lógica corre, ya que un cron no manda body custom como sí puede
+// hacerlo api/admin/users.js con `action`. No toca nada de lo de abajo
+// (reintentos SRI, cada 15 min) cuando job=trials.
+async function runTrialJob(supabase) {
+  const summary = { warned: 0, warnFailed: 0, expired: 0 };
+
+  // Aviso: trial vence en <= 3 días, todavía no se le avisó, sigue activa y
+  // no está dada de baja. trial_warning_sent_at evita reenviarlo cada día.
+  const { data: warningCandidates, error: warningError } = await supabase
+    .from('companies')
+    .select('id, nombre_comercial, email, admin_email, trial_ends_at')
+    .eq('subscription_status', 'activa')
+    .is('deleted_at', null)
+    .is('trial_warning_sent_at', null)
+    .not('trial_ends_at', 'is', null)
+    .lte('trial_ends_at', new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString());
+
+  if (warningError) {
+    console.error('retry-pending[trials]: error buscando avisos de trial:', warningError);
+  } else {
+    for (const company of warningCandidates || []) {
+      const to = company.email || company.admin_email;
+      const daysRemaining = Math.ceil((new Date(company.trial_ends_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+      try {
+        const { subject, html } = trialEndingEmail({
+          companyName: company.nombre_comercial,
+          daysRemaining: Math.max(0, daysRemaining),
+          trialEndsAtLabel: new Date(company.trial_ends_at).toLocaleDateString('es-EC'),
+          upgradeUrl: process.env.EMAIL_APP_URL || null
+        });
+        await sendEmail({ to, subject, html });
+        summary.warned++;
+      } catch (error) {
+        console.error(`retry-pending[trials]: error enviando aviso a ${company.id}:`, error);
+        summary.warnFailed++;
+      } finally {
+        // Se marca como avisada aunque el correo haya fallado (sin destinatario,
+        // Resend caído, etc.) - mismo criterio que el resto del sistema: no
+        // reintentar un correo indefinidamente, y no bloquear la transición a
+        // 'vencida' de más abajo porque un envío puntual falló.
+        await supabase.from('companies').update({ trial_warning_sent_at: new Date().toISOString() }).eq('id', company.id);
+      }
+    }
+  }
+
+  // Vencimiento real: trial_ends_at ya pasó, sigue 'activa' (si ya está
+  // suspendida/vencida/dada de baja no hay nada que hacer). Nunca usa
+  // new Date()/toISOString() como límite de comparación contra Postgres -
+  // se compara del lado de SQL con .lt(..., new Date().toISOString()) que
+  // Postgres interpreta como instante real (timestamptz-like), no como el
+  // bug de AUDITORIA_SISTEMA.md #10 (ese es sobre columnas sin huso que se
+  // leen mal desde JS, no sobre el filtro en sí).
+  const { data: expiredCandidates, error: expiredError } = await supabase
+    .from('companies')
+    .select('id, nombre_comercial')
+    .eq('subscription_status', 'activa')
+    .is('deleted_at', null)
+    .not('trial_ends_at', 'is', null)
+    .lt('trial_ends_at', new Date().toISOString());
+
+  if (expiredError) {
+    console.error('retry-pending[trials]: error buscando trials vencidos:', expiredError);
+  } else {
+    for (const company of expiredCandidates || []) {
+      const { error: updateError } = await supabase.from('companies').update({ subscription_status: 'vencida' }).eq('id', company.id);
+      if (updateError) {
+        console.error(`retry-pending[trials]: error marcando vencida ${company.id}:`, updateError);
+        continue;
+      }
+      await supabase.from('activity_log').insert([{
+        company_id: company.id, user_id: null, action: 'Empresa vencida (trial)',
+        description: 'Período de prueba vencido - transición automática a Vencida'
+      }]);
+      summary.expired++;
+    }
+  }
+
+  return summary;
+}
 
 // ---------------------------------------------------------------------------
 // Cron (cada 15 min, ver vercel.json) que barre TODAS las empresas buscando
@@ -33,6 +119,12 @@ export default async function handler(req, res) {
   }
 
   const supabase = getSupabaseAdmin();
+
+  if (req.query?.job === 'trials') {
+    const summary = await runTrialJob(supabase);
+    return res.status(200).json({ success: true, job: 'trials', ...summary });
+  }
+
   const startedAt = Date.now();
 
   const { data: candidates, error: candidatesError } = await supabase.rpc('get_invoices_pending_retry', { p_limit: 20 });

@@ -8,6 +8,10 @@
     {
       "path": "/api/sri/retry-pending",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/sri/retry-pending?job=trials",
+      "schedule": "0 12 * * *"
     }
   ]
 }

@@ -177,6 +177,22 @@ export function invoiceReturnedEmail({ companyName, invoiceNumber, reason }) {
   };
 }
 
+// --- 4b. Período de prueba por vencer (a la empresa) -------------------------
+export function trialEndingEmail({ companyName, daysRemaining, trialEndsAtLabel, upgradeUrl }) {
+  const body = `
+    <h1 style="margin:0 0 16px;font-size:22px;color:${TEXT};">Tu período de prueba está por vencer</h1>
+    <p style="margin:0 0 12px;">Hola, el período de prueba de <strong>${esc(companyName)}</strong> en POST-PLAT vence
+    ${daysRemaining <= 0 ? '<strong>hoy</strong>' : `en <strong>${esc(daysRemaining)} día${daysRemaining === 1 ? '' : 's'}</strong>`}${trialEndsAtLabel ? ` (${esc(trialEndsAtLabel)})` : ''}.</p>
+    <p style="margin:0 0 12px;">Si no regularizas tu suscripción antes de esa fecha, la cuenta pasará a estado <strong>Vencida</strong> y no podrás seguir emitiendo comprobantes electrónicos hasta regularizarla. Contacta a soporte para elegir un plan.</p>
+    ${upgradeUrl ? button(upgradeUrl, 'Ingresar a POST-PLAT') : ''}
+    <p style="margin:16px 0 0;color:${MUTED};">Si ya regularizaste tu cuenta o tienes dudas, contacta a soporte.</p>
+  `;
+  return {
+    subject: `Tu período de prueba vence ${daysRemaining <= 0 ? 'hoy' : `en ${daysRemaining} día${daysRemaining === 1 ? '' : 's'}`} — ${companyName}`,
+    html: layout({ title: 'Período de prueba por vencer', preheader: 'Elige un plan para no perder acceso', bodyHtml: body, companyName })
+  };
+}
+
 // --- 5. Nueva factura emitida (al cliente, con RIDE adjunto) -----------------
 export function newInvoiceEmail({ customerName, companyName, invoiceNumber, total, authorizationNumber, issueDate }) {
   const body = `
