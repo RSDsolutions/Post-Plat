@@ -13,6 +13,7 @@ export default function Badge({ status }) {
     'Vencido': 'bg-red-500/10 text-[var(--status-danger)] border border-red-500/20',
     'Anulada': 'bg-red-500/10 text-[var(--status-danger)] border border-red-500/20',
     'Suspendida': 'bg-[var(--surface-2)] text-[var(--text-muted)] border border-[var(--border-subtle)]',
+    'Dada de baja': 'bg-red-950/40 text-red-400 border border-red-900',
     'Pruebas': 'bg-indigo-500/10 text-[var(--status-info)] border border-indigo-500/20',
     'Produccion': 'bg-emerald-500/10 text-[var(--status-success)] border border-emerald-500/20'
   };

@@ -2053,15 +2053,29 @@ export async function fetchOnboardingCounts(companyId) {
 
 // Pulls everything company-scoped for the "export data" button in
 // CompanyDetail - read-only, client-side download, no new storage involved.
+// Compras Fase 5 de Mejoras Admin: se agregaron users (sin password_hash ni
+// las columnas de bloqueo de cuenta - no son "datos de la empresa"),
+// cash_closures, inventory_movements, payments, y el módulo de Compras
+// completo (suppliers/purchases con sus hijos anidados, igual que invoices
+// ya anida invoice_details). Es la base del flujo de baja definitiva: exigir
+// este export antes de confirmar, ver CompanyDetail.jsx.
 export async function fetchCompanyExportBundle(companyId) {
-  const [products, customers, invoices, branches] = await Promise.all([
+  const [products, customers, invoices, branches, users, cashClosures, inventoryMovements, payments, suppliers, purchases, accountsPayable] = await Promise.all([
     supabase.from('products').select('*').eq('company_id', companyId),
     supabase.from('customers').select('*').eq('company_id', companyId),
     supabase.from('invoices').select('*, invoice_details(*)').eq('company_id', companyId),
-    supabase.from('branches').select('*, point_of_sales(*)').eq('company_id', companyId)
+    supabase.from('branches').select('*, point_of_sales(*)').eq('company_id', companyId),
+    supabase.from('users').select('id, email, name, phone, role, is_active, branch_id, last_login, created_at').eq('company_id', companyId),
+    supabase.from('cash_closures').select('*').eq('company_id', companyId),
+    supabase.from('inventory_movements').select('*').eq('company_id', companyId),
+    supabase.from('payments').select('*').eq('company_id', companyId),
+    supabase.from('suppliers').select('*').eq('company_id', companyId),
+    supabase.from('purchases').select('*, purchase_details(*), purchase_retentions(*)').eq('company_id', companyId),
+    supabase.from('accounts_payable').select('*, accounts_payable_payments(*)').eq('company_id', companyId)
   ]);
 
-  const firstError = [products, customers, invoices, branches].find(r => r.error)?.error;
+  const results = { products, customers, invoices, branches, users, cashClosures, inventoryMovements, payments, suppliers, purchases, accountsPayable };
+  const firstError = Object.values(results).find(r => r.error)?.error;
   if (firstError) throw new Error(firstError.message);
 
   return {
@@ -2069,6 +2083,13 @@ export async function fetchCompanyExportBundle(companyId) {
     products: products.data || [],
     customers: customers.data || [],
     invoices: invoices.data || [],
-    branches: branches.data || []
+    branches: branches.data || [],
+    users: users.data || [],
+    cashClosures: cashClosures.data || [],
+    inventoryMovements: inventoryMovements.data || [],
+    payments: payments.data || [],
+    suppliers: suppliers.data || [],
+    purchases: purchases.data || [],
+    accountsPayable: accountsPayable.data || []
   };
 }

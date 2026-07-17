@@ -445,6 +445,34 @@ export const useStore = create((set, get) => ({
     }
   },
 
+  // Baja lógica definitiva - NUNCA un DELETE físico (obligación de conservar
+  // registros de facturación electrónica). El caller (CompanyDetail.jsx) ya
+  // exigió exportar los datos antes de habilitar esta acción y pidió
+  // escribir el nombre exacto de la empresa para confirmar - acá solo queda
+  // aplicar el cambio, irreversible desde la UI (no hay "reactivar" para
+  // este estado, a diferencia de Suspendida).
+  deactivateCompanyPermanently: async (id) => {
+    const { showToast, addActivityEvent, companies } = get();
+    const comp = companies.find(c => c.id === id);
+    const now = new Date();
+    try {
+      await updateCompany(id, {
+        subscription_status: 'dada_de_baja',
+        deleted_at: now.toISOString()
+      });
+      set((state) => ({
+        companies: state.companies.map(c =>
+          c.id === id ? { ...c, subscriptionStatus: 'Dada de baja', deletedAt: now } : c
+        )
+      }));
+      await addActivityEvent('Empresa dada de baja definitivamente', id, comp?.nombreComercial, 'Confirmada tras exportar los datos');
+      showToast('warning', 'Empresa dada de baja. Ya no aparecerá en el listado por defecto.');
+    } catch (error) {
+      console.error('Error deactivating company permanently:', error);
+      showToast('error', error.message || 'Error al dar de baja la empresa');
+    }
+  },
+
   // Persists the real subscription/status fields (what actually gates
   // access) and, since this session, a real row in the payments ledger too
   // - registerPayment used to only touch companies, so CompanyDetail's

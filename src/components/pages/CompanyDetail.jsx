@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, Download, LogIn, CheckCircle2, Circle, Loader } from 'lucide-react';
+import { ArrowLeft, Check, Download, LogIn, CheckCircle2, Circle, Loader, Trash2 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import Badge from '../ui/Badge.jsx';
 import Tabs from '../ui/Tabs.jsx';
@@ -26,12 +26,21 @@ export default function CompanyDetail() {
     companies, plans, selectedCompanyId, setActivePage, companyDetailTab, setCompanyDetailTab,
     openEditCompany, suspendCompany, reactivateCompany, openConfirm, changeCompanyPlan,
     updateCompanyNotes, updateCompanyCustomPrice, updateCompanyTrialEndsAt, showToast, currentUser,
-    impersonateCompany, monthlyInvoiceCounts
+    impersonateCompany, monthlyInvoiceCounts, deactivateCompanyPermanently
   } = useStore();
 
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [selectedNewPlan, setSelectedNewPlan] = useState('');
   const [notes, setNotes] = useState('');
+
+  // Baja definitiva: solo se habilita después de exportar en ESTA sesión
+  // (no persiste - si el admin recarga la página, tiene que exportar de
+  // nuevo antes de poder confirmarla). El nombre escrito debe coincidir
+  // exacto con el nombre comercial real, no solo "algo no vacío".
+  const [showBajaModal, setShowBajaModal] = useState(false);
+  const [hasExportedThisSession, setHasExportedThisSession] = useState(false);
+  const [bajaConfirmText, setBajaConfirmText] = useState('');
+  const [submittingBaja, setSubmittingBaja] = useState(false);
 
   const [featureFlags, setFeatureFlags] = useState([]);
   const [overrides, setOverrides] = useState([]);
@@ -156,12 +165,30 @@ export default function CompanyDetail() {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+      setHasExportedThisSession(true);
       showToast('success', 'Datos exportados');
     } catch (error) {
       console.error('Error exporting company data:', error);
       showToast('error', error.message || 'Error al exportar los datos');
     } finally {
       setExporting(false);
+    }
+  };
+
+  const closeBajaModal = () => {
+    setShowBajaModal(false);
+    setBajaConfirmText('');
+  };
+
+  const handleConfirmBaja = async () => {
+    if (bajaConfirmText.trim() !== company.nombreComercial) return;
+    setSubmittingBaja(true);
+    try {
+      await deactivateCompanyPermanently(company.id);
+      closeBajaModal();
+      setActivePage('companies');
+    } finally {
+      setSubmittingBaja(false);
     }
   };
 
@@ -248,6 +275,17 @@ export default function CompanyDetail() {
           >
             {company.subscriptionStatus === 'Suspendida' ? 'Reactivar' : 'Suspender'}
           </button>
+          {!company.deletedAt && (
+            <button
+              onClick={() => setShowBajaModal(true)}
+              disabled={!hasExportedThisSession}
+              title={hasExportedThisSession ? '' : 'Exporta los datos de la empresa antes de poder darla de baja definitivamente'}
+              className="flex items-center gap-1.5 border border-red-800 bg-red-950/40 text-red-400 hover:bg-red-900/40 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-950/40"
+            >
+              <Trash2 size={14} />
+              Dar de baja definitivamente
+            </button>
+          )}
         </div>
       </div>
 
@@ -545,6 +583,47 @@ export default function CompanyDetail() {
           )}
         </div>
       </div>
+
+      {showBajaModal && (
+        <Modal
+          title="Dar de baja definitivamente"
+          onClose={closeBajaModal}
+          footer={
+            <>
+              <button onClick={closeBajaModal} className="text-[var(--text-muted)] hover:text-white font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors">Cancelar</button>
+              <button
+                onClick={handleConfirmBaja}
+                disabled={submittingBaja || bajaConfirmText.trim() !== company.nombreComercial}
+                className="flex items-center gap-2 bg-red-700 hover:bg-red-800 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold px-6 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
+              >
+                {submittingBaja && <Loader size={14} className="animate-spin" />}
+                Confirmar baja definitiva
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div className="bg-red-950/40 border border-red-800 rounded-2xl p-4">
+              <p className="text-sm text-red-300">
+                Esta acción es <span className="font-bold">irreversible desde el panel</span>. La empresa dejará de aparecer en el listado por defecto,
+                no podrá volver a operar, y no hay un botón de "reactivar" como con la suspensión. Los datos <span className="font-bold">no se borran</span> (nunca se hace un DELETE físico —
+                obligación de conservar registros de facturación electrónica), solo quedan marcados como dados de baja.
+              </p>
+            </div>
+            <p className="text-sm font-medium text-zinc-400">
+              Para confirmar, escribe el nombre exacto de la empresa: <span className="font-bold text-[var(--text-primary)]">{company.nombreComercial}</span>
+            </p>
+            <input
+              type="text"
+              value={bajaConfirmText}
+              onChange={(e) => setBajaConfirmText(e.target.value)}
+              placeholder={company.nombreComercial}
+              className="w-full bg-[var(--surface-0)] border border-[var(--border-subtle)] text-[var(--text-primary)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-600 focus:border-transparent"
+              autoFocus
+            />
+          </div>
+        </Modal>
+      )}
 
       {showPlanModal && (
         <Modal

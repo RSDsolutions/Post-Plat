@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Plus, Building2 } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import Badge from '../ui/Badge.jsx';
@@ -10,8 +10,13 @@ const HEALTH_DOT = { Alto: 'bg-emerald-500', Medio: 'bg-amber-500', Bajo: 'bg-re
 
 export default function Companies() {
   const { companies, plans, companySearch, setCompanySearch, companyStatusFilter, setCompanyStatusFilter, companyPlanFilter, setCompanyPlanFilter, openWizard, selectCompany, globalSearch, monthlyInvoiceCounts } = useStore();
+  // Las dadas de baja quedan ocultas del listado por defecto (Mejoras Admin
+  // Fase 5) - no hace falta persistir esta preferencia, es un toggle de
+  // sesión igual que los demás filtros de esta pantalla.
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const filtered = companies.filter(c => {
+    if (!showDeleted && c.deletedAt) return false;
     const search = (companySearch || globalSearch).toLowerCase();
     const matchesSearch = c.nombreComercial.toLowerCase().includes(search) || c.ruc.includes(search);
     const matchesStatus = companyStatusFilter === 'all' || c.subscriptionStatus === companyStatusFilter;
@@ -54,6 +59,16 @@ export default function Companies() {
               {status === 'all' ? 'Todas' : status}
             </button>
           ))}
+          <button
+            onClick={() => setShowDeleted(v => !v)}
+            className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors border ${
+              showDeleted
+                ? 'bg-red-500/10 text-red-400 border-red-500/30'
+                : 'bg-transparent text-zinc-500 border-transparent hover:text-zinc-300'
+            }`}
+          >
+            Ver dadas de baja
+          </button>
         </div>
       </div>
 

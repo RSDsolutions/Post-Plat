@@ -6,7 +6,8 @@ const SUBSCRIPTION_STATUS_LABELS = {
   activa: 'Activa',
   suspendida: 'Suspendida',
   cancelada: 'Cancelada',
-  vencida: 'Vencida'
+  vencida: 'Vencida',
+  dada_de_baja: 'Dada de baja'
 };
 
 export const transformCompany = (dbCompany) => ({
@@ -43,7 +44,8 @@ export const transformCompany = (dbCompany) => ({
   logoUrl: dbCompany.logo_url || null,
   customPrice: dbCompany.custom_price != null ? Number(dbCompany.custom_price) : null,
   trialEndsAt: dbCompany.trial_ends_at ? new Date(dbCompany.trial_ends_at) : null,
-  comprobantesPeriodStart: dbCompany.comprobantes_period_start || null
+  comprobantesPeriodStart: dbCompany.comprobantes_period_start || null,
+  deletedAt: dbCompany.deleted_at ? new Date(dbCompany.deleted_at) : null
 });
 
 export const transformActivityEvent = (dbEvent) => ({
