@@ -4,6 +4,7 @@ import { useStore } from '../../store/useStore.js';
 import { createProduct, updateProduct, deleteProduct, getBillingConfig, fetchBranches, fetchProductStock, fetchProductStockAllBranches, updateProductMinStock, adjustProductStock, transferStock, fetchInventoryMovements, fetchCompanyFeatureOverrides } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Tabs from '../ui/Tabs.jsx';
+import EmptyState from '../ui/EmptyState.jsx';
 import { formatUSD } from '../../lib/format.js';
 import { formatDateTime } from '../../lib/reportsHelpers.js';
 import { downloadReportCsv } from '../../lib/csvExport.js';
@@ -30,6 +31,7 @@ export default function InventoryManagement() {
   const plan = plans.find(p => p.id === company?.planId);
   const [featureOverrides, setFeatureOverrides] = useState([]);
   const multiSucursalEnabled = hasFeature(plan, featureOverrides, 'inventario');
+  const productosEnabled = hasFeature(plan, featureOverrides, 'productos');
   const [products, setProducts] = useState([]);
   const [branches, setBranches] = useState([]);
   const [selectedBranchId, setSelectedBranchId] = useState(null);
@@ -423,7 +425,11 @@ export default function InventoryManagement() {
         <Tabs tabs={INVENTORY_TABS} activeTab={tab} onTabChange={setTab} />
       </div>
 
-      {tab === 'products' && (
+      {tab === 'products' && !productosEnabled && (
+        <EmptyState icon={Lock} title="Catálogo de productos no incluido en tu plan" description="Actualiza tu plan para gestionar el catálogo de productos." />
+      )}
+
+      {tab === 'products' && productosEnabled && (
       <>
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

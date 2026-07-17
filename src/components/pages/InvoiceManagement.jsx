@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin, Mail, FileCode, Archive, Undo2, AlertTriangle } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, X, Copy, Loader, Download, MapPin, Mail, FileCode, Archive, Undo2, AlertTriangle, Lock } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import {
   fetchInvoicesByCompany, fetchInvoiceDetails, submitInvoiceToSRI, voidInvoice, getBillingConfig,
-  fetchCompanyById, fetchBranches, emailInvoiceRide,
+  fetchCompanyById, fetchBranches, emailInvoiceRide, fetchCompanyFeatureOverrides,
   createInvoice, createInvoiceDetail, getNextDocumentSequential, submitCreditNoteToSRI, fetchCreditNotesForInvoice
 } from '../../lib/supabaseHelpers.js';
 import Table from '../ui/Table.jsx';
 import Badge from '../ui/Badge.jsx';
 import Modal from '../ui/Modal.jsx';
+import EmptyState from '../ui/EmptyState.jsx';
 import { formatUSD } from '../../lib/format.js';
 import { generateRidePdf } from '../../lib/rideGenerator.js';
 import { downloadInvoiceXml, downloadInvoicesXmlZip } from '../../lib/invoiceXmlExport.js';
+import { hasFeature } from '../../lib/planLimits.js';
 
 const STATUS_LABELS = {
   borrador: 'Pendiente',
@@ -36,8 +38,9 @@ function formatDetailAmounts(unitPrice, quantity, discountPercent, taxPercent) {
 }
 
 export default function InvoiceManagement() {
-  const { currentUser, showToast, openConfirm, can } = useStore();
+  const { currentUser, showToast, openConfirm, can, companies, plans } = useStore();
   const [invoices, setInvoices] = useState([]);
+  const [featureOverrides, setFeatureOverrides] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [invoiceDetails, setInvoiceDetails] = useState([]);
@@ -85,8 +88,13 @@ export default function InvoiceManagement() {
       getBillingConfig(currentUser.company_id).then(cfg => setSriEnvironment(cfg.environment)).catch(() => {});
       fetchCompanyById(currentUser.company_id).then(setCompany).catch(() => {});
       fetchBranches(currentUser.company_id).then(setBranches).catch(() => {});
+      fetchCompanyFeatureOverrides(currentUser.company_id).then(setFeatureOverrides).catch(() => {});
     }
   }, [currentUser?.company_id]);
+
+  const ownCompany = companies.find(c => c.id === currentUser?.company_id);
+  const plan = plans.find(p => p.id === ownCompany?.planId);
+  const facturasEnabled = hasFeature(plan, featureOverrides, 'facturas');
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv => {
@@ -401,6 +409,18 @@ export default function InvoiceManagement() {
     navigator.clipboard.writeText(key);
     showToast('success', 'Clave de acceso copiada');
   };
+
+  if (!loading && !facturasEnabled) {
+    return (
+      <div className="max-w-7xl mx-auto">
+        <EmptyState
+          icon={Lock}
+          title="Facturación no incluida en tu plan"
+          description="Actualiza tu plan para acceder a la gestión de facturas."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">

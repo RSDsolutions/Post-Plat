@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, X, Key, Loader, MapPin } from 'lucide-react';
+import { Users, Plus, X, Key, Loader, MapPin, Lock } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
-import { fetchCompanyUsers, createCompanyUser, resetCashierPassword, fetchBranches, updateUserBranch } from '../../lib/supabaseHelpers.js';
-import { checkLimit, limitReachedMessage } from '../../lib/planLimits.js';
+import { fetchCompanyUsers, createCompanyUser, resetCashierPassword, fetchBranches, updateUserBranch, fetchCompanyFeatureOverrides } from '../../lib/supabaseHelpers.js';
+import { checkLimit, limitReachedMessage, hasFeature } from '../../lib/planLimits.js';
+import EmptyState from '../ui/EmptyState.jsx';
 
 const EMPTY_NEW_USER = { name: '', email: '', phone: '', role: 'vendedor', branchId: '', password: '', confirmPassword: '' };
 const ROLE_LABELS = { vendedor: 'Vendedor', operario: 'Operario', contador: 'Contador' };
@@ -18,6 +19,8 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const company = companies.find(c => c.id === currentUser?.company_id);
   const plan = plans.find(p => p.id === company?.planId);
+  const [featureOverrides, setFeatureOverrides] = useState([]);
+  const usuariosEnabled = hasFeature(plan, featureOverrides, 'usuarios');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUser, setNewUser] = useState(EMPTY_NEW_USER);
@@ -50,6 +53,12 @@ export default function UserManagement() {
     if (currentUser?.company_id) loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
+
+  useEffect(() => {
+    if (currentUser?.company_id) {
+      fetchCompanyFeatureOverrides(currentUser.company_id).then(setFeatureOverrides).catch(() => {});
+    }
+  }, [currentUser?.company_id]);
 
   const closeAddModal = () => {
     setShowAddModal(false);
@@ -149,6 +158,18 @@ export default function UserManagement() {
       setResetting(false);
     }
   };
+
+  if (!loading && !usuariosEnabled) {
+    return (
+      <div className="max-w-7xl mx-auto">
+        <EmptyState
+          icon={Lock}
+          title="Gestión de usuarios no incluida en tu plan"
+          description="Actualiza tu plan para administrar cajeros y contadores."
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
