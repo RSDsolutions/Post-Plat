@@ -127,16 +127,6 @@ export async function updateCompany(id, updates) {
   return data;
 }
 
-export async function deleteCompany(id) {
-  const { error } = await supabase
-    .from('companies')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw new Error(`Error deleting company: ${error.message}`);
-  return true;
-}
-
 // Point of Sale (POS)
 export async function fetchPointOfSales(companyId) {
   const { data, error } = await supabase
