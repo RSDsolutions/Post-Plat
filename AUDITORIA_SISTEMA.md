@@ -1,6 +1,6 @@
 # 🔍 Auditoría del Sistema - POST-PLAT
 
-**Fecha:** 2026-07-09 (actualizado 2026-07-15 — ver [Actualización 2026-07-15](#actualización-2026-07-15), [Fase 0 — Supabase Auth](#actualización-2026-07-15-fase-0--supabase-auth) y [Personalización visual + incidente de login](#actualización-2026-07-15-personalización-visual--incidente-de-login))
+**Fecha:** 2026-07-09 (actualizado 2026-07-15 — ver [Actualización 2026-07-15](#actualización-2026-07-15), [Fase 0 — Supabase Auth](#actualización-2026-07-15-fase-0--supabase-auth) y [Personalización visual + incidente de login](#actualización-2026-07-15-personalización-visual--incidente-de-login); actualizado 2026-07-16 — ver [Verificación de 9 puntos de MEJORAS_ADMIN_SAAS.md](#actualización-2026-07-16-verificación-de-9-puntos-de-mejoras_admin_saasmd))
 **Alcance:** Base de datos (Supabase/Postgres), API serverless (`api/sri/*`), frontend (React/Vite), configuración y despliegue.
 **Método:** Supabase Advisors (security + performance), lectura directa de `pg_policies`/`information_schema`, pruebas reales contra la API REST con la anon key (no solo simulación con rol privilegiado), lectura de código fuente y del historial de cambios de esta sesión.
 
@@ -139,6 +139,88 @@ Esto llevó a auditar con la misma técnica **todas** las funciones `SECURITY DE
 - **`verify_admin_password(p_email, p_password)`**: función muerta confirmada (cero referencias en `src/` ni `api/` — el login real usa `supabase.auth.signInWithPassword` desde la Fase 0; `admin_users`/esta función nunca se conectaron a Supabase Auth). Viva y alcanzable por `anon` era un oráculo de fuerza bruta de contraseñas **sin ningún rate-limit** (a diferencia del login real, que sí pasa por Supabase Auth). Se eliminó la función; la tabla `admin_users` se deja intacta, sin usarla, igual que ya se había decidido en la Fase 0.
 
 **Lección para toda función `SECURITY DEFINER` futura:** verificar con `has_function_privilege('anon', '<función>'::regproc, 'EXECUTE')` después de cada migración, no asumir que `revoke all from public` alcanza — hay que nombrar `anon`/`authenticated` explícitamente en el `revoke`, y si la función va a ser llamada con un parámetro que se afirma ser "quién soy" (`p_admin_id`, `p_caller_id`, etc.), verificarlo contra `auth.uid()` dentro de la función salvo que el único llamador real sea `service_role` (en cuyo caso `auth.uid()` es `NULL` y la función debe estar revocada de `anon`/`authenticated` por completo, no solo de `public`).
+
+---
+
+## Actualización 2026-07-16 (Verificación de 9 puntos de MEJORAS_ADMIN_SAAS.md)
+
+Varios ítems de `MEJORAS_ADMIN_SAAS.md` habían quedado marcados como "no confirmado" en una revisión previa hecha solo leyendo documentación, sin abrir el código. Esta pasada verifica 9 puntos concretos con la misma metodología del resto de este documento: lectura directa de código (archivo:línea), consultas reales a Postgres vía el MCP de Supabase (`information_schema`, `pg_policies`, `pg_trigger`, catálogo de funciones), y una prueba real cuando hizo falta — nunca por el nombre de un archivo o función.
+
+### 1. Toggle de "Funcionalidades" en `CompanyDetail.jsx` — ✅ Confirmado implementado
+
+Existe de verdad: `CompanyDetail.jsx:487-524` renderiza una sección "Funcionalidades" con un switch por cada fila de `feature_flags`, leyendo `company_feature_overrides` (`fetchCompanyFeatureOverrides`) y escribiendo con `setCompanyFeatureOverride`/`clearCompanyFeatureOverride` (`supabaseHelpers.js:1944-1982`) — no son stubs, hacen `SELECT`/`UPSERT`/`DELETE` reales contra las tablas. RLS verificada con `pg_policies`: `company_feature_overrides` tiene políticas `SELECT`/`INSERT`/`UPDATE`/`DELETE` reales gateadas por `is_platform_admin()`, `feature_flags` es de lectura pública (`USING(true)`, correcto para un catálogo) — nada del patrón "RLS activado sin políticas" que rompió `plans`/`activity_log` en el pasado.
+
+**Nota factual:** hoy hay **8** feature flags, no 7 como decía el diseño original de `MEJORAS_ADMIN_SAAS.md` (`select key from feature_flags` → `pos_theming, facturas, productos, usuarios, api, inventario, reportes, soporte`) — `pos_theming` se agregó después, en la fase de personalización visual (ver `RESUMEN_SISTEMA.md` §7.1).
+
+### 2. Feature gate real en las pantallas del cliente — ⚠️ Implementado parcialmente
+
+`grep -rn "hasFeature(\|getEffectiveFeatures("  src/` da 8 resultados en 5 archivos. De las 8 features del catálogo, solo **3 tienen gate real**:
+- `pos_theming` — `AppearanceSettings.jsx:26`, `CompanyWizard.jsx:25`.
+- `inventario` — `InventoryManagement.jsx:32`, usado en `:401-407` para bloquear el botón "Todas las sucursales" (candado + toast "no incluido en tu plan") si no está habilitada.
+- `reportes` — `Reports.jsx:56`, bloquea la pantalla completa con un `EmptyState` ("Reportes no incluido en tu plan") si no está habilitada.
+
+Las otras **5 (`facturas`, `productos`, `usuarios`, `api`, `soporte`) no aparecen en ningún `hasFeature()`/`getEffectiveFeatures()` de `src/`** — confirmado con el mismo grep, cero coincidencias adicionales. Apagar cualquiera de esas 5 desde el toggle del admin (punto 1) no tiene ningún efecto visible hoy: la pantalla correspondiente se sigue viendo igual.
+
+**Qué implicaría cerrarlo:** agregar el gate correspondiente en `InvoiceManagement.jsx` (`facturas`), la pantalla de catálogo de productos dentro de `InventoryManagement.jsx` (`productos`), y `UserManagement.jsx` (`usuarios`) — mismo patrón ya usado en Reports.jsx/InventoryManagement.jsx, no hace falta diseño nuevo. `api` y `soporte` no tienen una pantalla propia todavía que gatear (ver puntos 7 y 9).
+
+### 3. Automatización de fin de período de prueba (`trial_ends_at`) — ❌ Confirmado ausente
+
+- `vercel.json` solo define un cron (`/api/sri/retry-pending`, cada 15 min) — ninguno relacionado a trials.
+- `select tgname from pg_trigger where tgrelid = 'public.companies'::regclass and not tgisinternal` → `[]`, cero triggers en `companies`.
+- `select proname from pg_proc ... where prosrc ilike '%trial_ends_at%'` → `[]`, ninguna función de Postgres lo referencia.
+- `login()` y `restoreAuth()` en `useStore.js` (líneas 98-148) no consultan `trial_ends_at` en ningún punto — un usuario de una empresa con trial vencido inicia sesión exactamente igual que uno sin vencer.
+
+Lo único que existe: un input manual en `CompanyDetail.jsx` (`updateCompanyTrialEndsAt`, `useStore.js:555`) para que el admin edite la fecha a mano, y su uso como señal negativa en `healthScore.js:39` (resta 20 puntos, agrega el motivo "Período de prueba vencido") — visible **solo** en el propio panel del admin, nunca llega al cliente.
+
+**Qué implicaría cerrarlo:** un cron (o un chequeo dentro de `restoreAuth()`) que compare `trial_ends_at` contra `now()` y actúe de verdad — como mínimo, avisar al cliente; en un diseño más completo, degradar features o suspender. Hoy no pasa nada cuando la fecha vence.
+
+### 4. Contenido real de `Metrics.jsx` — ⚠️ Implementado parcialmente
+
+Leído completo (132 líneas). **Sí incluye MRR y ARR reales**: `mrr = formatMRR(companies, plans)` (línea 13, suma `plan.price`/`customPrice` de empresas con `subscriptionStatus === 'Activa'`), `arr = mrr * 12` (línea 14) — no son placeholders. También: distribución de empresas por plan (barra por plan), conteo por estado de suscripción (Activa/Por vencer/Vencida/Suspendida), top 5 empresas por consumo de facturas del mes, y una sección "Estado del SRI" (ver punto 6).
+
+**No incluye churn** en ningún lado del archivo — ni la palabra ni el concepto (empresas que cancelaron/bajaron de plan en un período) aparecen. Tampoco hay "clientes en riesgo" como sección propia (esa señal solo vive dispersa en `healthScore.js`, no agregada aquí).
+
+### 5. Exportación/backup de datos por empresa y baja definitiva — ⚠️ Implementado parcialmente
+
+**Exportación: sí existe y funciona.** `CompanyDetail.jsx:146-166` — botón "Exportar datos" (línea 218) llama `fetchCompanyExportBundle(company.id)` (`supabaseHelpers.js:2066-2084`), que hace 4 `SELECT` reales (`products`, `customers`, `invoices` con `invoice_details`, `branches` con `point_of_sales`) y descarga un `.json`. Cobertura parcial: no incluye `users`, `cash_closures`, `inventory_movements`, `payments`, ni ninguna tabla del módulo de Compras (`suppliers`/`purchases`/`purchase_retentions`/`accounts_payable`).
+
+**Baja definitiva: no existe como flujo real.** Existe `deleteCompany(id)` en `supabaseHelpers.js:130-138` — pero hace un `DELETE` físico directo (no un soft-delete vía `deleted_at`) y **no se llama desde ningún componente** (`grep -rn "deleteCompany" src/` → solo la definición, cero usos). `companies.deleted_at` existe como columna (`timestamp without time zone`, confirmado en `information_schema.columns`) pero **cero líneas de código la leen o escriben** — ni la UI, ni `deleteCompany()`, ni ninguna función de Postgres. Las políticas RLS de `companies` (`pg_policies`: `companies_select` = `id = current_company_id() OR is_platform_admin()`) tampoco filtran por `deleted_at` — si algún día se setea a mano por SQL, la empresa **seguiría apareciendo** en cualquier listado. Hoy lo único accionable desde la UI es "Suspender" (`suspendCompany`), reversible, que solo cambia `subscription_status`.
+
+### 6. Página de estado del SRI — ✅ Confirmado implementado (solo para el admin)
+
+Existe, y no es solo el ping interno de `api/sri/status.js`: `Metrics.jsx:101-127` tiene una sección "Estado del SRI" con un botón "Verificar estado del SRI" que llama `checkSriStatus()` (`supabaseHelpers.js:1668-1679`, hace `fetch('/api/sri/status')` real) y muestra, por servicio, si responde y con qué latencia (o "Sin respuesta" en rojo). `grep -rn "checkSriStatus" src/` confirma que **solo se usa en `Metrics.jsx`** — no hay ninguna pantalla equivalente dentro de `StoreManagerLayout` (el panel del gerente/contador nunca ve este estado; el ping solo es visible para el admin de la plataforma).
+
+### 7. Endpoints públicos para la feature "api" del plan Empresarial — ❌ Confirmado ausente
+
+`find api -name "*.js"` da 12 endpoints routables (sin contar los `_archivo.js` internos) — los 12 ya inventariados en `RESUMEN_SISTEMA.md` §11: autenticación por sesión de usuario (`userId` en body + verificación contra `public.users`), `service_role`, o el cron interno de reintentos SRI. Ninguno implementa autenticación por API key (sin header `X-Api-Key`, sin validación de token de terceros). `select table_name from information_schema.tables where table_name ilike '%api_key%' or ilike '%api_token%'` → `[]`, cero tablas de ese tipo en el esquema. Confirmado además con SQL real que el plan Empresarial **sigue listando** `api` en su columna `features` (`select name, features from plans` → `Empresarial: [...,"api",...]`) sin que exista nada real detrás — coincide exactamente con lo que ya señalaba `MEJORAS_ADMIN_SAAS.md` §4, ahora con evidencia dura en vez de una afirmación sin verificar.
+
+### 8. Roles dentro del propio equipo admin — ❌ Confirmado ausente
+
+`select enum_range(null::user_role)` → `{admin,gerente,vendedor,contador,operario}` — `admin` es un único valor plano en el enum de Postgres, sin variantes. Búsqueda en código (`admin_soporte|admin_super|super_admin|adminLevel|admin_level|adminRole` en `src/`, `api/`, `supabase/`) da un solo resultado real: `adminRole` en `useStore.js`, que es el campo donde se guarda el rol del propio admin **durante una impersonación** (para restaurarlo al salir) — no una jerarquía de roles administrativos. No hay ninguna diferenciación tipo "soporte" vs "super-admin" en ningún lado, ni en la base ni en el código.
+
+### 9. Auditoría de acciones del propio equipo admin — ⚠️ Implementado parcialmente
+
+`activity_log` tiene columnas `id, company_id, user_id, action, description, created_at` (confirmado en `information_schema.columns`) — `user_id` es quién (del equipo POST-PLAT) ejecutó la acción, no una referencia de negocio. `grep -rn "addActivityEvent(\|logActivity(" src/` muestra que el código **sí registra acciones específicas del equipo admin**, no solo eventos de negocio "planos": `'Admin ingresó como soporte'` (`useStore.js:201`, se dispara en cada impersonación, con `user_id` = el admin y la descripción indicando a qué gerente/empresa entró) — es exactamente el caso que `MEJORAS_ADMIN_SAAS.md` §4 pedía como necesario ("queda registrado en `activity_log` quién impersonó a quién y cuándo"), y ya está resuelto, solo que reutilizando la misma tabla en vez de una nueva. También se registran `'Empresa creada'`, `'Empresa actualizada'`, `'Empresa suspendida'`, `'Empresa reactivada'`, `'Pago registrado'`, `'Plan modificado'` (2 call sites), `'Precio especial actualizado'`, `'Usuario ... creado'` (`CompanyUsersTab.jsx:94,122`) — 10 tipos de evento distintos codificados en total.
+
+**Lo que falta:** no es una tabla separada como proponía `MEJORAS_ADMIN_SAAS.md` (es la misma `activity_log` de siempre, reinterpretada), solo registra escrituras (nunca un simple login o una lectura de datos sensibles), y en los datos reales de hoy (`select count(*), count(distinct action) from activity_log` → `8 filas, 2 acciones distintas`) solo `'Pago registrado'` y `'Plan modificado'` tienen filas — los otros 8 tipos de evento están codificados y listos (RLS de `activity_log` confirmada funcional hoy: `activity_log_select`/`activity_log_insert` reales, gateadas por `is_platform_admin()`, ya no es el bug histórico de RLS-sin-políticas del punto 1.1.3 original), pero aparentemente no se ejercitaron todavía en este entorno (pocas empresas reales, quizás creadas antes de que el flujo de alta pasara por la UI).
+
+### Discrepancia adicional encontrada (no pedida en la lista, detectada de paso)
+
+`RESUMEN_SISTEMA.md` §11 (estructura de carpetas) todavía lista `api/admin/create-gerente.js`, `create-user.js`, `reset-user-password.js`, `reset-cashier-password.js` y `set-user-active.js` como 5 archivos separados. En el código real hoy (`find api/admin -name "*.js"`) esos 5 fueron **consolidados en un solo dispatcher**, `api/admin/users.js` (325 líneas, un parámetro `action` en el body decide qué rama ejecutar) — el propio archivo lo documenta en su comentario de cabecera: se hizo durante la Fase 3 de Ventas (reintentos automáticos SRI) para no superar el límite de 12 funciones serverless de Vercel Hobby. No es un hallazgo de seguridad ni una funcionalidad rota (el dispatcher funciona), es puramente `RESUMEN_SISTEMA.md` sin actualizar en ese punto — vale la pena corregirlo la próxima vez que se toque ese documento, para que nadie busque un archivo que ya no existe.
+
+### Tabla resumen
+
+| # | Punto | Veredicto |
+|---|---|---|
+| 1 | Toggle de Funcionalidades en `CompanyDetail.jsx` | ✅ Confirmado implementado |
+| 2 | Feature gate real en pantallas del cliente | ⚠️ Parcial — 3 de 8 features (`pos_theming`, `inventario`, `reportes`) |
+| 3 | Automatización de fin de trial (`trial_ends_at`) | ❌ Ausente — solo campo editable a mano + señal en healthScore |
+| 4 | Contenido real de `Metrics.jsx` | ⚠️ Parcial — MRR/ARR sí, churn no |
+| 5 | Exportación/backup por empresa y baja definitiva | ⚠️ Parcial — export real (cobertura parcial), baja definitiva no existe como flujo |
+| 6 | Página de estado del SRI | ✅ Confirmado implementado (solo admin, no cliente) |
+| 7 | Endpoints públicos para la feature "api" | ❌ Ausente — 0 endpoints con auth por API key |
+| 8 | Roles dentro del equipo admin | ❌ Ausente — `admin` es un único valor plano |
+| 9 | Auditoría de acciones del equipo admin | ⚠️ Parcial — sí se registra (misma tabla `activity_log`), cobertura de eventos incompleta en la práctica |
 
 ---
 
