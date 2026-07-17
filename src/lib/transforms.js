@@ -50,6 +50,7 @@ export const transformActivityEvent = (dbEvent) => ({
   id: dbEvent.id,
   action: dbEvent.action,
   date: dbEvent.created_at ? new Date(dbEvent.created_at) : new Date(),
+  companyId: dbEvent.company_id || null,
   company: dbEvent.companies?.nombre_comercial || '—',
   detail: dbEvent.description || '',
   user: dbEvent.users?.name || 'Administrador'

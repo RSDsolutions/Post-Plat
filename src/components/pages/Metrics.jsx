@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { DollarSign, TrendingUp, Building2, PieChart, Activity, Loader, Wifi, WifiOff } from 'lucide-react';
+import { DollarSign, TrendingUp, Building2, PieChart, Activity, Loader, Wifi, WifiOff, TrendingDown } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 import MetricCard from '../ui/MetricCard.jsx';
-import { formatUSD, formatMRR, formatNumber } from '../../lib/format.js';
+import { formatUSD, formatMRR, formatNumber, computeMonthlyChurn } from '../../lib/format.js';
 import { checkSriStatus } from '../../lib/supabaseHelpers.js';
 
 export default function Metrics() {
-  const { companies, plans, selectCompany, monthlyInvoiceCounts } = useStore();
+  const { companies, plans, activityLog, selectCompany, monthlyInvoiceCounts } = useStore();
   const [sriStatus, setSriStatus] = useState(null);
   const [checkingSri, setCheckingSri] = useState(false);
 
@@ -16,6 +16,7 @@ export default function Metrics() {
     acc[c.subscriptionStatus] = (acc[c.subscriptionStatus] || 0) + 1;
     return acc;
   }, {});
+  const churn = computeMonthlyChurn(companies, plans, activityLog);
 
   const planDistribution = plans.map(plan => ({
     plan,
@@ -44,12 +45,18 @@ export default function Metrics() {
     <div className="max-w-7xl mx-auto space-y-6">
       <h1 className="text-4xl font-bold tracking-tighter uppercase text-[var(--text-primary)]">Métricas</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard icon={DollarSign} label="MRR" value={formatUSD(mrr)} color="green" />
         <MetricCard icon={TrendingUp} label="ARR" value={formatUSD(arr)} color="brand" />
         <MetricCard icon={Building2} label="Total empresas" value={companies.length} color="blue" />
         <MetricCard icon={Activity} label="Activas" value={statusCounts['Activa'] || 0} color="green" />
+        <MetricCard icon={TrendingDown} label="Churn del mes" value={formatNumber(churn.count)} color="red" />
       </div>
+      {churn.limitedData && (
+        <p className="text-xs text-[var(--text-muted)] -mt-2">
+          Churn: datos limitados — pocas empresas registradas todavía para que el número sea representativo.
+        </p>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-4">
