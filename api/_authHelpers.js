@@ -38,7 +38,7 @@ export async function getAuthenticatedUser(req) {
 
   const { data: profile, error: profileError } = await supabase
     .from('users')
-    .select('id, company_id, role, is_active')
+    .select('id, company_id, role, is_active, admin_level')
     .eq('id', authData.user.id)
     .single();
   if (profileError || !profile || !profile.is_active) {

@@ -15,6 +15,15 @@ import { getAuthenticatedUser } from '../_authHelpers.js';
 
 const ROLE_LABELS = { vendedor: 'Vendedor', operario: 'Operario', contador: 'Contador' };
 
+// Mejoras Admin Fase 8: un admin 'soporte' solo puede impersonar y leer -
+// ninguna de las 5 acciones de este dispatcher (todas mutan usuarios/
+// contraseñas) están permitidas para ese nivel. Un 'gerente' que gestiona
+// su propio equipo (create-user/reset-cashier-password) nunca pasa por
+// esta función - no tiene admin_level, es undefined, y eso está bien.
+function isSuperAdmin(user) {
+  return user.role === 'admin' && user.admin_level === 'super';
+}
+
 async function handleCreateGerente({ supabase, user, body, res }) {
   const { companyId, email, password, name } = body;
   if (!companyId || !email || !password || !name) {
@@ -23,8 +32,8 @@ async function handleCreateGerente({ supabase, user, body, res }) {
   if (String(password).length < 6) {
     return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
   }
-  if (user.role !== 'admin') {
-    return res.status(403).json({ error: 'Sólo un administrador puede dar de alta empresas' });
+  if (!isSuperAdmin(user)) {
+    return res.status(403).json({ error: 'Sólo un administrador super puede dar de alta empresas' });
   }
 
   const { data: existing } = await supabase
@@ -93,7 +102,7 @@ async function handleCreateUser({ supabase, user, body, res }) {
     return res.status(400).json({ error: 'Debes asignar una sucursal a este usuario' });
   }
 
-  const isAuthorized = user.role === 'admin' || (user.role === 'gerente' && user.company_id === companyId);
+  const isAuthorized = isSuperAdmin(user) || (user.role === 'gerente' && user.company_id === companyId);
   if (!isAuthorized) {
     return res.status(403).json({ error: 'No autorizado para crear usuarios en esta empresa' });
   }
@@ -184,7 +193,7 @@ async function handleResetCashierPassword({ supabase, user, body, res }) {
     return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
   }
 
-  const isAuthorized = user.role === 'admin' || (user.role === 'gerente' && user.company_id === companyId);
+  const isAuthorized = isSuperAdmin(user) || (user.role === 'gerente' && user.company_id === companyId);
   if (!isAuthorized) {
     return res.status(403).json({ error: 'No autorizado para resetear esta contraseña' });
   }
@@ -218,7 +227,7 @@ async function handleResetUserPassword({ supabase, user, body, res }) {
   if (!companyId || !userId || !newPassword) {
     return res.status(400).json({ error: 'companyId, userId y newPassword son requeridos' });
   }
-  if (user.role !== 'admin') {
+  if (!isSuperAdmin(user)) {
     return res.status(403).json({ error: 'No autorizado' });
   }
   if (String(newPassword).length < 6) {
@@ -270,7 +279,7 @@ async function handleSetUserActive({ supabase, user, body, res }) {
   if (!companyId || !userId || typeof isActive !== 'boolean') {
     return res.status(400).json({ error: 'companyId, userId e isActive son requeridos' });
   }
-  if (user.role !== 'admin') {
+  if (!isSuperAdmin(user)) {
     return res.status(403).json({ error: 'No autorizado' });
   }
 

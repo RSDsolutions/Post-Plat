@@ -9,11 +9,14 @@ import { computeHealthScore } from '../../lib/healthScore.js';
 const HEALTH_DOT = { Alto: 'bg-emerald-500', Medio: 'bg-amber-500', Bajo: 'bg-red-500' };
 
 export default function Companies() {
-  const { companies, plans, companySearch, setCompanySearch, companyStatusFilter, setCompanyStatusFilter, companyPlanFilter, setCompanyPlanFilter, openWizard, selectCompany, globalSearch, monthlyInvoiceCounts } = useStore();
+  const { companies, plans, companySearch, setCompanySearch, companyStatusFilter, setCompanyStatusFilter, companyPlanFilter, setCompanyPlanFilter, openWizard, selectCompany, globalSearch, monthlyInvoiceCounts, currentUser } = useStore();
   // Las dadas de baja quedan ocultas del listado por defecto (Mejoras Admin
   // Fase 5) - no hace falta persistir esta preferencia, es un toggle de
   // sesión igual que los demás filtros de esta pantalla.
   const [showDeleted, setShowDeleted] = useState(false);
+  // Mejoras Admin Fase 8: crear una empresa nueva es una mutación reservada
+  // a super (companies_insert ahora exige is_platform_super_admin()).
+  const isSuperAdmin = currentUser?.admin_level === 'super';
 
   const filtered = companies.filter(c => {
     if (!showDeleted && c.deletedAt) return false;
@@ -28,12 +31,14 @@ export default function Companies() {
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-4xl font-bold tracking-tighter uppercase text-[var(--text-primary)]">Empresas</h1>
-        <button 
-          onClick={openWizard}
-          className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-3 rounded-2xl text-sm flex items-center shrink-0 w-fit transition-colors"
-        >
-          <Plus size={18} className="mr-2" /> Nueva empresa
-        </button>
+        {isSuperAdmin && (
+          <button
+            onClick={openWizard}
+            className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-3 rounded-2xl text-sm flex items-center shrink-0 w-fit transition-colors"
+          >
+            <Plus size={18} className="mr-2" /> Nueva empresa
+          </button>
+        )}
       </div>
 
       <div className="bg-[var(--surface-1)] rounded-3xl border border-[var(--border-subtle)] p-4 flex flex-col md:flex-row gap-4">

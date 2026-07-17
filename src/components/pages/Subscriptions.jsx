@@ -8,7 +8,10 @@ import PaymentModal from '../ui/PaymentModal.jsx';
 import { formatDate } from '../../lib/dates.js';
 
 export default function Subscriptions() {
-  const { companies, plans, updatePlan } = useStore();
+  const { companies, plans, updatePlan, currentUser } = useStore();
+  // Mejoras Admin Fase 8: editar precios de plan es una mutación reservada
+  // a super (plans_update ahora exige is_platform_super_admin()).
+  const isSuperAdmin = currentUser?.admin_level === 'super';
   const [editingPlanId, setEditingPlanId] = useState(null);
   const [editData, setEditData] = useState({ name: '', price: 0 });
   const [paymentCompany, setPaymentCompany] = useState(null);
@@ -49,7 +52,7 @@ export default function Subscriptions() {
           const isEditing = editingPlanId === plan.id;
           return (
               <div key={plan.id} className={`bg-[var(--surface-1)] rounded-3xl border ${isEditing ? 'border-[var(--brand)] shadow-lg shadow-[var(--brand)]/10 ring-1 ring-[var(--brand)]' : 'border-[var(--border-subtle)]'} p-6 relative transition-all`}>
-              {!isEditing && (
+              {!isEditing && isSuperAdmin && (
                 <button onClick={() => handleEditPlan(plan)} className="absolute top-5 right-5 text-[var(--text-muted)] hover:text-[var(--brand)] transition-colors">
                   <Edit2 size={18} />
                 </button>
@@ -138,7 +141,8 @@ export default function Subscriptions() {
                   <button
                     onClick={() => setPaymentCompany(company)}
                     className="text-sm font-bold uppercase tracking-wider text-[var(--brand)] hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    disabled={company.subscriptionStatus === 'Suspendida'}
+                    disabled={company.subscriptionStatus === 'Suspendida' || !isSuperAdmin}
+                    title={isSuperAdmin ? '' : 'Solo un administrador super puede registrar pagos'}
                   >
                     Registrar pago
                   </button>

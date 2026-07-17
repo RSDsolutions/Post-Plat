@@ -29,6 +29,13 @@ export default function CompanyDetail() {
     impersonateCompany, monthlyInvoiceCounts, deactivateCompanyPermanently
   } = useStore();
 
+  // Mejoras Admin Fase 8: un admin 'soporte' solo puede impersonar y leer -
+  // exportar datos y "ver como cliente" quedan siempre disponibles (son
+  // lectura), todo lo demás que muta una empresa se oculta o deshabilita acá.
+  // El servidor (RLS: is_platform_super_admin(), ver la migración de esta
+  // fase) es la protección real - esto es defensa adicional en la UI.
+  const isSuperAdmin = currentUser?.admin_level === 'super';
+
   const [showPlanModal, setShowPlanModal] = useState(false);
   const [selectedNewPlan, setSelectedNewPlan] = useState('');
   const [notes, setNotes] = useState('');
@@ -251,40 +258,44 @@ export default function CompanyDetail() {
             <LogIn size={14} />
             Ver como cliente
           </button>
-          <button
-            onClick={() => openEditCompany(company.id)}
-            className="border border-zinc-700 bg-[var(--surface-2)] text-zinc-300 hover:bg-zinc-700 hover:text-white font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
-          >
-            Editar
-          </button>
-          <button
-            onClick={() => { setSelectedNewPlan(company.planId); setShowPlanModal(true); }}
-            className="border border-zinc-700 bg-[var(--surface-2)] text-zinc-300 hover:bg-zinc-700 hover:text-white font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
-          >
-            Cambiar plan
-          </button>
-          <button
-            onClick={() => setShowPaymentModal(true)}
-            className="border border-[var(--brand)] text-[var(--brand)] hover:bg-[var(--brand)]/10 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
-          >
-            Registrar pago
-          </button>
-          <button
-            onClick={handleSuspend}
-            className={`${company.subscriptionStatus === 'Suspendida' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20'} border font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors`}
-          >
-            {company.subscriptionStatus === 'Suspendida' ? 'Reactivar' : 'Suspender'}
-          </button>
-          {!company.deletedAt && (
-            <button
-              onClick={() => setShowBajaModal(true)}
-              disabled={!hasExportedThisSession}
-              title={hasExportedThisSession ? '' : 'Exporta los datos de la empresa antes de poder darla de baja definitivamente'}
-              className="flex items-center gap-1.5 border border-red-800 bg-red-950/40 text-red-400 hover:bg-red-900/40 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-950/40"
-            >
-              <Trash2 size={14} />
-              Dar de baja definitivamente
-            </button>
+          {isSuperAdmin && (
+            <>
+              <button
+                onClick={() => openEditCompany(company.id)}
+                className="border border-zinc-700 bg-[var(--surface-2)] text-zinc-300 hover:bg-zinc-700 hover:text-white font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
+              >
+                Editar
+              </button>
+              <button
+                onClick={() => { setSelectedNewPlan(company.planId); setShowPlanModal(true); }}
+                className="border border-zinc-700 bg-[var(--surface-2)] text-zinc-300 hover:bg-zinc-700 hover:text-white font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
+              >
+                Cambiar plan
+              </button>
+              <button
+                onClick={() => setShowPaymentModal(true)}
+                className="border border-[var(--brand)] text-[var(--brand)] hover:bg-[var(--brand)]/10 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors"
+              >
+                Registrar pago
+              </button>
+              <button
+                onClick={handleSuspend}
+                className={`${company.subscriptionStatus === 'Suspendida' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20'} border font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors`}
+              >
+                {company.subscriptionStatus === 'Suspendida' ? 'Reactivar' : 'Suspender'}
+              </button>
+              {!company.deletedAt && (
+                <button
+                  onClick={() => setShowBajaModal(true)}
+                  disabled={!hasExportedThisSession}
+                  title={hasExportedThisSession ? '' : 'Exporta los datos de la empresa antes de poder darla de baja definitivamente'}
+                  className="flex items-center gap-1.5 border border-red-800 bg-red-950/40 text-red-400 hover:bg-red-900/40 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-red-950/40"
+                >
+                  <Trash2 size={14} />
+                  Dar de baja definitivamente
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -428,7 +439,7 @@ export default function CompanyDetail() {
                        onChange={(e) => setCustomPriceInput(e.target.value)}
                        className="w-full bg-[var(--surface-1)] border border-zinc-700 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
                      />
-                     <button onClick={handleSaveCustomPrice} className="bg-[var(--surface-2)] hover:bg-zinc-700 text-zinc-200 font-bold px-3 rounded-lg text-xs uppercase whitespace-nowrap">Guardar</button>
+                     <button onClick={handleSaveCustomPrice} disabled={!isSuperAdmin} title={isSuperAdmin ? '' : 'Solo un administrador super puede cambiar el precio'} className="bg-[var(--surface-2)] hover:bg-zinc-700 text-zinc-200 font-bold px-3 rounded-lg text-xs uppercase whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">Guardar</button>
                    </div>
                    <p className="text-[11px] text-[var(--text-faint)] mt-1.5">Deja vacío y guarda para volver al precio de lista del plan.</p>
                  </div>
@@ -441,7 +452,7 @@ export default function CompanyDetail() {
                        onChange={(e) => setTrialInput(e.target.value)}
                        className="w-full bg-[var(--surface-1)] border border-zinc-700 rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
                      />
-                     <button onClick={handleSaveTrial} className="bg-[var(--surface-2)] hover:bg-zinc-700 text-zinc-200 font-bold px-3 rounded-lg text-xs uppercase whitespace-nowrap">Guardar</button>
+                     <button onClick={handleSaveTrial} disabled={!isSuperAdmin} title={isSuperAdmin ? '' : 'Solo un administrador super puede cambiar el trial'} className="bg-[var(--surface-2)] hover:bg-zinc-700 text-zinc-200 font-bold px-3 rounded-lg text-xs uppercase whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed">Guardar</button>
                    </div>
                    <p className="text-[11px] text-[var(--text-faint)] mt-1.5">Deja vacío y guarda para quitar el trial.</p>
                  </div>
@@ -542,7 +553,7 @@ export default function CompanyDetail() {
                                </span>
                              </div>
                              {flag.description && <p className="text-xs text-[var(--text-muted)] mt-0.5">{flag.description}</p>}
-                             {override && (
+                             {override && isSuperAdmin && (
                                <button onClick={() => handleResetFeature(flag.key)} disabled={saving} className="text-[10px] font-bold text-[var(--text-muted)] hover:text-zinc-300 uppercase mt-1">
                                  Restaurar valor del plan
                                </button>
@@ -550,8 +561,9 @@ export default function CompanyDetail() {
                            </div>
                            <button
                              onClick={() => handleToggleFeature(flag.key, effective)}
-                             disabled={saving}
-                             className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${effective ? 'bg-emerald-500' : 'bg-zinc-700'} disabled:opacity-50`}
+                             disabled={saving || !isSuperAdmin}
+                             title={isSuperAdmin ? '' : 'Solo un administrador super puede cambiar funcionalidades'}
+                             className={`flex-shrink-0 w-11 h-6 rounded-full transition-colors relative ${effective ? 'bg-emerald-500' : 'bg-zinc-700'} disabled:opacity-50 disabled:cursor-not-allowed`}
                            >
                              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${effective ? 'translate-x-5' : 'translate-x-0.5'}`} />
                            </button>
@@ -575,7 +587,9 @@ export default function CompanyDetail() {
                />
                <button
                  onClick={handleNotesSave}
-                 className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors"
+                 disabled={!isSuperAdmin}
+                 title={isSuperAdmin ? '' : 'Solo un administrador super puede guardar notas'}
+                 className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-2.5 rounded-xl text-xs uppercase tracking-wider transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                >
                  Guardar notas
                </button>

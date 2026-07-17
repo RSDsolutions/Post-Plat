@@ -29,6 +29,11 @@ function credentialsMessage(name, email, password, emailStatus) {
 export default function CompanyUsersTab({ company }) {
   const { currentUser, showToast, openConfirm, plans, addActivityEvent } = useStore();
   const plan = plans.find(p => p.id === company.planId);
+  // Mejoras Admin Fase 8: soporte solo lee - todas las mutaciones de esta
+  // pestaña (alta, reset de contraseña, activar/desactivar) están reservadas
+  // a super del lado del servidor (api/admin/users.js) - esto es defensa
+  // adicional en la UI, no la protección real.
+  const isSuperAdmin = currentUser?.admin_level === 'super';
 
   const [users, setUsers] = useState([]);
   const [branches, setBranches] = useState([]);
@@ -199,15 +204,17 @@ export default function CompanyUsersTab({ company }) {
               </span>
               <button
                 onClick={() => handleResetPassword(gerente)}
-                disabled={busyUserId === gerente.id}
-                className="flex items-center gap-1.5 bg-[var(--surface-2)] hover:bg-[var(--brand)] hover:text-zinc-950 text-[var(--text-primary)] text-xs font-bold px-3 py-2 rounded-xl transition-colors disabled:opacity-50"
+                disabled={busyUserId === gerente.id || !isSuperAdmin}
+                title={isSuperAdmin ? '' : 'Solo un administrador super puede restablecer contraseñas'}
+                className="flex items-center gap-1.5 bg-[var(--surface-2)] hover:bg-[var(--brand)] hover:text-zinc-950 text-[var(--text-primary)] text-xs font-bold px-3 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--surface-2)] disabled:hover:text-[var(--text-primary)]"
               >
                 {busyUserId === gerente.id ? <Loader size={13} className="animate-spin" /> : <Key size={13} />} Restablecer contraseña
               </button>
               <button
                 onClick={() => handleToggleActive(gerente)}
-                disabled={busyUserId === gerente.id}
-                className={`flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition-colors disabled:opacity-50 ${gerente.is_active ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'}`}
+                disabled={busyUserId === gerente.id || !isSuperAdmin}
+                title={isSuperAdmin ? '' : 'Solo un administrador super puede activar/desactivar usuarios'}
+                className={`flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${gerente.is_active ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'}`}
               >
                 {gerente.is_active ? <Ban size={13} /> : <CheckCircle2 size={13} />} {gerente.is_active ? 'Desactivar' : 'Activar'}
               </button>
@@ -216,12 +223,14 @@ export default function CompanyUsersTab({ company }) {
         ) : (
           <div className="bg-amber-500/10 border border-amber-500/20 rounded-2xl p-4 flex items-center justify-between gap-4 flex-wrap">
             <p className="text-sm text-amber-300">Esta empresa no tiene un usuario gerente activo. Sin uno, nadie puede iniciar sesión en su panel.</p>
-            <button
-              onClick={() => setShowAddGerente(true)}
-              className="flex items-center gap-2 bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors shrink-0"
-            >
-              <UserCog size={14} /> Crear gerente
-            </button>
+            {isSuperAdmin && (
+              <button
+                onClick={() => setShowAddGerente(true)}
+                className="flex items-center gap-2 bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-4 py-2 rounded-xl text-xs uppercase tracking-wider transition-colors shrink-0"
+              >
+                <UserCog size={14} /> Crear gerente
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -229,12 +238,14 @@ export default function CompanyUsersTab({ company }) {
       <div>
         <div className="flex items-center justify-between border-b border-[var(--border-subtle)] pb-2 mb-4">
           <h3 className="text-base font-bold text-[var(--text-primary)]">Usuarios ({cajeros.length}{plan?.usersLimit != null ? ` / ${plan.usersLimit}` : ''})</h3>
-          <button
-            onClick={() => setShowAddCajero(true)}
-            className="flex items-center gap-1.5 bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-colors"
-          >
-            <Plus size={14} /> Agregar usuario
-          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={() => setShowAddCajero(true)}
+              className="flex items-center gap-1.5 bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-3 py-1.5 rounded-xl text-xs uppercase tracking-wider transition-colors"
+            >
+              <Plus size={14} /> Agregar usuario
+            </button>
+          )}
         </div>
 
         {!loading && branches.length === 0 && (
@@ -270,8 +281,9 @@ export default function CompanyUsersTab({ company }) {
                     <select
                       value={c.branch_id || ''}
                       onChange={(e) => handleReassignBranch(c, e.target.value)}
-                      disabled={busyUserId === c.id}
-                      className={`w-full bg-[var(--surface-0)] border rounded-lg px-2 py-1.5 text-sm ${c.branch_id ? 'text-[var(--text-primary)] border-[var(--border-subtle)]' : 'text-amber-400 border-amber-500/40'}`}
+                      disabled={busyUserId === c.id || !isSuperAdmin}
+                      title={isSuperAdmin ? '' : 'Solo un administrador super puede reasignar sucursal'}
+                      className={`w-full bg-[var(--surface-0)] border rounded-lg px-2 py-1.5 text-sm disabled:opacity-50 disabled:cursor-not-allowed ${c.branch_id ? 'text-[var(--text-primary)] border-[var(--border-subtle)]' : 'text-amber-400 border-amber-500/40'}`}
                     >
                       <option value="">Sin asignar</option>
                       {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -282,15 +294,17 @@ export default function CompanyUsersTab({ company }) {
                 <div className="flex gap-2 mt-3">
                   <button
                     onClick={() => handleResetPassword(c)}
-                    disabled={busyUserId === c.id}
-                    className="flex-1 flex items-center justify-center gap-1.5 bg-[var(--surface-2)] hover:bg-[var(--brand)] hover:text-zinc-950 text-[var(--text-primary)] text-xs font-bold py-2 rounded-lg transition-colors disabled:opacity-50"
+                    disabled={busyUserId === c.id || !isSuperAdmin}
+                    title={isSuperAdmin ? '' : 'Solo un administrador super puede restablecer contraseñas'}
+                    className="flex-1 flex items-center justify-center gap-1.5 bg-[var(--surface-2)] hover:bg-[var(--brand)] hover:text-zinc-950 text-[var(--text-primary)] text-xs font-bold py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--surface-2)] disabled:hover:text-[var(--text-primary)]"
                   >
                     {busyUserId === c.id ? <Loader size={13} className="animate-spin" /> : <Key size={13} />} Contraseña
                   </button>
                   <button
                     onClick={() => handleToggleActive(c)}
-                    disabled={busyUserId === c.id}
-                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg transition-colors disabled:opacity-50 ${c.is_active ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'}`}
+                    disabled={busyUserId === c.id || !isSuperAdmin}
+                    title={isSuperAdmin ? '' : 'Solo un administrador super puede activar/desactivar usuarios'}
+                    className={`flex-1 flex items-center justify-center gap-1.5 text-xs font-bold py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${c.is_active ? 'bg-red-500/10 text-red-400 hover:bg-red-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'}`}
                   >
                     {c.is_active ? <Ban size={13} /> : <CheckCircle2 size={13} />} {c.is_active ? 'Desactivar' : 'Activar'}
                   </button>

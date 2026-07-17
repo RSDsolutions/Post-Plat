@@ -11,7 +11,10 @@ import EmptyState from '../ui/EmptyState.jsx';
 import PaymentModal from '../ui/PaymentModal.jsx';
 
 export default function Payments() {
-  const { companies, plans } = useStore();
+  const { companies, plans, currentUser } = useStore();
+  // Mejoras Admin Fase 8: registrar un pago es una mutación reservada a
+  // super (payments_insert ahora exige is_platform_super_admin()).
+  const isSuperAdmin = currentUser?.admin_level === 'super';
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalCompany, setModalCompany] = useState(undefined); // undefined = closed, null = open w/ picker, company = open locked
@@ -57,12 +60,14 @@ export default function Payments() {
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-4xl font-bold tracking-tighter uppercase text-[var(--text-primary)]">Pagos</h1>
+        {isSuperAdmin && (
         <button
           onClick={() => setModalCompany(null)}
           className="bg-[var(--brand)] hover:bg-[var(--brand-dark)] text-zinc-950 font-bold px-6 py-3 rounded-2xl text-sm flex items-center shrink-0 w-fit transition-colors"
         >
           <Plus size={18} className="mr-2" /> Registrar pago
         </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -96,7 +101,9 @@ export default function Payments() {
                 <td className="px-4 py-3">
                   <button
                     onClick={() => setModalCompany(company)}
-                    className="text-xs font-bold uppercase tracking-wider text-[var(--brand)] hover:text-white transition-colors"
+                    disabled={!isSuperAdmin}
+                    title={isSuperAdmin ? '' : 'Solo un administrador super puede registrar pagos'}
+                    className="text-xs font-bold uppercase tracking-wider text-[var(--brand)] hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Registrar pago
                   </button>

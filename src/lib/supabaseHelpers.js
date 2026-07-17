@@ -656,7 +656,7 @@ export async function loginWithPassword(email, password) {
   // suyo, y .single() fallaría con "multiple rows".
   const { data, error } = await supabase
     .from('users')
-    .select('id, email, name, role, company_id, is_active, ui_preferences')
+    .select('id, email, name, role, company_id, is_active, ui_preferences, admin_level')
     .eq('id', authData.user.id)
     .single();
 
