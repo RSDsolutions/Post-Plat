@@ -89,7 +89,7 @@ Existe también una tabla legada `admin_users` (1 fila) — de una versión ante
 
 ## 4. Modelo multi-tenant y multi-sucursal
 
-- **`companies`** es la raíz de cada tenant: identidad fiscal (RUC, razón social, nombre comercial, dirección, régimen), configuración SRI heredada (establecimiento/punto de venta/secuencial — hoy vive realmente en `point_of_sales`), suscripción (`subscription_status`: activa/suspendida/cancelada/vencida, `subscription_start`, `subscription_renewal`, `trial_ends_at`), `custom_price` (override manual de precio por cliente), logo (`logo_url`), y `deleted_at` (soft delete). Las columnas `monthly_comprobantes`/`prev_month_comprobantes` siguen ahí pero **inertes** desde la Fase 4 — el conteo real de uso se calcula en vivo desde `invoices` (`get_monthly_invoice_counts()`), no se guarda en una columna que pueda desincronizarse.
+- **`companies`** es la raíz de cada tenant: identidad fiscal (RUC, razón social, nombre comercial, dirección, régimen), configuración SRI heredada (establecimiento/punto de venta/secuencial — hoy vive realmente en `point_of_sales`), suscripción (`subscription_status`: activa/suspendida/cancelada/vencida/**dada_de_baja**, `subscription_start`, `subscription_renewal`, `trial_ends_at`, `trial_warning_sent_at`), `custom_price` (override manual de precio por cliente), logo (`logo_url`), y `deleted_at` (soft-delete real, ver §9 — la empresa nunca se borra físicamente). Las columnas `monthly_comprobantes`/`prev_month_comprobantes` siguen ahí pero **inertes** desde la Fase 4 — el conteo real de uso se calcula en vivo desde `invoices` (`get_monthly_invoice_counts()`), no se guarda en una columna que pueda desincronizarse. **Período de prueba automatizado**: un cron diario (`api/sri/retry-pending.js?job=trials`) avisa por correo 3 días antes de que venza `trial_ends_at` (una sola vez, `trial_warning_sent_at` evita reenviarlo) y, si vence sin regularizar, pasa la empresa a `vencida` sola — estado que el trigger `enforce_invoice_plan_limit` (`BEFORE INSERT` en `invoices`, ya existente) ya rechaza junto con `suspendida`/`cancelada`/`dada_de_baja` (cualquier estado que no sea `activa` bloquea la emisión de comprobantes con un mensaje `PLAN_LIMIT`).
 - **`plans`** define los planes comerciales: precio, ciclo de facturación, límites (`max_users`, `max_branches`, `max_invoices_monthly`, `max_products`, `max_pos`) y `features` (array JSON de claves de funcionalidad). Los límites se hacen cumplir con triggers `BEFORE INSERT` en Postgres (`enforce_*_plan_limit`, ver `20260724_plan_limit_enforcement.sql`) — no alcanza con ocultar el botón en la UI, el `INSERT` mismo falla con un mensaje `PLAN_LIMIT: ...` si la empresa ya llegó a su tope.
 - **`feature_flags`** + **`company_feature_overrides`**: catálogo global de funcionalidades activables (8 definidas: `usuarios`, `productos`, `facturas`, `inventario`, `reportes`, `api`, `soporte`, `pos_theming`) y una tabla de excepciones por empresa (activar/desactivar una feature puntual sin cambiarle el plan completo, toggle real en `CompanyDetail.jsx` → "Funcionalidades"). `planLimits.js` (`getEffectiveFeatures`, `hasFeature`) combina las features del plan con los overrides para decidir qué ve cada empresa — gate real hoy en `facturas`/`productos`/`usuarios`/`inventario`/`reportes`/`pos_theming`; `soporte` no tiene pantalla propia que gatear, y `api` quedó fuera de la venta activa (ver nota abajo).
 - **La feature "api" (acceso API) queda fuera de alcance de este proyecto.** Se vendía en el plan Empresarial sin ningún endpoint público real detrás (verificado 2026-07-16: los 12 endpoints de `api/` son todos internos, sin autenticación por API key ni tabla de tokens) — se quitó del array `features` de Empresarial y su descripción en `feature_flags` ahora dice "Próximamente". Construir una API pública real queda como un proyecto futuro separado, no planificado todavía.
@@ -196,14 +196,24 @@ Tabla `cash_closures`, un registro **inmutable** por cierre (sin política RLS d
 ## 9. Panel de administración SaaS (`Layout`, rol `admin`)
 
 - **Dashboard** (`Dashboard.jsx`) — visión general de la plataforma.
-- **Empresas** (`Companies.jsx`, `CompanyDetail.jsx`, `CompanyEdit.jsx`, `CompanyWizard.jsx`) — listado con **health score** por empresa (`healthScore.js`), alta guiada, edición de identidad fiscal, checklist de onboarding, cambio de plan, suspensión/reactivación con motivo.
-  - **Pestaña de usuarios** (`CompanyUsersTab.jsx`) — el admin puede, desde el detalle de una empresa: crear el gerente si falta, agregar/gestionar `vendedor`/`operario`/`contador`, **resetear contraseñas** y **activar/desactivar** cualquier usuario — todo vía endpoints `service_role` (`api/admin/create-user.js`, `api/admin/reset-user-password.js`, `api/admin/set-user-active.js`). Las altas quedan registradas en `activity_log`.
+- **Empresas** (`Companies.jsx`, `CompanyDetail.jsx`, `CompanyEdit.jsx`, `CompanyWizard.jsx`) — listado con **health score** por empresa (`healthScore.js`), alta guiada, edición de identidad fiscal, checklist de onboarding, cambio de plan, suspensión/reactivación con motivo, exportación de datos por empresa (`fetchCompanyExportBundle` — products/customers/invoices/branches/users sin `password_hash`/cash_closures/inventory_movements/payments/todo el módulo de Compras) y **baja definitiva** (soft-delete real: exige exportar en la misma sesión antes de habilitar el botón, confirmación escribiendo el nombre exacto de la empresa, `deleted_at` + `subscription_status = 'dada_de_baja'` — nunca un `DELETE` físico, por la obligación de conservar registros de facturación electrónica). Las empresas dadas de baja quedan ocultas del listado por defecto (toggle "Ver dadas de baja" para consultarlas).
+  - **Pestaña de usuarios** (`CompanyUsersTab.jsx`) — el admin puede, desde el detalle de una empresa: crear el gerente si falta, agregar/gestionar `vendedor`/`operario`/`contador`, **resetear contraseñas** y **activar/desactivar** cualquier usuario — todo vía un único dispatcher `service_role` (`api/admin/users.js`, un `action` en el body decide la rama — reemplaza 5 endpoints separados que existían antes, ver nota de presupuesto de funciones en §2). Las altas quedan registradas en `activity_log`.
 - **Planes** (`Subscriptions.jsx`) — catálogo de planes comerciales y sus precios/límites/features.
-- **Métricas** (`Metrics.jsx`) — panel agregado de indicadores de la plataforma.
+- **Métricas** (`Metrics.jsx`) — panel agregado de indicadores de la plataforma: MRR/ARR reales (`formatMRR`), distribución por plan, estado de suscripciones, top empresas por consumo de facturas, **churn del mes** (`computeMonthlyChurn` en `format.js` — empresas suspendidas o que bajaron de plan dentro del período, más las que están en `Vencida`; muestra "datos limitados" con pocas empresas todavía), y un panel de **estado del SRI** (botón que consulta `api/sri/status.js` en vivo — reachability/latencia por servicio; visible solo acá, no en el panel del cliente).
 - **Pagos** (`Payments.jsx`) — dashboard de cobros: total recaudado histórico y del mes, empresas al día vs. pendientes, alta manual de un pago vía `PaymentModal.jsx`.
 - **Alertas** — generadas al cargar datos (`generateAlerts`), no persistidas.
-- **Actividad** (`Activity.jsx`) — feed de acciones administrativas, leído de `activity_log`.
+- **Actividad** (`Activity.jsx`) — feed de acciones administrativas, leído de `activity_log` (incluye impersonación — "Admin ingresó como soporte" — y no solo eventos de negocio sobre las empresas).
 - **Marca** (`BrandConfig.jsx`) — personalización de color/branding del panel.
+
+### 9.1 Roles dentro del equipo admin (`soporte` / `super`)
+
+`users.admin_level` (`'soporte' | 'super'`, default `'super'` — ningún admin existente perdió acceso al introducirse) diferencia, **dentro** del rol `admin` (no es un rol nuevo en el enum `user_role`), quién puede solo leer e impersonar de quién puede mutar datos de cualquier empresa. `soporte` puede: ver todo, impersonar ("Ver como cliente"), y exportar datos. `super` mantiene todo lo demás: crear/editar/suspender/reactivar empresas, cambiar plan/precio/trial, dar de baja definitivamente, togglear funcionalidades, registrar pagos, editar precios de plan, y las 5 acciones de `api/admin/users.js` (alta de gerente/cajero, reset de contraseña, activar/desactivar).
+
+La protección real es server-side, en dos capas:
+- **RLS**: `is_platform_super_admin()` (nueva, exige `role='admin' AND admin_level='super'`) reemplaza a `is_platform_admin()` en las políticas de escritura de `companies`, `company_feature_overrides`, `payments` y `plans` — `is_platform_admin()` se mantiene sin cambios en las políticas de solo lectura y en `activity_log_insert` (`soporte` también debe poder dejar su propio rastro de auditoría al impersonar).
+- **`api/admin/users.js`**: cada una de sus 5 acciones exige `isSuperAdmin(user)` además de la verificación de rol ya existente.
+
+La UI oculta o deshabilita (con tooltip) los botones correspondientes para `soporte` — es defensa adicional, no la protección real.
 
 ---
 
@@ -245,11 +255,12 @@ POST-PLAT/
 │   │   ├── _lib.js / _templates.js / webhook.js
 │   │   └── send-invoice-ride.js    # Solo gerente/admin
 │   └── admin/                      # Mutaciones sensibles con service_role
-│       ├── create-gerente.js
-│       ├── create-user.js          # vendedor/operario/contador (generaliza el viejo create-cashier.js)
-│       ├── reset-user-password.js  # admin → cualquier usuario
-│       ├── reset-cashier-password.js # gerente → vendedor/operario/contador de su empresa
-│       └── set-user-active.js      # también banea/desbanea a nivel Auth
+│       ├── users.js                # Dispatcher único (action en el body): create-gerente, create-user
+│       │                           # (vendedor/operario/contador), reset-user-password (admin → cualquiera),
+│       │                           # reset-cashier-password (gerente → su equipo), set-user-active (también
+│       │                           # banea/desbanea a nivel Auth) - reemplaza 5 archivos que existían antes
+│       │                           # de Mejoras Admin Fase 9 (límite de 12 funciones del plan Hobby, ver §2)
+│       └── request-password-reset.js # Self-service "olvidé mi contraseña", sin sesión
 ├── src/
 │   ├── components/
 │   │   ├── layout/                 # Layout + Sidebar + TopBar por rol (admin / gerente+contador / cajero)

@@ -1,6 +1,6 @@
 # 🔍 Auditoría del Sistema - POST-PLAT
 
-**Fecha:** 2026-07-09 (actualizado 2026-07-15 — ver [Actualización 2026-07-15](#actualización-2026-07-15), [Fase 0 — Supabase Auth](#actualización-2026-07-15-fase-0--supabase-auth) y [Personalización visual + incidente de login](#actualización-2026-07-15-personalización-visual--incidente-de-login); actualizado 2026-07-16 — ver [Verificación de 9 puntos de MEJORAS_ADMIN_SAAS.md](#actualización-2026-07-16-verificación-de-9-puntos-de-mejoras_admin_saasmd))
+**Fecha:** 2026-07-09 (actualizado 2026-07-15 — ver [Actualización 2026-07-15](#actualización-2026-07-15), [Fase 0 — Supabase Auth](#actualización-2026-07-15-fase-0--supabase-auth) y [Personalización visual + incidente de login](#actualización-2026-07-15-personalización-visual--incidente-de-login); actualizado 2026-07-16 — ver [Verificación de 9 puntos de MEJORAS_ADMIN_SAAS.md](#actualización-2026-07-16-verificación-de-9-puntos-de-mejoras_admin_saasmd); actualizado 2026-07-17 — ver [Cierre de los 9 puntos — Mejoras Admin](#actualización-2026-07-17-cierre-de-los-9-puntos--mejoras-admin))
 **Alcance:** Base de datos (Supabase/Postgres), API serverless (`api/sri/*`), frontend (React/Vite), configuración y despliegue.
 **Método:** Supabase Advisors (security + performance), lectura directa de `pg_policies`/`information_schema`, pruebas reales contra la API REST con la anon key (no solo simulación con rol privilegiado), lectura de código fuente y del historial de cambios de esta sesión.
 
@@ -221,6 +221,28 @@ Existe, y no es solo el ping interno de `api/sri/status.js`: `Metrics.jsx:101-12
 | 7 | Endpoints públicos para la feature "api" | ❌ Ausente — 0 endpoints con auth por API key |
 | 8 | Roles dentro del equipo admin | ❌ Ausente — `admin` es un único valor plano |
 | 9 | Auditoría de acciones del equipo admin | ⚠️ Parcial — sí se registra (misma tabla `activity_log`), cobertura de eventos incompleta en la práctica |
+
+---
+
+## Actualización 2026-07-17 (Cierre de los 9 puntos — Mejoras Admin)
+
+Los 9 puntos verificados el 2026-07-16 se cerraron en un proyecto de 10 fases (`MEJORAS_ADMIN_SAAS.md`), con 4 decisiones de negocio fijadas explícitamente al inicio (no negociadas fase a fase): solo baja lógica de empresa (nunca `DELETE` físico), aviso de trial 3 días antes + transición automática al estado `vencida` ya existente, no construir la API pública ahora, y diferenciación liviana `soporte`/`super` dentro del rol `admin` (no un sistema de permisos granular nuevo). Cada fase se cerró con una prueba real contra Supabase (datos descartables, limpiados en `finally`).
+
+| # | Punto | Cómo quedó | Fase / commit |
+|---|---|---|---|
+| 1 | Toggle de Funcionalidades | Ya estaba implementado — sin cambios. | — |
+| 2 | Feature gate real | `facturas`/`productos`/`usuarios` ganaron gate real (mismo patrón que `reportes`). `soporte` sigue sin pantalla propia que gatear; `api` se resolvió despromoviéndola (punto 7). | Fase 1, `7f0e1e9` |
+| 3 | Automatización de fin de trial | Cron diario (mismo dispatcher que el retry SRI, `?job=trials`) avisa 3 días antes y pasa a `vencida` sola al vencer. El bloqueo de emisión para `vencida` **ya estaba resuelto** de un proyecto anterior (`enforce_invoice_plan_limit`, trigger `BEFORE INSERT` en `invoices`) — no hizo falta trigger nuevo, solo verificarlo con una factura real rechazada. | Fase 6, `f48fc31` |
+| 4 | Churn en `Metrics.jsx` | `computeMonthlyChurn()` (empresas suspendidas/vencidas o con downgrade de plan dentro del período), tarjeta nueva junto a MRR/ARR. | Fase 3, `0ea5c98` |
+| 5 | Exportación y baja definitiva | `deleteCompany()` (DELETE físico muerto) eliminado; export ampliado a `users`/`cash_closures`/`inventory_movements`/`payments`/Compras completo; baja definitiva real vía `deleted_at` + `subscription_status='dada_de_baja'`, exige exportar en la sesión y escribir el nombre exacto de la empresa para confirmar. | Fases 4 y 5, `67927c9` + `e521f59` |
+| 6 | Página de estado del SRI | Ya estaba implementada (`Metrics.jsx`, solo admin) — sin cambios. | — |
+| 7 | Endpoints públicos "api" | Se quitó `api` del plan Empresarial y su descripción en `feature_flags` ahora dice "Próximamente" — decisión de negocio: no se construye la API pública en este proyecto. | Fase 7, `3f8c149` |
+| 8 | Roles dentro del equipo admin | `users.admin_level` (`soporte`/`super`), `is_platform_super_admin()` reemplaza a `is_platform_admin()` en las políticas de escritura de `companies`/`company_feature_overrides`/`payments`/`plans`, `api/admin/users.js` exige `isSuperAdmin()` en sus 5 acciones. UI oculta/deshabilita para `soporte`. | Fase 8, `eff47be` |
+| 9 | Auditoría de acciones del equipo admin | Verificado con datos reales: las 9 acciones codificadas (impersonación, alta/edición/suspensión/reactivación de empresa, pago, plan modificado, alta de usuario) **sí persisten correctamente** al ejercitarlas — no había ningún bug, solo poco uso real todavía en este entorno. No se tocó código. | Fase 2 (solo verificación, sin commit de código) |
+
+**Hallazgo colateral, no parte de los 9 puntos originales, corregido de paso (autorizado explícitamente por el usuario al reportarlo):** investigando las políticas RLS para la Fase 8 se encontró que `CompanyWizard.jsx` crea la sucursal y el punto de venta **antes** de crear el gerente (con la sesión del propio admin, que todavía no es `'gerente'` de esa empresa) — pero `branches_insert`/`point_of_sales_insert` exigían `current_role() = 'gerente'` sin excepción. El alta de cualquier empresa nueva real estaba rota en producción: se creaba la fila en `companies` y se cortaba ahí, sin sucursal/POS/gerente. Corregido agregando `OR is_platform_admin()` a ambas políticas (mismo patrón que `companies_insert`), reproducido con datos reales antes y después del fix. `63ddcaa`.
+
+**Presupuesto de funciones serverless verificado al cierre:** 12/12 del plan Hobby de Vercel, 0 libres — ninguna de las 8 fases (ni el fix colateral) agregó un archivo nuevo bajo `api/`; todo se consolidó en los dos dispatchers ya existentes (`api/admin/users.js` por `action`, `api/sri/retry-pending.js` por `?job=` en la query string del cron). Documentado en `RESUMEN_SISTEMA.md` §2 con la recomendación explícita de consolidar más o subir a Vercel Pro antes de los próximos proyectos grandes. Fase 9, `ad0e799`.
 
 ---
 
