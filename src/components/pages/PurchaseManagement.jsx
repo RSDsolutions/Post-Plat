@@ -323,6 +323,8 @@ export default function PurchaseManagement() {
     }
   };
 
+  if (!can('purchases.read')) return null;
+
   if (loading) {
     return <div className="max-w-6xl mx-auto p-8 text-center text-panel-text-muted">Cargando...</div>;
   }
@@ -610,16 +612,18 @@ export default function PurchaseManagement() {
           </div>
         </div>
 
-        <div className="flex justify-end border-t border-panel-border pt-4">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2 transition-colors"
-          >
-            <Save size={18} />
-            {saving ? 'Guardando...' : 'Registrar Compra'}
-          </button>
-        </div>
+        {can('purchases.write') && (
+          <div className="flex justify-end border-t border-panel-border pt-4">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold py-2 px-6 rounded-lg flex items-center gap-2 transition-colors"
+            >
+              <Save size={18} />
+              {saving ? 'Guardando...' : 'Registrar Compra'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Alta rápida de proveedor */}

@@ -13,6 +13,10 @@ import CustomerManagement from '../pages/CustomerManagement.jsx';
 import StoreSettings from '../pages/StoreSettings.jsx';
 import BillingConfiguration from '../pages/BillingConfiguration.jsx';
 import Accounting from '../pages/Accounting.jsx';
+import SupplierManagement from '../pages/SupplierManagement.jsx';
+import PurchaseManagement from '../pages/PurchaseManagement.jsx';
+import AccountsPayable from '../pages/AccountsPayable.jsx';
+import AtsExport from '../pages/AtsExport.jsx';
 import Toast from '../ui/Toast.jsx';
 import ConfirmDialog from '../ui/ConfirmDialog.jsx';
 
@@ -35,6 +39,10 @@ export default function StoreManagerLayout() {
     case 'accounting': Content = Accounting; break;
     case 'cashiers': Content = UserManagement; break;
     case 'customers': Content = CustomerManagement; break;
+    case 'suppliers': Content = SupplierManagement; break;
+    case 'purchases': Content = PurchaseManagement; break;
+    case 'accounts_payable': Content = AccountsPayable; break;
+    case 'ats': Content = AtsExport; break;
     case 'settings': Content = StoreSettings; break;
     case 'billing': Content = BillingConfiguration; break;
     default: Content = DashboardContent;

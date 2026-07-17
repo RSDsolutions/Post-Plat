@@ -99,6 +99,8 @@ export default function SupplierManagement() {
     }
   };
 
+  if (!can('suppliers.read')) return null;
+
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-panel-text">Proveedores</h1>

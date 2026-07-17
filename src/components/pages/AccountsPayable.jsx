@@ -178,6 +178,8 @@ export default function AccountsPayable() {
     downloadReportCsv(`Cuentas_por_Pagar_${todayISO()}.csv`, columns, csvRows);
   };
 
+  if (!can('accounts_payable.read')) return null;
+
   if (loading) {
     return <div className="max-w-6xl mx-auto p-8 text-center text-panel-text-muted">Cargando...</div>;
   }

@@ -1,6 +1,6 @@
 # 📘 Resumen del Sistema — POST-PLAT
 
-**Fecha de esta versión:** 2026-07-15 (actualizado: personalización visual — temas del POS y modo claro/oscuro del panel)
+**Fecha de esta versión:** 2026-07-16 (actualizado: módulo de Compras — proveedores, registro de compras, retenciones al proveedor, cuentas por pagar, reportes y ATS)
 
 > Este documento explica **qué es el sistema y cómo funciona hoy**: infraestructura, base de datos, roles, módulos y flujos principales. Para riesgos conocidos y deuda técnica ver [`AUDITORIA_SISTEMA.md`](./AUDITORIA_SISTEMA.md); para el detalle del sistema de correos ver [`EMAILS_SETUP.md`](./EMAILS_SETUP.md).
 
@@ -71,13 +71,13 @@ Existe también una tabla legada `admin_users` (1 fila) — de una versión ante
 
 ### Catálogo de permisos (`permissions` / `role_permissions`)
 
-21 claves `modulo.accion` (más `invoices.approve`/`invoices.void`, agregadas para cerrar un hueco de UI — ver más abajo), asignadas por rol:
+21 claves `modulo.accion` originales, más `invoices.approve`/`invoices.void` (cerrar un hueco de UI) y 7 de Compras (`suppliers.read/write`, `purchases.read/write/export`, `accounts_payable.read/write` — ver §15), 30 en total, asignadas por rol:
 
 | Rol | Permisos |
 |---|---|
-| `gerente` | Todos (23) |
+| `gerente` | Todos (30) |
 | `vendedor` / `operario` | `pos.operate`, `products.read`, `customers.read`, `customers.write`, `cash_closure.create` |
-| `contador` | `invoices.read`, `invoices.export`, `invoices.resend_sri` (solo reconsulta, no reenvío), `reports.read`, `reports.export`, `accounting.read`, `accounting.export`, `cash_closure.read`, `customers.read`, `products.read`, `inventory.read` (desde la Fase 6 — ve el Kardex, no `inventory.write`) |
+| `contador` | `invoices.read`, `invoices.export`, `invoices.resend_sri` (solo reconsulta, no reenvío), `reports.read`, `reports.export`, `accounting.read`, `accounting.export`, `cash_closure.read`, `customers.read`, `products.read`, `inventory.read` (desde la Fase 6 — ve el Kardex, no `inventory.write`), `suppliers.read`, `purchases.read`, `purchases.export`, `accounts_payable.read` (Compras, siempre solo lectura/exportación — nunca `.write`) |
 
 `src/lib/permissions.js` (`fetchRolePermissions`, `can()`) carga el set del rol al hacer login/`restoreAuth()` y queda expuesto como `useStore().can(key)`. El sidebar de `StoreManagerLayout` y los botones de acción sensibles (crear/editar producto, enviar RIDE, exportar reportes, aprobar/anular factura) se condicionan con `can()`, no con `role === '...'` — así el mismo código sirve para gerente y contador sin casos especiales. Fail-closed: sin permisos cargados, `can()` deniega todo.
 
@@ -139,9 +139,10 @@ El sidebar se arma dinámicamente según los permisos del rol (§3) — la lista
   - **Conciliación SRI** — tarjetas de conteo por estado, listado de no-autorizadas con motivo, botón "Reconsultar estados" (llama `api/sri/reconcile-invoice.js` en serie).
   - **Cierres de Caja** (`CashClosures.jsx`) — historial de `cash_closures`, filtrable por sucursal/cajero/fecha, diferencias resaltadas, export CSV.
   - **Descarga de XML** — mismo mecanismo que en Facturas, sobre el rango ya seleccionado en la página.
+- **Compras** (`suppliers.read`/`purchases.read`/`accounts_payable.read`/`purchases.export`) — proveedores, registro de compras, retenciones al proveedor, cuentas por pagar y ATS; ver §15 para el detalle completo (es un módulo grande, con su propia sección).
 - **Usuarios** (`UserManagement.jsx`, permiso `users.manage`) — alta de `vendedor`/`operario` (con sucursal obligatoria) y `contador` (sin sucursal), cambio de contraseña, reasignación de sucursal.
 - **Sucursales** (`Branches.jsx`) — CRUD de sucursales y sus puntos de venta.
-- **Reportes** (`Reports.jsx`) — 7 tipos (resumen, ventas, productos, clientes, cajeros, inventario, impuestos), filtro de fechas/sucursal, gráficos propios (`ReportCharts.jsx`, sin librería externa), exportación a PDF y CSV (BOM UTF-8 para Excel).
+- **Reportes** (`Reports.jsx`) — 9 pestañas (resumen, ventas, productos, clientes, cajeros, inventario, impuestos, y desde Compras: compras por proveedor, retenciones a proveedores — ver §15), filtro de fechas/sucursal, gráficos propios (`ReportCharts.jsx`, sin librería externa), exportación a PDF y CSV (BOM UTF-8 para Excel).
 - **Configuración** (`StoreSettings.jsx`) — datos de la empresa (logo), **Apariencia del POS** (`AppearanceSettings.jsx`, ver §7.1) — y **Facturación SRI** (`BillingConfiguration.jsx`) — certificado, ambiente, tasa de IVA.
 - **Modo claro/oscuro** — toggle personal en el TopBar del panel, independiente del tema del POS — ver §7.2.
 
@@ -278,7 +279,7 @@ POST-PLAT/
 
 ---
 
-## 12. Base de datos — tablas actuales (24)
+## 12. Base de datos — tablas actuales (31)
 
 | Grupo | Tablas |
 |---|---|
@@ -287,6 +288,7 @@ POST-PLAT/
 | Sucursales | `branches`, `point_of_sales`, `product_stock`, `document_sequentials` *(numeración SRI atómica por punto de venta/tipo de documento — `get_next_document_sequential()`)* |
 | Catálogo y clientes | `products`, `customers` |
 | Facturación | `invoices` (incluye `nota_credito` en `invoice_type` desde la Fase 2), `invoice_details`, `billing_configs`, `payment_methods` |
+| Compras | `suppliers`, `retention_concepts` *(catálogo global de retenciones SRI)*, `purchases`, `purchase_details`, `purchase_retentions`, `accounts_payable`, `accounts_payable_payments` *(inmutable, igual patrón que `cash_closures`)* — ver §15 |
 | Contabilidad | `cash_closures` *(arqueo de caja, inmutable)* |
 | Cobros SaaS | `payments` (cobros a las empresas clientes por su suscripción) |
 | Movimientos | `inventory_movements` (kardex — desde la Fase 6, incluye `branch_id`; solo se escribe vía las RPCs `adjust_product_stock`/`transfer_stock`, nunca `INSERT` directo, ver §6) |
@@ -312,7 +314,31 @@ RLS está habilitado en las 24 tablas de `public`, con políticas reales basadas
 
 ---
 
-## 14. Notas para agentes AI que trabajen en este repo
+## 15. Compras — proveedores, registro, retenciones y cuentas por pagar
+
+Espejo del lado de Ventas (§5–§6): mismo patrón de RLS real (`current_company_id()`/`current_role()`, nunca `USING(true)`), misma reutilización de `xadesSign.js`/`_sriClient.js`/`get_next_document_sequential()` para las retenciones electrónicas, y las mismas convenciones de UI (`--panel-*`, `can()` en vez de `role === '...'`).
+
+**Módulos** (todos bajo `StoreManagerLayout`, sidebar "Compras" — permisos `suppliers.*`/`purchases.*`/`accounts_payable.*`, ver §3):
+
+- **Proveedores** (`SupplierManagement.jsx`, `suppliers.read`/`.write`) — CRUD, búsqueda por RUC/razón social, RUC único por empresa, marca de "parte relacionada" (afecta el XML de retención, ver abajo). Alta/edición solo gerente; contador en modo lectura.
+- **Registro de Compras** (`PurchaseManagement.jsx`, `purchases.read`/`.write`) — alta manual (proveedor con alta rápida inline, líneas con IVA automático, selección de retención con % sugerido editable) o **carga de XML del proveedor** (`supplierXmlParser.js`, parsea `factura`/`liquidacionCompra` real del SRI y precarga el formulario; el XML original se guarda en el bucket privado `supplier-invoices`, con RLS por empresa vía `storage.foldername`). Botón "Verificar ante el SRI" reconsulta el estado real de autorización del comprobante del proveedor (`api/sri/verify-supplier-document.js`, siempre contra producción — un documento real de un proveedor solo pudo autorizarse ahí). Guardar una compra crea automáticamente su cuenta por pagar (`original_amount` = total − retenciones).
+- **Retención al proveedor** (comprobante tipo 07) — `api/sri/submit-retention.js` arma, firma (XAdES-BES, mismo firmante que facturas) y envía el XML real al SRI, reutilizando `get_next_document_sequential()` para el secuencial (resuelto **del lado del cliente**, con la sesión real del gerente — nunca dentro del endpoint, que corre con `service_role` y no tiene `auth.uid()`; mismo patrón ya usado para notas de crédito). RIDE extendido para incluir el detalle de retención.
+- **Cuentas por Pagar** (`AccountsPayable.jsx`, `accounts_payable.read`/`.write`) — saldo por proveedor, filtro vencida/por vencer, pagos parciales o totales (registro **inmutable**, sin `UPDATE`/`DELETE` — igual que `cash_closures`; una corrección es un pago nuevo, posiblemente negativo). El estado (`pendiente`/`parcial`/`pagada`) lo recalcula un trigger desde la suma real de pagos en cada `INSERT`, nunca se incrementa a mano. "Vencida" no se almacena — se calcula en la consulta (`due_date < hoy`), mismo criterio que evitó el bug de `monthly_comprobantes` en Ventas (ver §4). Reporte simple de antigüedad (0-30/31-60/61+ días). Contador en modo lectura + export.
+- **Reportes de Compras** — dos pestañas nuevas dentro de `Reports.jsx` (no una pantalla aparte): "Compras" (por proveedor: total comprado, retenido, neto) y "Retenciones a Proveedores" (IVA/renta del período por concepto SRI — insumo directo para la declaración mensual). Mismo contrato `{kpis, chart, table}` y mismos exports CSV/PDF que el resto de pestañas.
+- **ATS** (`AtsExport.jsx`, `purchases.export`) — genera el XML mensual del Anexo Transaccional Simplificado para importar en DIMM Formularios, reconstruido a partir del XSD oficial del SRI y su Ficha Técnica vigente (descargados e investigados en esta fase, no de memoria). Cubre encabezado, ventas (agrupadas por cliente+tipo de comprobante, como exige la ficha técnica), compras, anulados y ventas por establecimiento. **Incluye simplificaciones documentadas que requieren revisión contable antes de declarar** (visibles como advertencia en la propia pantalla): código de sustento por compra editable con default sugerido, retención de IVA sin desglose bienes/servicios (va completa al campo legado `valorRetBienes`), y una compra sin clave de acceso del proveedor queda excluida y contada aparte. Fuera de alcance deliberado: exportaciones, recap (tarjetas de crédito), fideicomisos y rendimientos financieros — no aplican al modelo de negocio de POST-PLAT.
+
+**Modelo de datos** (7 tablas nuevas, ver §12): `suppliers`, `retention_concepts` (catálogo global de porcentajes de retención SRI, no por empresa — lo define la ley, no cada empresa), `purchases`, `purchase_details`, `purchase_retentions`, `accounts_payable`, `accounts_payable_payments`. `document_date`/`due_date` son `date` (no `timestamp without time zone`) — evita por completo la clase de bug de timezone ya documentada en `AUDITORIA_SISTEMA.md` #10, ya que son conceptos de fecha calendario sin hora que interpretar mal.
+
+**Decisiones distintas al pedido original, con justificación:**
+- `purchase_retentions` ganó `point_of_sale_id`/`signed_xml`/`sri_response_message` (no pedidos explícitamente) — necesarios para reutilizar `get_next_document_sequential()` y el RIDE, igual que `invoices`.
+- `UNIQUE(company_id, supplier_id, supplier_document_number)` en `purchases` — previene cargar el mismo comprobante del proveedor dos veces (no pedido, pero es el error más común de este tipo de registro).
+- `accounts_payable.status` nunca incluye `'vencida'` como valor almacenado (se calcula en la consulta, ver arriba) — desviación deliberada del "cuarto estado" más obvio, justamente para no repetir el bug real de `monthly_comprobantes`.
+
+**Pruebas:** cada fase (1 a 9) se probó con datos reales descartables contra Supabase (RLS cruzado entre empresas, roles, casos límite) — incluidas dos pruebas reales contra el SRI (ambiente de pruebas para el envío de la retención electrónica, producción para la verificación de un documento de proveedor), siempre con el certificado/empresa de pruebas ya autorizado, revertido en `finally`. El ATS se validó estructuralmente contra el XSD oficial descargado (orden exacto de elementos, patrones de RUC/fecha/monto) — no hay webservice de recepción para el ATS (se importa a mano en DIMM Formularios), así que esa es la verificación más fuerte posible sin presentarlo realmente.
+
+---
+
+## 16. Notas para agentes AI que trabajen en este repo
 
 - Al modificar la base de datos, usar siempre el MCP de Supabase (ver `CLAUDE.md`) y revisar/actualizar políticas RLS — las tablas operativas usan `auth.uid()` real, no `USING(true)`.
 - **Colores del POS y del panel gerente/contador van SIEMPRE por los tokens `--pos-*`/`--panel-*`** (§7), nunca clases Tailwind de color hardcodeadas (`bg-zinc-900`, `text-emerald-400`, etc.) — un color nuevo que no pase por el token correspondiente probablemente falla WCAG AA en alguno de los 4 temas del POS o en modo claro del panel (ya pasó varias veces: verificar siempre con la fórmula de contraste real, no a ojo). El panel super-admin (`Layout`) es la excepción — sigue siendo siempre oscuro, vía `.admin-theme`/`index.css`.

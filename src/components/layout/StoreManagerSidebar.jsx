@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, BarChart3, FileText, Users, Settings, LogOut, Building2, Receipt, X, MapPin, Calculator } from 'lucide-react';
+import { LayoutDashboard, Package, BarChart3, FileText, Users, Settings, LogOut, Building2, Receipt, X, MapPin, Calculator, Truck, ShoppingCart, Wallet, FileWarning } from 'lucide-react';
 import { useStore } from '../../store/useStore.js';
 
 export default function StoreManagerSidebar() {
@@ -24,6 +24,10 @@ export default function StoreManagerSidebar() {
     { id: 'accounting', label: 'Contabilidad', icon: Calculator, permission: 'accounting.read' },
     { id: 'inventory', label: 'Inventario', icon: Package, permission: 'inventory.read' },
     { id: 'customers', label: 'Clientes', icon: Users, permission: 'customers.read' },
+    { id: 'suppliers', label: 'Proveedores', icon: Truck, permission: 'suppliers.read' },
+    { id: 'purchases', label: 'Registro de Compras', icon: ShoppingCart, permission: 'purchases.read' },
+    { id: 'accounts_payable', label: 'Cuentas por Pagar', icon: Wallet, permission: 'accounts_payable.read' },
+    { id: 'ats', label: 'ATS (SRI)', icon: FileWarning, permission: 'purchases.export' },
     { id: 'cashiers', label: 'Usuarios', icon: Building2, permission: 'users.manage' },
     { id: 'billing', label: 'Facturación SRI', icon: Receipt, permission: 'billing_config.manage' },
     { id: 'settings', label: 'Configuración', icon: Settings, permission: 'settings.manage' },

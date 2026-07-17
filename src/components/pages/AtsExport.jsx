@@ -90,7 +90,7 @@ export default function AtsExport() {
     }
   };
 
-  if (!can('reports.export')) return null;
+  if (!can('purchases.export')) return null;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
